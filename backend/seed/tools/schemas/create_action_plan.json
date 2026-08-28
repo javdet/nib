@@ -1,0 +1,122 @@
+{
+  "type": "object",
+  "properties": {
+    "plan": {
+      "type": "object",
+      "properties": {
+        "stages": {
+          "type": "array",
+          "description": "Ordered stages of the plan. Stage titles must match the stage names in the DAG produced during decomposition.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer",
+                "description": "1-based position of the stage in the plan."
+              },
+              "title": {
+                "type": "string",
+                "description": "Stage name. Must match the corresponding DAG node label."
+              },
+              "description": {
+                "type": "string",
+                "description": "One or two sentences describing what the stage achieves."
+              },
+              "steps": {
+                "type": "array",
+                "description": "Atomic actions performed in this stage. Group all changes to one repository into a single code step.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["code", "web", "curl", "shell", "other"],
+                      "description": "Management surface used by the step: code (infrastructure code change), web (web interface), curl (API request), shell (CLI command), other."
+                    },
+                    "action": {
+                      "type": "string",
+                      "description": "Markdown describing the step: one summary sentence, a blank line, then a bullet list with one item per file, resource, or distinct change."
+                    },
+                    "command": {
+                      "type": "string",
+                      "description": "Ready-to-run commands for shell and curl steps, one per line, with no prose, markdown or comments. Omit for code, web and other steps."
+                    },
+                    "repository": {
+                      "type": "string",
+                      "description": "Repository the coding agent clones for a code step. Required on every code step and unique across the plan."
+                    },
+                    "pr_title": {
+                      "type": "string",
+                      "description": "Pull request title for a code step, suitable for `gh pr create --title`. Omit for other step types."
+                    },
+                    "comment": {
+                      "type": "string",
+                      "description": "Optional note for the operator running the step."
+                    }
+                  },
+                  "required": ["type", "action"]
+                }
+              },
+              "checks": {
+                "type": "array",
+                "description": "One or two verification checks that prove the stage succeeded.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "check": {
+                      "type": "string",
+                      "description": "What to verify and how."
+                    },
+                    "expectation": {
+                      "type": "string",
+                      "description": "The result that confirms the stage succeeded."
+                    }
+                  },
+                  "required": ["check", "expectation"]
+                }
+              }
+            },
+            "required": ["number", "title", "description", "steps", "checks"]
+          }
+        },
+        "rollback": {
+          "type": "array",
+          "description": "Actions that revert the whole plan, in the order they must be performed. One code entry per repository.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["code", "web", "curl", "shell", "other"],
+                "description": "Management surface used by the rollback entry."
+              },
+              "action": {
+                "type": "string",
+                "description": "Markdown describing the revert: one summary sentence, a blank line, then a bullet list."
+              },
+              "command": {
+                "type": "string",
+                "description": "Ready-to-run commands for shell and curl entries, one per line. Omit for code, web and other entries."
+              },
+              "repository": {
+                "type": "string",
+                "description": "Repository reverted by a code entry."
+              },
+              "pr_title": {
+                "type": "string",
+                "description": "Pull request title for a code rollback entry."
+              },
+              "comment": {
+                "type": "string",
+                "description": "Optional note for the operator running the rollback."
+              }
+            },
+            "required": ["type", "action"]
+          }
+        }
+      },
+      "required": ["stages", "rollback"]
+    }
+  },
+  "required": ["plan"]
+}

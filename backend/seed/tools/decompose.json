@@ -1,0 +1,12 @@
+{
+  "allow_tools": [
+    "knowledge_search",
+    "tool_search",
+    "get_skill",
+    "ask_question",
+    "create_summary",
+    "create_subjects",
+    "set_category",
+    "create_dag"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "allow_tools": [
+    "knowledge_search",
+    "tool_search",
+    "get_skill",
+    "list_variables",
+    "get_action_list",
+    "get_secrets",
+    "api_call",
+    "execute_command",
+    "run_executor"
+  ]
+}

@@ -29,9 +29,10 @@ func TestCreateActionPlanToolDef(t *testing.T) {
 }
 
 // TestCreateActionPlanSchema_stepPropertiesMatchFallback guards the two copies
-// of the step schema: the file shipped in data/tools and the fallback used when
-// that file is missing. A field added to one and not the other silently changes
-// the plan contract depending on how the service is deployed.
+// of the step schema: the file shipped in seed/tools (copied into DATA_DIR/tools
+// on first start) and the fallback used when that file is missing. A field added
+// to one and not the other silently changes the plan contract depending on how
+// the service is deployed.
 func TestCreateActionPlanSchema_stepPropertiesMatchFallback(t *testing.T) {
 	t.Parallel()
 

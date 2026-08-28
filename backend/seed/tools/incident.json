@@ -1,0 +1,9 @@
+{
+  "allow_tools": [
+    "knowledge_search",
+    "tool_search",
+    "get_skill",
+    "list_variables",
+    "create_table"
+  ]
+}

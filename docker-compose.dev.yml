@@ -126,6 +126,10 @@ services:
         mkdir -p /app/data/logs /app/data/rules /app/data/skills \
                  /app/data/prompts /app/data/tools
         [ -e /app/data/mcp.json ] || cp /app/seed/mcp.json /app/data/mcp.json
+        find /app/seed/tools -type f -name '*.json' | while IFS= read -r src; do
+          dest="/app/data/tools/${src#/app/seed/tools/}"
+          [ -e "$dest" ] || { mkdir -p "$(dirname "$dest")"; cp "$src" "$dest"; }
+        done
         go mod tidy
         exec go run ./cmd/nib -config /app/config.yaml
     networks:

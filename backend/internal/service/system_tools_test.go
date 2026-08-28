@@ -160,22 +160,20 @@ func TestSystemToolsForMode_returnsModeAllowList(t *testing.T) {
 	}
 }
 
+// systemToolsTestDataDir returns backend/seed/tools, the defaults baked into the
+// image and copied into DATA_DIR/tools on first start (see docker-entrypoint.sh).
+// The runtime DATA_DIR itself is a Docker volume and is not in the working tree,
+// so the seed directory is what these tests can assert against.
 func systemToolsTestDataDir(t *testing.T) string {
 	t.Helper()
 
-	candidates := []string{
-		filepath.Join("..", "..", "..", "data", "tools"),
-		filepath.Join("..", "..", "data", "tools"),
+	dir := filepath.Join("..", "..", "seed", "tools")
+	if _, err := os.Stat(filepath.Join(dir, "decompose.json")); err != nil {
+		t.Fatalf("stat seed tools dir: %v", err)
 	}
-	for _, dir := range candidates {
-		if _, err := os.Stat(filepath.Join(dir, "decompose.json")); err == nil {
-			abs, err := filepath.Abs(dir)
-			if err != nil {
-				t.Fatalf("filepath.Abs(%q) err = %v", dir, err)
-			}
-			return abs
-		}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q) err = %v", dir, err)
 	}
-	t.Fatal("could not locate data/tools directory for tests")
-	return ""
+	return abs
 }
