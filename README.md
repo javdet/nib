@@ -1,0 +1,114 @@
+# NIB - Neuro Infrastructure Builder
+
+## Overview
+NIB is a tool built for infrastructure work. It lets you decompose any task, lay out the concrete
+list of actions needed to complete it, describe the verification checks and the rollback plan, and
+then either execute each step or hand the operator the most detailed instructions possible.
+
+The tool is meant to
+- Cut the time infrastructure teams spend on planned work
+- Improve the predictability and quality of execution
+- Become a source of skills
+
+## Core concepts
+### Modes
+Work happens in several modes (the current mode is shown in the top right of the interface)
+* Decompose - breaks a task into simple stages. You can either send the task description into the chat or ask the agent to pick up a task from your issue tracker (an issue tracker integration over MCP has to be configured first).
+* Plan - works the plan out in detail. The task is broken down into elementary steps (code changes, running commands, working through a web interface)
+* Execute - carries the steps out
+* Discuss - free-form conversation with the agent. This is the only mode whose system prompt you can edit.
+* Incident - deep root cause analysis of incidents (in development)
+
+### LLM providers
+The backend talks to a single OpenAI-compatible endpoint - for both chat and embeddings.
+Choosing a provider, switching between `/v1/chat/completions` and `/v1/responses`, and
+falling back to OpenRouter are described in [docs/llm-providers.md](docs/llm-providers.md).
+
+### Knowledge base
+The knowledge base is backed by pgvector.
+
+### Rules
+Rules describe the company's accepted principles for working with the various infrastructure components. While decomposing, the agent works out the problem domain and which systems it will have to deal with. It lists them, and where such rules exist their descriptions are added to the prompt during detailed planning.
+
+### Variables
+Variables can be used when writing rules, skills, and the Discuss mode system prompt.
+There is a set of predefined variables that cannot be deleted. Filling them in is strongly recommended - they let the agent work more precisely.
+
+### Tools
+Connections to remote MCP servers are supported. This can be done through data/mcp.json or the web interface.
+The number of tools available to the agent can be limited per mode. The remaining tools stay reachable through search.
+Tools can be sorted into different categories.
+
+Any value in an MCP server entry may use a reference of the form `${NAME}` - for example `"Authorization": "Bearer ${MCP_GITHUB_TOKEN}"`.
+Substitution happens only at the moment the MCP server is called, so the token itself never lands in `data/mcp.json`.
+The value is looked up first in the encrypted secrets (Variables -> Secrets), then in the backend environment variables.
+If it is in neither, only that one server stops working; the rest carry on. For a literal `${`, use `$${`.
+
+### Templating
+Go templates are supported when writing rules, skills, and the Discuss mode system prompt.
+Example
+```
+```
+
+### Skills
+
+
+## Releasing
+
+The application version is defined in the root [`VERSION`](VERSION) file (for example, `v0.7.5`).
+
+To release a new version:
+
+1. Update `VERSION` with the new tag (for example, `v0.7.6`).
+2. Merge the change to `main`.
+3. GitHub Actions builds and pushes three images — `javdet/nib-backend`,
+   `javdet/nib-frontend` and `javdet/nib-kb` (knowledge-base MCP server) — each
+   tagged three ways:
+   - `<version>` (from `VERSION`, for example `v0.7.6`)
+   - `latest`
+   - `<git-sha>`
+
+The backend exposes `GET /api/v1/version` and the UI shows the version at the bottom of the sidebar.
+
+### Docker Compose
+
+Production quick start (published images):
+
+```bash
+cp .env.example .env
+# set LLM_API_KEY in .env
+docker compose up -d
+# UI: http://localhost:8080
+```
+
+Local development (live reload):
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up
+# UI: http://localhost:5173
+```
+
+See `.env.example` for all supported variables.
+
+### Remote Kubernetes executor
+
+When executor type is **Remote** and platform is **Kubernetes**, pressing **Execute action** on a `code` step creates a Kubernetes Job from `backend/internal/executor/templates/job.yaml.tmpl` (override with `{DATA_DIR}/job.yaml.tmpl` if needed).
+
+Cluster access modes (Settings → Executor):
+
+- **Local Config** — uses `~/.kube/config` (or `KUBECONFIG`), optionally a named context; falls back to the in-cluster service account mount when no kubeconfig is present.
+- **Token** — uses the API server URL plus a bearer token stored in Variables → Secrets (`kubernetesTokenSecretName`).
+
+Required Kubernetes settings:
+
+- **Image** — agent container image.
+- **Agent Secret Name** — existing Secret in the target namespace mounted via `envFrom`. It must contain agent credentials, for example:
+  - `GITHUB_TOKEN`
+  - `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
+  - optional `WEBHOOK_AUTH_HEADER` (for example `Authorization: Bearer <AGENT_WEBHOOK_TOKEN>`)
+- **Webhook base URL** — must be reachable **from inside the cluster** (not `http://localhost:8080` unless the backend runs in the same pod network). The path `/api/v1/agent-runner/webhook` is appended automatically.
+
+Optional advanced settings: namespace, service account, resource limits/requests, MCP ConfigMap name, job TTL, TLS CA / skip-verify for token auth.
+
+When the Job finishes, the agent posts results to the execute chat webhook; no extra backend changes are required for that callback.

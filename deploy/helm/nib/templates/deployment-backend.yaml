@@ -1,0 +1,252 @@
+{{- if .Values.backend.enabled }}
+{{- $ctx := dict "component" "backend" "Chart" .Chart "Release" .Release "Values" .Values "Template" .Template }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nib.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nib.componentLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nib.componentSelectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nib.componentSelectorLabels" $ctx | nindent 8 }}
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include "nib.backend.configChecksum" . }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nib.serviceAccountName" . }}
+      {{- with .Values.backend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.backend.dataSeed.configMapName (and (or .Values.backend.mcpServers .Values.kbMcp.enabled) (not .Values.secrets.existingSecret)) }}
+      initContainers:
+        {{- if .Values.backend.dataSeed.configMapName }}
+        - name: data-seed
+          image: {{ printf "%s:%s" .Values.backend.image.repository (include "nib.imageTag" (dict "tag" .Values.backend.image.tag "Chart" .Chart)) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cp -rn /seed/. /app/data/ 2>/dev/null || true
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: data-seed
+              mountPath: /seed
+              readOnly: true
+        {{- end }}
+        {{- if and (or .Values.backend.mcpServers .Values.kbMcp.enabled) (not .Values.secrets.existingSecret) }}
+        - name: mcp-bootstrap
+          image: {{ printf "%s:%s" .Values.backend.image.repository (include "nib.imageTag" (dict "tag" .Values.backend.image.tag "Chart" .Chart)) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              if [ ! -f /app/data/mcp.json ]; then
+                cp /bootstrap/mcp.json /app/data/mcp.json
+                chmod 600 /app/data/mcp.json
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: mcp-bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: {{ printf "%s:%s" .Values.backend.image.repository (include "nib.imageTag" (dict "tag" .Values.backend.image.tag "Chart" .Chart)) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          args:
+            - -config
+            - /app/config.yaml
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+              protocol: TCP
+          env:
+            - name: SERVER_HOST
+              value: "0.0.0.0"
+            - name: SERVER_PORT
+              value: {{ .Values.backend.service.port | quote }}
+            - name: DB_HOST
+              value: {{ include "nib.postgresql.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "nib.postgresql.port" . | quote }}
+            - name: DB_USER
+              value: {{ include "nib.postgresql.username" . | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              value: {{ include "nib.postgresql.database" . | quote }}
+            - name: DB_SSLMODE
+              value: {{ include "nib.postgresql.sslmode" . | quote }}
+            - name: MIGRATIONS_PATH
+              value: /app/migrations
+            - name: DATA_DIR
+              value: /app/data
+            - name: OAUTH_CALLBACK_BASE_URL
+              value: {{ include "nib.oauth.callbackBaseURL" . | quote }}
+            - name: FRONTEND_BASE_URL
+              value: {{ include "nib.oauth.frontendBaseURL" . | quote }}
+            - name: ATLASSIAN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: ATLASSIAN_CLIENT_ID
+            - name: ATLASSIAN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: ATLASSIAN_CLIENT_SECRET
+            - name: ATLASSIAN_MCP_URL
+              value: "https://mcp.atlassian.com/v1/mcp"
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: LLM_API_KEY
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: OPENAI_API_KEY
+            - name: EXECUTOR_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: EXECUTOR_LLM_API_KEY
+            - name: EXECUTOR_LLM_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: EXECUTOR_LLM_MODEL
+            - name: EXECUTOR_GIT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: EXECUTOR_GIT_API_TOKEN
+            - name: SECRETS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: SECRETS_ENCRYPTION_KEY
+            - name: APP_VERSION
+              value: {{ .Chart.AppVersion | quote }}
+            {{- if .Values.backend.dockerSocket.enabled }}
+            - name: DOCKER_HOST
+              value: unix:///var/run/docker.sock
+            {{- end }}
+          {{- with .Values.backend.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.backend.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.backend.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- if .Values.backend.persistence.enabled }}
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+            {{- if .Values.backend.dockerSocket.enabled }}
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+            {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "nib.backend.configMapName" . }}
+        {{- if .Values.backend.persistence.enabled }}
+        - name: data
+          {{- if .Values.backend.persistence.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.backend.persistence.existingClaim }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "nib.backend.pvcName" . }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.backend.dataSeed.configMapName }}
+        - name: data-seed
+          configMap:
+            name: {{ .Values.backend.dataSeed.configMapName }}
+        {{- end }}
+        {{- if and (or .Values.backend.mcpServers .Values.kbMcp.enabled) (not .Values.secrets.existingSecret) }}
+        - name: mcp-bootstrap
+          secret:
+            secretName: {{ include "nib.secretName" . }}
+            items:
+              - key: mcp.json
+                path: mcp.json
+        {{- end }}
+        {{- if .Values.backend.dockerSocket.enabled }}
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+        {{- end }}
+{{- end }}

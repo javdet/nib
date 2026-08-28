@@ -1,0 +1,43 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nib.backend.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $ctx := dict "component" "backend" "Chart" .Chart "Release" .Release "Values" .Values "Template" .Template }}
+    {{- include "nib.componentLabels" $ctx | nindent 4 }}
+data:
+  config.yaml: |
+    {{- if .Values.backend.configOverride }}
+    {{- .Values.backend.configOverride | nindent 4 }}
+    {{- else }}
+    llm:
+      baseURL: {{ .Values.backend.config.llm.baseURL | quote }}
+      model: {{ .Values.backend.config.llm.model | quote }}
+      embeddingModel: {{ .Values.backend.config.llm.embeddingModel | quote }}
+      api: {{ .Values.backend.config.llm.api | default "chat" | quote }}
+      reasoningEffort: {{ .Values.backend.config.llm.reasoningEffort | default "" | quote }}
+      timeoutSeconds: {{ .Values.backend.config.llm.timeoutSeconds }}
+      httpReferer: {{ .Values.backend.config.llm.httpReferer | quote }}
+      appTitle: {{ .Values.backend.config.llm.appTitle | quote }}
+    log:
+      enabled: {{ .Values.backend.config.log.enabled }}
+      file: {{ .Values.backend.config.log.file | quote }}
+      level: {{ .Values.backend.config.log.level | quote }}
+    agent:
+      maxIterations: {{ .Values.backend.config.agent.maxIterations }}
+    skills:
+      dir: {{ .Values.backend.config.skills.dir | quote }}
+    rules:
+      dir: {{ .Values.backend.config.rules.dir | quote }}
+    prompts:
+      dir: {{ .Values.backend.config.prompts.dir | quote }}
+    includedTools:
+      dir: {{ .Values.backend.config.includedTools.dir | quote }}
+    {{- with .Values.backend.config.projects }}
+    projects:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- end }}
+{{- end }}

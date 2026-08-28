@@ -1,0 +1,104 @@
+{{- if .Values.kbMcp.enabled }}
+{{- $ctx := dict "component" "kb-mcp" "Chart" .Chart "Release" .Release "Values" .Values "Template" .Template }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nib.kbMcp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nib.componentLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.kbMcp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nib.componentSelectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nib.componentSelectorLabels" $ctx | nindent 8 }}
+        {{- with .Values.kbMcp.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.kbMcp.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nib.serviceAccountName" . }}
+      {{- with .Values.kbMcp.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kb-mcp
+          image: {{ printf "%s:%s" .Values.kbMcp.image.repository .Values.kbMcp.image.tag | quote }}
+          imagePullPolicy: {{ .Values.kbMcp.image.pullPolicy }}
+          command:
+            - /usr/local/bin/kb
+          args:
+            - serve-mcp
+            - -transport
+            - http
+            - -http-addr
+            - :{{ .Values.kbMcp.service.port }}
+            - -http-path
+            - /mcp
+            - -provider
+            - openrouter
+          ports:
+            - name: http
+              containerPort: {{ .Values.kbMcp.service.port }}
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              value: {{ include "nib.postgresql.databaseURL" . | quote }}
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: LLM_API_KEY
+            - name: OPENROUTER_BASE_URL
+              value: {{ .Values.kbMcp.openrouter.baseURL | quote }}
+          {{- with .Values.kbMcp.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.kbMcp.probes.liveness.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.kbMcp.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.kbMcp.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.kbMcp.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.kbMcp.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.kbMcp.probes.readiness.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.kbMcp.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.kbMcp.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.kbMcp.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.kbMcp.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- with .Values.kbMcp.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.kbMcp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kbMcp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kbMcp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

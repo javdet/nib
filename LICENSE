@@ -1,0 +1,60 @@
+Nib Non-Commercial License 1.0
+(based on the MIT License)
+
+Copyright (c) 2026 Sergey Byvshev (AutomagicOps)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, merge, publish, and distribute the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following
+conditions:
+
+1. Attribution.
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software. Any copy, modification,
+   or distribution of the Software, in source or binary form, and any public
+   use of the Software (including articles, tutorials, and derived projects)
+   must include a clearly visible attribution to the original author and a
+   working link to the original source repository:
+
+       https://github.com/javdet/nib
+
+2. Non-Commercial Use Only.
+   The Software may be used, copied, modified, and distributed for
+   non-commercial purposes only. "Commercial use" means any use of the
+   Software, in whole or in part, that is primarily intended for or directed
+   toward commercial advantage or monetary compensation, including but not
+   limited to:
+
+   a. selling, licensing, or renting the Software or derivative works;
+   b. offering the Software, or a service substantially based on it, as a
+      paid product or paid hosted service (SaaS);
+   c. using the Software as part of internal tooling of a for-profit
+      organization in the course of its revenue-generating activities;
+   d. bundling the Software with a commercial product or paid consulting
+      deliverable.
+
+   Personal use, educational use, academic research, and evaluation are
+   permitted. Use by non-profit organizations is permitted.
+
+3. Commercial Licensing.
+   Commercial use requires a separate written license from the copyright
+   holder. To obtain one, contact: javdetserg@gmail.com
+
+4. No Trademark Rights.
+   This license does not grant permission to use the names "Nib" or
+   "AutomagicOps", or the names of contributors, to endorse or promote
+   products derived from the Software without prior written permission.
+
+5. Termination.
+   Any violation of the terms of this license automatically terminates the
+   rights granted herein. Rights may be reinstated at the sole discretion of
+   the copyright holder once the violation is cured.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

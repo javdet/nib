@@ -1,0 +1,19 @@
+{{- if and .Values.backend.enabled .Values.backend.persistence.enabled (not .Values.backend.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nib.backend.pvcName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- $ctx := dict "component" "backend" "Chart" .Chart "Release" .Release "Values" .Values "Template" .Template }}
+    {{- include "nib.componentLabels" $ctx | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.backend.persistence.accessModes | nindent 4 }}
+  {{- if .Values.backend.persistence.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.size | quote }}
+{{- end }}

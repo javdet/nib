@@ -1,0 +1,1 @@
+-- No-op: repair migration must not drop chat_attachments on rollback.

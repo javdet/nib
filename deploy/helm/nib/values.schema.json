@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "NIB Helm Chart Values",
+  "properties": {
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name used in labels and resource names."
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name used for all resources."
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean", "default": true },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "existingSecret": {
+          "type": "string",
+          "description": "Name of an existing Secret to use instead of creating one."
+        },
+        "dbPassword": { "type": "string" },
+        "llmApiKey": { "type": "string" },
+        "openaiApiKey": { "type": "string" },
+        "secretsEncryptionKey": { "type": "string" },
+        "atlassianClientId": { "type": "string" },
+        "atlassianClientSecret": { "type": "string" },
+        "executorLlmApiKey": { "type": "string" },
+        "executorLlmModel": { "type": "string" },
+        "executorGitApiToken": { "type": "string" }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "replicaCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "port": { "type": "integer", "default": 8080 }
+          }
+        },
+        "configOverride": { "type": "string" },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "size": { "type": "string" },
+            "storageClass": { "type": "string" },
+            "existingClaim": { "type": "string" }
+          }
+        },
+        "dataSeed": {
+          "type": "object",
+          "properties": {
+            "configMapName": { "type": "string" }
+          }
+        },
+        "mcpServers": { "type": "object" },
+        "oauth": {
+          "type": "object",
+          "properties": {
+            "callbackBaseURL": { "type": "string" },
+            "frontendBaseURL": { "type": "string" }
+          }
+        },
+        "dockerSocket": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "replicaCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "port": { "type": "integer", "default": 80 }
+          }
+        }
+      }
+    },
+    "kbMcp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "replicaCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "port": { "type": "integer", "default": 8081 }
+          }
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string" }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "database": { "type": "string" },
+            "sslmode": { "type": "string" }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "size": { "type": "string" },
+            "storageClass": { "type": "string" }
+          }
+        }
+      }
+    },
+    "externalDatabase": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "default": 5432 },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "database": { "type": "string" },
+        "sslmode": { "type": "string" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "host": { "type": "string" },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": { "type": "string" },
+                    "pathType": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "secretName": { "type": "string" },
+              "hosts": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "routeApiToBackend": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

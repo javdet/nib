@@ -1,0 +1,95 @@
+# Example configuration for nib (OpenAI-compatible LLM API).
+# Copy to a local path and pass it to the CLI with -config.
+# API key is read from LLM_API_KEY env (fallback: OPENAI_API_KEY).
+
+# Provider presets (set baseURL + model; API key via env):
+# OpenAI:       baseURL https://api.openai.com/v1  (models: gpt-5.6, gpt-5.6-terra, gpt-5.6-luna)
+# OpenRouter:   baseURL https://openrouter.ai/api/v1  (+ httpReferer/appTitle)
+# DO Gradient:  baseURL https://inference.do-ai.run/v1
+# Google:       baseURL https://generativelanguage.googleapis.com/v1beta/openai/
+llm:
+  # Base URL for the OpenAI-compatible API (no trailing slash required).
+  baseURL: https://api.openai.com/v1
+
+  # Model id as understood by the provider (OpenRouter uses provider/model slugs).
+  # OpenAI platform: gpt-5.6 is an alias for gpt-5.6-sol; gpt-5.6-terra / gpt-5.6-luna are cheaper.
+  model: gpt-5.6
+
+  # Embedding model for knowledge-base ingestion (OpenAI-compatible /embeddings).
+  # MUST match kb_collections.embedding_model exactly (string compare in knowledge_search).
+  # OpenAI platform ids have no provider prefix (OpenRouter used "openai/text-embedding-3-small").
+  embeddingModel: text-embedding-3-small
+
+  # Completion endpoint: chat (/v1/chat/completions) or responses (/v1/responses).
+  # gpt-5.6 rejects function tools on chat completions unless reasoning is off,
+  # so tools + reasoning requires responses. Use chat for gateways whose
+  # responses support is absent or unverified — see docs/llm-providers.md.
+  api: responses
+
+  # reasoning_effort sent with every completion (empty = provider default: medium).
+  # Allowed: none, minimal, low, medium, high, xhigh.
+  reasoningEffort: high
+
+  # HTTP client timeout for the chat completion request (seconds).
+  timeoutSeconds: 300
+
+  # Optional OpenRouter attribution headers (omit or leave empty to skip).
+  # Not used by the OpenAI platform.
+  httpReferer: ""
+  appTitle: ""
+
+# Optional: mirror everything llmchat writes to stderr to a file (append mode).
+# Includes slog JSON logs and fenced / intermediate sections; stdout (final API JSON) is unchanged.
+# When enabled is true, file must be a non-empty path (absolute or relative). Omitted or false: file ignored.
+# Parent directory must already exist; missing file is created with mode 0644.
+# level controls slog verbosity (default: info). Use debug to log full tool call arguments and responses.
+log:
+  enabled: true
+  file: "/app/data/logs/llmchat.stderr.log"
+  level: info   # info (default) | debug | warn | error
+
+agent:
+  # Maximum number of LLM completion rounds in the agent loop.
+  # Each round = one POST to the chat API; tool calls re-trigger the LLM
+  # until the assistant returns no tool_calls or this cap is reached.
+  maxIterations: 30
+
+knowledge_base:
+  uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable
+
+skills:
+  dir: /app/data/skills
+
+rules:
+  dir: "/app/data/rules"
+
+# Runtime override directory for the discuss system prompt ({dir}/discuss.md).
+# All mode prompts are compiled into the binary; discuss is the only one editable
+# at runtime, and its override lives here so UI edits survive image rebuilds.
+prompts:
+  dir: /app/data/prompts
+
+# Per-mode tool configuration directory.
+# System allow lists: <name>.json with shape {"allow_tools":["tool_a",...]}.
+# Included MCP tools: mcp-included.json maps mode -> tool names.
+includedTools:
+  dir: /app/data/tools
+
+projects:
+  - name: "myproject"
+    description: "myproject project description"
+    environments:
+      - name: "stage"
+        description: "stage description"
+      - name: "prod"
+        description: "prod description"
+    clouds:
+      - name: "digitalocean"
+        description: "digitalocean description"
+        locations:
+          - fra1
+          - ams3
+      - name: "aws"
+        description: "aws description"
+        locations:
+          - us-east-2

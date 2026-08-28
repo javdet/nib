@@ -1,0 +1,33 @@
+# Compose runtime config mounted over the image default at /app/config.yaml.
+# Database connection uses DB_* environment variables (knowledge_base.uri is omitted).
+llm:
+  baseURL: https://api.openai.com/v1
+  model: gpt-5.6
+  embeddingModel: text-embedding-3-small
+  api: responses
+  reasoningEffort: medium
+  timeoutSeconds: 300
+  httpReferer: ""
+  appTitle: ""
+
+log:
+  enabled: true
+  file: /app/data/logs/llmchat.stderr.log
+  level: info
+
+agent:
+  maxIterations: 30
+
+skills:
+  dir: /app/data/skills
+
+rules:
+  dir: /app/data/rules
+
+prompts:
+  dir: /app/data/prompts
+
+includedTools:
+  dir: /app/data/tools
+
+projects: []

@@ -1,0 +1,59 @@
+NIB (Neuro Infrastructure Builder) has been deployed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Version:   {{ .Chart.AppVersion }}
+
+{{- if .Values.frontend.enabled }}
+
+## Access the UI
+
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl port-forward svc/{{ include "nib.frontend.fullname" . }} {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }} -n {{ .Release.Namespace }}
+  Then open http://localhost:{{ .Values.frontend.service.port }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.backend.enabled }}
+
+## Backend API
+
+  Service: {{ include "nib.backend.fullname" . }}:{{ .Values.backend.service.port }}
+  Health:  GET /api/v1/health
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+
+## PostgreSQL
+
+  Service: {{ include "nib.postgresql.fullname" . }}:{{ .Values.postgresql.service.port }}
+  Database: {{ .Values.postgresql.auth.database }}
+{{- end }}
+
+{{- if .Values.kbMcp.enabled }}
+
+## Knowledge-base MCP
+
+  Service: {{ include "nib.kbMcp.fullname" . }}:{{ .Values.kbMcp.service.port }}
+  Endpoint: http://{{ include "nib.kbMcp.fullname" . }}:{{ .Values.kbMcp.service.port }}/mcp
+{{- end }}
+
+## Required secrets
+
+Set secrets.llmApiKey (and optionally secrets.secretsEncryptionKey) before using LLM features:
+
+  helm upgrade {{ .Release.Name }} ./deploy/helm/nib \
+    --set secrets.llmApiKey=<your-key> \
+    -n {{ .Release.Namespace }}
+
+{{- if .Values.backend.dockerSocket.enabled }}
+
+WARNING: Docker socket is mounted for the local executor. This is not recommended in production clusters.
+{{- else }}
+
+NOTE: The run_executor tool requires a local Docker socket (backend.dockerSocket.enabled). Kubernetes executor is not yet implemented.
+{{- end }}

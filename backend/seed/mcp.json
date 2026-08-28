@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "knowledge-base": {
+      "url": "http://kb-mcp:8081/mcp"
+    }
+  }
+}

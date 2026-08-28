@@ -1,0 +1,168 @@
+# Local development — live reload with source mounts.
+#
+#   cp .env.example .env
+#   docker compose -f docker-compose.dev.yml up
+#
+# Backend settings:
+#   - backend/config.yaml — llm.model/baseURL, knowledge_base.uri, projects, dirs, etc.
+#   - .env — secrets only (see .env.example)
+
+name: nib-dev
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: nib-dev-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nib}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nib}
+      POSTGRES_DB: ${POSTGRES_DB:-nib}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-nib} -d ${POSTGRES_DB:-nib}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - nib
+
+  kb-mcp:
+    image: javdet/nib-kb:${NIB_KB_VERSION:-latest}
+    container_name: nib-dev-kb-mcp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/kb"]
+    command:
+      - serve-mcp
+      - -transport
+      - http
+      - -http-addr
+      - ":8081"
+      - -http-path
+      - /mcp
+      - -provider
+      - openrouter
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nib}:${POSTGRES_PASSWORD:-nib}@postgres:5432/${POSTGRES_DB:-nib}?sslmode=disable
+      OPENROUTER_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
+      OPENROUTER_BASE_URL: ${KB_OPENROUTER_BASE_URL:-https://api.openai.com/v1}
+    ports:
+      - "8081:8081"
+    networks:
+      - nib
+
+  backend:
+    image: golang:1.26
+    container_name: nib-dev-backend
+    working_dir: /app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kb-mcp:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-nib}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-nib}
+      DB_NAME: ${POSTGRES_DB:-nib}
+      DB_SSLMODE: disable
+      MIGRATIONS_PATH: /app/migrations
+      DATA_DIR: /app/data
+      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost:5173}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
+      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID:-}
+      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET:-}
+      ATLASSIAN_MCP_URL: ${ATLASSIAN_MCP_URL:-https://mcp.atlassian.com/v1/mcp}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EXECUTOR_LLM_API_KEY: ${EXECUTOR_LLM_API_KEY:-}
+      EXECUTOR_LLM_MODEL: ${EXECUTOR_LLM_MODEL:-}
+      EXECUTOR_GIT_API_TOKEN: ${EXECUTOR_GIT_API_TOKEN:-}
+      AGENT_WEBHOOK_TOKEN: ${AGENT_WEBHOOK_TOKEN:-}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      APP_VERSION: ${APP_VERSION:-dev}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      MCP_GW_TOKEN: ${MCP_GW_TOKEN:-}
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ./backend:/app
+      # Named volume rather than ./data: the dev stack runs `go run` against the
+      # mounted source, and a bind mount would drop user-generated content
+      # (dialogs, plans, logs) straight into the working tree.
+      - devdata:/app/data
+      - gomodcache:/go/pkg/mod
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./deploy/compose/config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 120s
+    # `go run` bypasses the image entrypoint, so the DATA_DIR layout is created
+    # here instead. Keep in sync with backend/docker-entrypoint.sh.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /app/data/logs /app/data/rules /app/data/skills \
+                 /app/data/prompts /app/data/tools
+        [ -e /app/data/mcp.json ] || cp /app/seed/mcp.json /app/data/mcp.json
+        go mod tidy
+        exec go run ./cmd/nib -config /app/config.yaml
+    networks:
+      - nib
+
+  frontend:
+    image: oven/bun:1
+    container_name: nib-dev-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://backend:8080}
+    volumes:
+      - ./frontend:/app
+      - bunmodcache:/root/.bun/install/cache
+    command: ["sh", "-c", "bun install && bun run dev --host 0.0.0.0"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5173/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    networks:
+      - nib
+
+volumes:
+  pgdata:
+    name: nib-dev-pgdata
+  devdata:
+    name: nib-dev-data
+  gomodcache:
+  bunmodcache:
+
+networks:
+  nib:
+    name: nib-dev

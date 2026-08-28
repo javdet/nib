@@ -1,0 +1,274 @@
+## Global chart settings
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+## ServiceAccount for all NIB workloads
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+## Application secrets (rendered as a Kubernetes Secret unless existingSecret is set).
+## Never commit real values — pass via --set, -f values file, or External Secrets.
+secrets:
+  existingSecret: ""
+  dbPassword: "nib"
+  llmApiKey: ""
+  openaiApiKey: ""
+  secretsEncryptionKey: ""
+  atlassianClientId: ""
+  atlassianClientSecret: ""
+  executorLlmApiKey: ""
+  executorLlmModel: ""
+  executorGitApiToken: ""
+
+## Backend — Go API server (javdet/nib-backend)
+backend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: javdet/nib-backend
+  # tag: defaults to Chart.appVersion (e.g. v0.7.5)
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ## Application config (rendered into config.yaml ConfigMap).
+  ## knowledge_base.uri is omitted by default; DB connection uses DB_* env from Secret.
+  config:
+    llm:
+      baseURL: https://api.openai.com/v1
+      ## gpt-5.6 is an alias for gpt-5.6-sol; use gpt-5.6-terra / gpt-5.6-luna for lower cost.
+      model: gpt-5.6
+      ## OpenAI platform embedding ids have no provider prefix; must match
+      ## kb_collections.embedding_model exactly.
+      embeddingModel: text-embedding-3-small
+      ## Completion endpoint: chat (/v1/chat/completions) or responses (/v1/responses).
+      ## gpt-5.6 needs responses to combine function tools with reasoning.
+      api: responses
+      ## Allowed: none, minimal, low, medium, high, xhigh.
+      reasoningEffort: medium
+      timeoutSeconds: 300
+      ## OpenRouter-only attribution headers; ignored by the OpenAI platform.
+      httpReferer: ""
+      appTitle: ""
+    log:
+      enabled: true
+      file: /app/data/logs/llmchat.stderr.log
+      level: info
+    agent:
+      maxIterations: 30
+    skills:
+      dir: /app/data/skills
+    rules:
+      dir: /app/data/rules
+    prompts:
+      dir: /app/data/prompts
+    includedTools:
+      dir: /app/data/tools
+    projects: []
+
+  ## Raw YAML replaces the templated config above when set.
+  configOverride: ""
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+
+  ## Optional ConfigMap with prompts/tools/rules/skills to copy into /app/data on first start.
+  dataSeed:
+    configMapName: ""
+
+  ## Optional mcp.json bootstrap (copied only when absent in the PVC).
+  ## When empty and kbMcp.enabled, defaults to knowledge-base pointing at the in-cluster kb-mcp Service.
+  mcpServers: {}
+
+  oauth:
+    callbackBaseURL: ""
+    frontendBaseURL: ""
+
+  ## Mount host Docker socket for local executor (run_executor tool). Not recommended in production.
+  dockerSocket:
+    enabled: false
+
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 10
+    readiness:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+## Frontend — nginx SPA (javdet/nib-frontend)
+frontend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: javdet/nib-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 30
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      initialDelaySeconds: 3
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+## Knowledge-base MCP server (javdet/nib-kb)
+kbMcp:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: javdet/nib-kb
+    tag: "0.7.5"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8081
+
+  ## The kb CLI "openrouter" provider is a generic OpenAI-compatible
+  ## /embeddings client; point it at the OpenAI platform and reuse LLM_API_KEY.
+  openrouter:
+    baseURL: https://api.openai.com/v1
+
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+## Bundled PostgreSQL with pgvector extension
+postgresql:
+  enabled: true
+
+  image:
+    repository: pgvector/pgvector
+    tag: pg18
+    pullPolicy: IfNotPresent
+
+  auth:
+    username: nib
+    password: ""
+    database: nib
+    sslmode: disable
+
+  service:
+    port: 5432
+
+  persistence:
+    size: 10Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  probes:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    readiness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+## External PostgreSQL (used when postgresql.enabled is false)
+externalDatabase:
+  host: ""
+  port: 5432
+  username: nib
+  password: ""
+  database: nib
+  sslmode: disable
+
+## Ingress — routes traffic to the frontend Service (nginx proxies /api/ to backend).
+## Set routeApiToBackend: true to send /api directly to the backend Service instead.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nib.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  routeApiToBackend: false
