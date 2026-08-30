@@ -20,6 +20,7 @@ var ErrSecretsEncryptionNotConfigured = errors.New("secrets encryption not confi
 // SecretInput carries metadata and a plaintext value for create/update.
 type SecretInput struct {
 	Scope       string
+	ScopeName   string
 	Name        string
 	Description string
 	Value       string
@@ -72,6 +73,7 @@ func (s *SecretService) Create(ctx context.Context, input SecretInput) (domain.P
 
 	meta := normalizeSecretMeta(domain.PromptSecret{
 		Scope:       input.Scope,
+		ScopeName:   input.ScopeName,
 		Name:        input.Name,
 		Description: input.Description,
 	})
@@ -82,7 +84,7 @@ func (s *SecretService) Create(ctx context.Context, input SecretInput) (domain.P
 		return domain.PromptSecret{}, fmt.Errorf("%w: value is required", ErrInvalidVariableName)
 	}
 
-	encrypted, err := s.cipher.Encrypt(input.Value)
+	encrypted, err := s.cipher.Encrypt(trimTrailingNewlines(input.Value))
 	if err != nil {
 		return domain.PromptSecret{}, fmt.Errorf("encrypt secret: %w", err)
 	}
@@ -98,6 +100,7 @@ func (s *SecretService) Create(ctx context.Context, input SecretInput) (domain.P
 func (s *SecretService) Update(ctx context.Context, id uuid.UUID, input SecretInput) (domain.PromptSecret, error) {
 	meta := normalizeSecretMeta(domain.PromptSecret{
 		Scope:       input.Scope,
+		ScopeName:   input.ScopeName,
 		Name:        input.Name,
 		Description: input.Description,
 	})
@@ -117,7 +120,7 @@ func (s *SecretService) Update(ctx context.Context, id uuid.UUID, input SecretIn
 			return domain.PromptSecret{}, ErrSecretsEncryptionNotConfigured
 		}
 		var err error
-		encrypted, err = s.cipher.Encrypt(input.Value)
+		encrypted, err = s.cipher.Encrypt(trimTrailingNewlines(input.Value))
 		if err != nil {
 			return domain.PromptSecret{}, fmt.Errorf("encrypt secret: %w", err)
 		}
@@ -186,6 +189,7 @@ func (s *SecretService) SetValueByName(ctx context.Context, scope, name, descrip
 
 	input := SecretInput{
 		Scope:       scope,
+		ScopeName:   "",
 		Name:        name,
 		Description: description,
 		Value:       value,
@@ -213,10 +217,27 @@ func (s *SecretService) getByName(ctx context.Context, scope, name string) (doma
 	return s.repo.GetByName(ctx, meta.Scope, meta.Name)
 }
 
+// trimTrailingNewlines drops the line breaks at the end of a stored value.
+//
+// A token is copied out of a terminal or a file with the newline that ended
+// the line, and the value field is a textarea, so it arrives as "ghp_xxx\n"
+// far more often than not. Substituted into an "Authorization: Bearer …"
+// header that newline makes net/http refuse to send the request at all, and
+// the same trailing byte breaks an executor token written into a command.
+// Only the end is trimmed: a value that is legitimately multi-line, a PEM
+// block say, keeps its interior intact.
+func trimTrailingNewlines(value string) string {
+	return strings.TrimRight(value, "\r\n")
+}
+
 func normalizeSecretMeta(s domain.PromptSecret) domain.PromptSecret {
 	s.Scope = strings.TrimSpace(s.Scope)
 	if s.Scope == "" {
 		s.Scope = defaultVariableScope
+	}
+	s.ScopeName = strings.TrimSpace(s.ScopeName)
+	if s.Scope == defaultVariableScope {
+		s.ScopeName = ""
 	}
 	s.Name = strings.TrimSpace(s.Name)
 	return s
@@ -224,6 +245,9 @@ func normalizeSecretMeta(s domain.PromptSecret) domain.PromptSecret {
 
 func validateSecretMeta(s domain.PromptSecret) error {
 	if err := validateScope(s.Scope); err != nil {
+		return err
+	}
+	if err := validateScopeName(s.Scope, s.ScopeName); err != nil {
 		return err
 	}
 	return validateVariableName(s.Name)

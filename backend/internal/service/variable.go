@@ -16,6 +16,14 @@ import (
 const defaultVariableScope = "global"
 
 const (
+	VariableScopeGlobal      = "global"
+	VariableScopeProject     = "project"
+	VariableScopeEnvironment = "environment"
+	VariableScopeCloud       = "cloud"
+	VariableScopeLocation    = "location"
+)
+
+const (
 	VariableKindString = "string"
 	VariableKindList   = "list"
 )
@@ -97,7 +105,7 @@ func (s *VariableService) Update(ctx context.Context, id uuid.UUID, v domain.Pro
 	v.Deletable = existing.Deletable
 
 	if !existing.Deletable {
-		if v.Scope != existing.Scope || v.Name != existing.Name {
+		if v.Scope != existing.Scope || v.ScopeName != existing.ScopeName || v.Name != existing.Name {
 			return domain.PromptVariable{}, fmt.Errorf("%w: scope and name cannot be changed", ErrVariableProtected)
 		}
 	}
@@ -161,6 +169,10 @@ func normalizeVariable(v domain.PromptVariable) domain.PromptVariable {
 	if v.Scope == "" {
 		v.Scope = defaultVariableScope
 	}
+	v.ScopeName = strings.TrimSpace(v.ScopeName)
+	if v.Scope == defaultVariableScope {
+		v.ScopeName = ""
+	}
 	v.Name = strings.TrimSpace(v.Name)
 	v.Kind = strings.TrimSpace(v.Kind)
 	if v.Kind == "" {
@@ -171,6 +183,9 @@ func normalizeVariable(v domain.PromptVariable) domain.PromptVariable {
 
 func validateVariable(v domain.PromptVariable) error {
 	if err := validateScope(v.Scope); err != nil {
+		return err
+	}
+	if err := validateScopeName(v.Scope, v.ScopeName); err != nil {
 		return err
 	}
 	if err := validateVariableName(v.Name); err != nil {
@@ -203,20 +218,21 @@ func validateVariableValue(kind, value string) error {
 }
 
 func validateScope(scope string) error {
-	if scope == "" {
-		return fmt.Errorf("%w: scope is required", ErrInvalidVariableScope)
+	switch scope {
+	case VariableScopeGlobal, VariableScopeProject, VariableScopeEnvironment,
+		VariableScopeCloud, VariableScopeLocation:
+		return nil
+	default:
+		return fmt.Errorf("%w: must be global, project, environment, cloud, or location", ErrInvalidVariableScope)
 	}
-	if scope == "." || scope == ".." {
-		return fmt.Errorf("%w: reserved scope", ErrInvalidVariableScope)
+}
+
+func validateScopeName(scope, scopeName string) error {
+	if scope == defaultVariableScope {
+		return nil
 	}
-	if strings.ContainsAny(scope, `/\`) {
-		return fmt.Errorf("%w: path separators are not allowed", ErrInvalidVariableScope)
-	}
-	if strings.Contains(scope, ".") {
-		return fmt.Errorf("%w: dots are not allowed", ErrInvalidVariableScope)
-	}
-	if !validVariableIdent.MatchString(scope) {
-		return fmt.Errorf("%w: must match [a-zA-Z0-9][a-zA-Z0-9_-]*", ErrInvalidVariableScope)
+	if scopeName == "" {
+		return fmt.Errorf("%w: scope name is required for non-global scope", ErrInvalidVariableScope)
 	}
 	return nil
 }

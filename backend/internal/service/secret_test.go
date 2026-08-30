@@ -137,6 +137,34 @@ func TestSecretServiceCreateRequiresValue(t *testing.T) {
 	}
 }
 
+func TestSecretServiceCreateRequiresScopeNameForProject(t *testing.T) {
+	svc := NewSecretService(newFakeSecretRepo(), testCipher(t))
+	_, err := svc.Create(context.Background(), SecretInput{
+		Scope: "project",
+		Name:  "ApiToken",
+		Value: "secret",
+	})
+	if !errors.Is(err, ErrInvalidVariableScope) {
+		t.Fatalf("Create() error = %v, want %v", err, ErrInvalidVariableScope)
+	}
+}
+
+func TestSecretServiceCreateWithProjectScope(t *testing.T) {
+	svc := NewSecretService(newFakeSecretRepo(), testCipher(t))
+	created, err := svc.Create(context.Background(), SecretInput{
+		Scope:     "project",
+		ScopeName: "myproject",
+		Name:      "ApiToken",
+		Value:     "secret",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if created.Scope != "project" || created.ScopeName != "myproject" {
+		t.Fatalf("Create() = %+v, want project scope with scope name", created)
+	}
+}
+
 func TestSecretServiceCreateAndUpdateKeepExistingValue(t *testing.T) {
 	repo := newFakeSecretRepo()
 	cipher := testCipher(t)
@@ -292,4 +320,67 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// A token pasted with the newline it was copied with must not be stored with
+// it: substituted into an Authorization header, that byte makes net/http
+// refuse the request outright.
+func TestSecretServiceStripsTrailingNewlines(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeSecretRepo()
+	svc := NewSecretService(repo, testCipher(t))
+
+	created, err := svc.Create(ctx, SecretInput{
+		Scope: "global",
+		Name:  "GITHUB_TOKEN",
+		Value: "ghp_test_token\r\n\n",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	value, err := svc.GetValueByName(ctx, "global", "GITHUB_TOKEN")
+	if err != nil {
+		t.Fatalf("GetValueByName() error = %v", err)
+	}
+	if value != "ghp_test_token" {
+		t.Fatalf("value = %q, want %q", value, "ghp_test_token")
+	}
+
+	if _, err := svc.Update(ctx, created.ID, SecretInput{
+		Scope: "global",
+		Name:  "GITHUB_TOKEN",
+		Value: "ghp_rotated\n",
+	}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	value, err = svc.GetValueByName(ctx, "global", "GITHUB_TOKEN")
+	if err != nil {
+		t.Fatalf("GetValueByName() after update error = %v", err)
+	}
+	if value != "ghp_rotated" {
+		t.Fatalf("value after update = %q, want %q", value, "ghp_rotated")
+	}
+}
+
+// Only the end is trimmed — a multi-line value keeps its interior.
+func TestSecretServiceKeepsInteriorNewlines(t *testing.T) {
+	ctx := context.Background()
+	svc := NewSecretService(newFakeSecretRepo(), testCipher(t))
+
+	if _, err := svc.Create(ctx, SecretInput{
+		Scope: "global",
+		Name:  "DEPLOY_KEY",
+		Value: "-----BEGIN KEY-----\nabc\ndef\n-----END KEY-----\n",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	value, err := svc.GetValueByName(ctx, "global", "DEPLOY_KEY")
+	if err != nil {
+		t.Fatalf("GetValueByName() error = %v", err)
+	}
+	if want := "-----BEGIN KEY-----\nabc\ndef\n-----END KEY-----"; value != want {
+		t.Fatalf("value = %q, want %q", value, want)
+	}
 }

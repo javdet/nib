@@ -2,18 +2,21 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { extractErrorMessage } from '@/lib/api-client'
 import {
 	type KnowledgeCollection,
+	collectionForProject,
 	listCollections,
 	uploadDocument,
 } from '../api/knowledge'
+import { useProject } from '@/features/projects/project-context'
 import { CompanyInfoCard } from '@/features/company/components/company-info-card'
 import { UploadDocumentCard } from '../components/upload-document-card'
 import { DiscussPromptCard } from '../components/discuss-prompt-card'
 
-const DEFAULT_COLLECTION = 'default'
-
 export function KnowledgePage() {
+	const { selectedProject } = useProject()
+	const projectCollection = collectionForProject(selectedProject?.name)
+
 	const [collections, setCollections] = useState<KnowledgeCollection[]>([])
-	const [collection, setCollection] = useState(DEFAULT_COLLECTION)
+	const [collection, setCollection] = useState(projectCollection)
 	const [loading, setLoading] = useState(true)
 	const [uploading, setUploading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -42,6 +45,13 @@ export function KnowledgePage() {
 		if (!error) return
 		errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 	}, [error])
+
+	// Each project keeps its own knowledge base, so switching projects in the
+	// header switches the collection under it. An ad-hoc collection picked here
+	// stands until the project changes again.
+	useEffect(() => {
+		setCollection(projectCollection)
+	}, [projectCollection])
 
 	const handleUpload = useCallback(
 		async (file: File) => {

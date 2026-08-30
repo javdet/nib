@@ -18,6 +18,7 @@ function toDialogInput(variable: Variable): KeyValueInput {
 	const kind = variable.kind ?? 'string'
 	return {
 		scope: variable.scope,
+		scopeName: variable.scopeName,
 		name: variable.name,
 		description: variable.description,
 		value: kind === 'list' ? listValueToLines(variable.value) : variable.value,
@@ -29,6 +30,7 @@ function toVariableInput(input: KeyValueInput): VariableInput {
 	const kind = input.kind ?? 'string'
 	return {
 		scope: input.scope,
+		scopeName: input.scopeName,
 		name: input.name,
 		description: input.description,
 		kind,

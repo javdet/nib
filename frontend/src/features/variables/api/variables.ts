@@ -5,6 +5,7 @@ export type VariableKind = 'string' | 'list'
 export interface Variable {
 	id: string
 	scope: string
+	scopeName?: string
 	name: string
 	description: string
 	value: string
@@ -16,6 +17,7 @@ export interface Variable {
 
 export interface VariableInput {
 	scope?: string
+	scopeName?: string
 	name: string
 	description?: string
 	value: string

@@ -135,8 +135,8 @@ backend:
 
 ### Tokens in mcp.json
 
-Any value in a server entry may reference a secret or environment variable as
-`${NAME}`, so credentials never have to be written into `mcp.json`:
+Any value in a server entry may reference a secret as `${NAME}`, so credentials
+never have to be written into `mcp.json`:
 
 ```yaml
 backend:
@@ -147,15 +147,16 @@ backend:
         Authorization: Bearer ${MCP_GITHUB_TOKEN}
 ```
 
-`${NAME}` is expanded only when the backend contacts the server. The name is
-looked up in this order:
+`${NAME}` is expanded only when the backend contacts the server, and the one
+place it is looked up is the encrypted secret store: an encrypted secret named
+`MCP_GITHUB_TOKEN` (Variables → Secrets in the UI, or `POST /api/v1/secrets`),
+which requires `SECRETS_ENCRYPTION_KEY`. The pod's own environment variables are
+not a source — otherwise an `mcp.json` edit could name `LLM_API_KEY` or a
+database password and send it to an arbitrary URL.
 
-1. An encrypted secret named `MCP_GITHUB_TOKEN` (Variables → Secrets in the UI,
-   or `POST /api/v1/secrets`). This requires `SECRETS_ENCRYPTION_KEY`.
-2. A backend environment variable of the same name.
-
-If neither has a value, that one server fails with an error naming the missing
-variable; the other MCP servers keep working. Write `$${` for a literal `${`.
+With no secret of that name, that one server fails with an error naming the
+missing reference; the other MCP servers keep working. Write `$${` for a literal
+`${`.
 
 Store credentials in headers rather than in the URL: transport errors embed the
 request URL, and while expanded values are stripped from the backend's own log

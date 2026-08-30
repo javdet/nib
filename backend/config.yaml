@@ -57,6 +57,14 @@ agent:
 knowledge_base:
   uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable
 
+  # Directory holding the source file last uploaded to each collection, as
+  # {dir}/{collection}.md. Written after a successful ingest so the document can
+  # be read back and downloaded; the vector store stays the search path.
+  # Relative paths resolve under DATA_DIR; empty means {DATA_DIR}/knowledgebase.
+  # A collection with no file here falls back to the skeleton compiled into the
+  # binary, which is never written to disk.
+  dir: /app/data/knowledgebase
+
 skills:
   dir: /app/data/skills
 

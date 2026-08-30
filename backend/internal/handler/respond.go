@@ -10,6 +10,7 @@ import (
 
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/kb"
+	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/repository"
@@ -48,6 +49,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, rules.ErrInvalidName):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, kbdoc.ErrInvalidName):
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, skills.ErrInvalidName):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, mcpconfig.ErrInvalidName):
@@ -58,6 +61,12 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, mcpconfig.ErrStdioNotSupported):
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, mcpconfig.ErrInvalidHeader):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, mcpconfig.ErrDiscoveryFailed):
+		// The MCP server, not this backend, is what failed, and the message is
+		// already redacted — pass it through so the UI can show the cause.
+		writeError(w, http.StatusBadGateway, err.Error())
 	case errors.Is(err, executor.ErrInvalidType),
 		errors.Is(err, executor.ErrInvalidPlatform),
 		errors.Is(err, executor.ErrPlatformUnavailable),
@@ -101,6 +110,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorSecretMissing):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, service.ErrMCPConnectionUnavailable):
+		writeError(w, http.StatusBadGateway, err.Error())
 	case errors.Is(err, service.ErrTooManyToolFailures):
 		writeError(w, http.StatusBadGateway, "The agent hit repeated tool failures and stopped. Review the tool configuration or retry the message.")
 	case errors.Is(err, service.ErrVariableProtected):

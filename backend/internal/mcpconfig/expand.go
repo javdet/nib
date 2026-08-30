@@ -8,13 +8,13 @@ import (
 	"strings"
 )
 
-// ErrUnresolvedVariable is returned when a ${NAME} reference in mcp.json has no
-// value in either the secret store or the process environment.
+// ErrUnresolvedVariable is returned when a ${NAME} reference in mcp.json names
+// no secret. The secret store is the only source: see resolver.lookup.
 var ErrUnresolvedVariable = errors.New("unresolved variable in mcp config")
 
 // varRef matches the variable name inside a ${...} reference. It is a superset
-// of both POSIX environment variable names and the prompt secret name rules, so
-// a reference can point at either source.
+// of the secret name rules, so any name the secret store accepts can be
+// referenced.
 var varRef = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]*$`)
 
 // Lookup resolves a variable name to its value. The bool reports whether a
@@ -29,8 +29,8 @@ type Lookup func(ctx context.Context, name string) (string, bool, error)
 // identifier is left in place rather than treated as an error, so unrelated
 // text survives untouched.
 //
-// Missing values yield ErrUnresolvedVariable naming the reference. Resolved
-// values are never included in the error.
+// A reference with no secret behind it yields ErrUnresolvedVariable naming the
+// reference. Resolved values are never included in the error.
 func expandString(ctx context.Context, s string, lookup Lookup) (string, error) {
 	if !strings.Contains(s, "${") {
 		return s, nil
@@ -68,7 +68,10 @@ func expandString(ctx context.Context, s string, lookup Lookup) (string, error) 
 			return "", err
 		}
 		if !found {
-			return "", fmt.Errorf("%w: ${%s}", ErrUnresolvedVariable, name)
+			return "", fmt.Errorf(
+				"%w: ${%s} — add a secret with that name under Variables → Secrets",
+				ErrUnresolvedVariable, name,
+			)
 		}
 		b.WriteString(value)
 		i += 2 + end + 1

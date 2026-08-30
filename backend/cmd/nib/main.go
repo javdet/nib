@@ -21,6 +21,7 @@ import (
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/handler"
 	"github.com/javdet/nib/internal/kb"
+	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/logging"
 	"github.com/javdet/nib/internal/mcpconfig"
@@ -147,12 +148,18 @@ func run() error {
 	if err := systemprompts.ValidateEmbeddedDefaults(mode.Modes); err != nil {
 		return fmt.Errorf("system prompts: %w", err)
 	}
+	// Same contract for the knowledge base template: every project falls back to
+	// it, so an image without one must not start.
+	if err := kbdoc.ValidateEmbeddedSkeleton(); err != nil {
+		return fmt.Errorf("knowledge base: %w", err)
+	}
 	systemPromptsSvc := systemprompts.NewService(cfg.DataDir, cfg.Prompts.Dir)
 	promptHousekeeping, err := systemPromptsSvc.Prepare()
 	if err != nil {
 		return fmt.Errorf("system prompts: %w", err)
 	}
 	rulesSvc := rules.NewService(cfg.DataDir, cfg.Rules.Dir)
+	kbDocSvc := kbdoc.NewService(cfg.DataDir, cfg.KnowledgeBaseDir)
 	mcpConfigSvc := mcpconfig.NewService(cfg.DataDir, cfg.MCP.File)
 	resolvedToolsDir := mode.ResolveDir(cfg.DataDir, cfg.IncludedTools.Dir)
 	includedToolsSvc := includedtools.NewService(resolvedToolsDir)
@@ -193,7 +200,8 @@ func run() error {
 		}
 		slog.Info("secrets encryption configured")
 	} else {
-		slog.Warn("SECRETS_ENCRYPTION_KEY not set; secret write operations are disabled")
+		slog.Warn("SECRETS_ENCRYPTION_KEY not set; secrets cannot be written or read, " +
+			"so every ${NAME} reference in mcp.json stays unresolved")
 	}
 	secretRepo := postgres.NewSecretRepo(pool)
 	secretSvc := service.NewSecretService(secretRepo, secretsCipher)
@@ -217,6 +225,7 @@ func run() error {
 		cfg.LLM.EmbeddingModel,
 		kbStore,
 		llmProvider,
+		kbDocSvc,
 	)
 	toolCatalogStore := toolcatalog.NewWithPool(pool)
 	toolCategorySvc := service.NewToolCategoryService(variableRepo, toolCatalogStore)

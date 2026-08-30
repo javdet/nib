@@ -315,7 +315,7 @@ export function MCPServerDialog({
 						Configure a server entry in{' '}
 						<span className="font-mono">mcp.json</span>. Use URL for
 						remote servers or command for stdio processes. Any
-						value may reference a secret or environment variable
+						value may reference a secret from Variables → Secrets
 						as <span className="font-mono">{'${SECRET_NAME}'}</span>.
 					</DialogDescription>
 				</DialogHeader>
@@ -366,7 +366,7 @@ export function MCPServerDialog({
 					{renderKeyValueSection(
 						'headers',
 						'Headers',
-						'Optional HTTP headers for remote servers. Reference a secret with ${SECRET_NAME}, e.g. Bearer ${MCP_GITHUB_TOKEN}.',
+						'Optional HTTP headers for remote servers. Reference a secret from Variables → Secrets with ${SECRET_NAME}, e.g. Bearer ${MCP_GITHUB_TOKEN}.',
 					)}
 
 					<div className="space-y-2">

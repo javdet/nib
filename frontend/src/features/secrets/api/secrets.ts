@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client'
 export interface Secret {
 	id: string
 	scope: string
+	scopeName?: string
 	name: string
 	description: string
 	createdAt: string
@@ -11,6 +12,7 @@ export interface Secret {
 
 export interface SecretInput {
 	scope?: string
+	scopeName?: string
 	name: string
 	description?: string
 	value?: string
