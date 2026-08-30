@@ -168,6 +168,13 @@ func run() error {
 		WebhookToken: cfg.Executor.WebhookToken,
 	})
 	skillSvc := skills.NewService(cfg.DataDir, cfg.Skills.Dir)
+	// Built-in skills are seeded once per data volume, so a fresh install has a
+	// usable catalog while operator edits and deletions survive an upgrade. A
+	// failure here is not fatal: skills are optional and chat works without them.
+	skillSeeding, err := skillSvc.Seed()
+	if err != nil {
+		slog.Warn("seed built-in skills", "dir", skillSvc.Dir(), "error", err)
+	}
 	variableRepo := postgres.NewVariableRepo(pool)
 	variableSvc := service.NewVariableService(variableRepo)
 	companySvc := service.NewCompanyService(variableRepo)
@@ -282,7 +289,11 @@ func run() error {
 			"dir", systemPromptsSvc.Dir(), "files", promptHousekeeping.Stale)
 	}
 	slog.Info("rules configured", "dir", rulesSvc.Dir())
-	slog.Info("skills configured", "dir", skillSvc.Dir())
+	slog.Info("skills configured",
+		"dir", skillSvc.Dir(),
+		"builtin", skills.DefaultNames(),
+		"seeded", skillSeeding.Created,
+		"alreadyPresent", skillSeeding.Skipped)
 	slog.Info("mcp config configured", "path", mcpConfigSvc.Path())
 	slog.Info("included tools configured", "systemDir", resolvedToolsDir, "mcpFile", includedToolsSvc.Path())
 	slog.Info("llm provider configured",

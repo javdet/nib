@@ -45,6 +45,7 @@ export function ToolsPage() {
 	const [savedRawContent, setSavedRawContent] = useState('')
 	const [rawLoading, setRawLoading] = useState(false)
 	const [rawSaved, setRawSaved] = useState(false)
+	const [rawWarnings, setRawWarnings] = useState<string[]>([])
 	const [serversListExpanded, setServersListExpanded] = useState(true)
 	const [toolsDialogServer, setToolsDialogServer] =
 		useState<MCPServer | null>(null)
@@ -68,22 +69,25 @@ export function ToolsPage() {
 		setError(null)
 		setRawSaved(false)
 		try {
-			const content = await getMCPConfigRaw()
-			setRawContent(content)
-			setSavedRawContent(content)
+			const config = await getMCPConfigRaw()
+			setRawContent(config.content)
+			setSavedRawContent(config.content)
+			setRawWarnings(config.warnings)
 		} catch (err) {
 			setError(extractErrorMessage(err))
 			setRawContent('')
 			setSavedRawContent('')
+			setRawWarnings([])
 		} finally {
 			setRawLoading(false)
 		}
 	}, [])
 
+	// Read on mount, not only on entering the raw view: a server written outside
+	// "mcpServers" is missing from the servers list with nothing to explain the
+	// gap, and that warning comes back with the raw config.
 	useEffect(() => {
-		if (view === 'raw') {
-			void loadRaw()
-		}
+		void loadRaw()
 	}, [view, loadRaw])
 
 	const switchView = useCallback(
@@ -148,9 +152,10 @@ export function ToolsPage() {
 		setError(null)
 		setSaving(true)
 		try {
-			await updateMCPConfigRaw(rawContent)
+			const warnings = await updateMCPConfigRaw(rawContent)
 			setSavedRawContent(rawContent)
 			setRawSaved(true)
+			setRawWarnings(warnings)
 			await refreshServers()
 		} catch (err) {
 			setError(extractErrorMessage(err))
@@ -176,6 +181,14 @@ export function ToolsPage() {
 				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
 					{error}
 				</div>
+			)}
+
+			{!rawDirty && rawWarnings.length > 0 && (
+				<ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+					{rawWarnings.map((warning) => (
+						<li key={warning}>{warning}</li>
+					))}
+				</ul>
 			)}
 
 			<Tabs defaultValue="servers">

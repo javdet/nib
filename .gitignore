@@ -9,7 +9,7 @@ frontend/dist/
 data/logs/*
 .DS_Store
 dump/
-
+deploy/compose/config.yaml
 # Compiled backend binaries (built into images, never committed)
 backend/nib
 backend/toolcatalog

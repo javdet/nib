@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/mcpconfig"
 )
 
 // MCPConfigHandler exposes HTTP endpoints for managing mcp.json servers.
@@ -27,7 +27,14 @@ type mcpRawPayload struct {
 }
 
 type mcpRawResponse struct {
-	Content string `json:"content"`
+	Content  string   `json:"content"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// mcpSaveResponse reports what saved fine but will not be acted on — a server
+// entry written outside "mcpServers", say. Saving does not depend on it.
+type mcpSaveResponse struct {
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 func (h *MCPConfigHandler) List() http.HandlerFunc {
@@ -125,7 +132,10 @@ func (h *MCPConfigHandler) GetRaw() http.HandlerFunc {
 			handleServiceError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, mcpRawResponse{Content: content})
+		writeJSON(w, http.StatusOK, mcpRawResponse{
+			Content:  content,
+			Warnings: mcpconfig.Warnings(content),
+		})
 	}
 }
 
@@ -139,6 +149,8 @@ func (h *MCPConfigHandler) SetRaw() http.HandlerFunc {
 			handleServiceError(w, err)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		writeJSON(w, http.StatusOK, mcpSaveResponse{
+			Warnings: mcpconfig.Warnings(req.Content),
+		})
 	}
 }

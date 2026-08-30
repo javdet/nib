@@ -51,7 +51,19 @@ Example
 ```
 
 ### Skills
+Skills are markdown files under `data/skills` (one `{name}.md` per skill, with a `name` and
+`description` frontmatter). A skill with `category: included` is listed in the system prompt;
+every other skill stays reachable through the `get_skill` tool. Skills can be written and edited
+in the web interface.
 
+A set of skills ships with the image and is seeded into `data/skills` on first start, so a fresh
+install already has a working catalog. They are seeded as `category: included`, so the agent sees
+them straight away; switch a skill to `searchable` if you would rather keep it out of the prompt. Seeding is recorded in `data/skills/.seeded-defaults`:
+each built-in is written at most once, so a skill you edited, renamed, or deleted stays that way
+across restarts and upgrades, while a skill added by a later release still lands on an existing
+install. Built-in skills may reference variables (for example `{{ .global.JiraProject }}` and
+`{{ .global.Email }}`) - fill those in under Variables, otherwise loading the skill fails with an
+unknown-key error.
 
 ## Releasing
 

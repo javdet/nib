@@ -14,8 +14,19 @@ export interface MCPServer extends MCPServerEntry {
 	name: string
 }
 
+export interface MCPRawConfig {
+	content: string
+	/** Valid content that nothing will act on, e.g. a server outside mcpServers. */
+	warnings: string[]
+}
+
 interface MCPRawResponse {
 	content: string
+	warnings?: string[]
+}
+
+interface MCPSaveResponse {
+	warnings?: string[]
 }
 
 export function listMCPServers(): Promise<MCPServer[]> {
@@ -56,12 +67,14 @@ export function listMCPServerTools(serverName: string): Promise<MCPTool[]> {
 	)
 }
 
-export function getMCPConfigRaw(): Promise<string> {
+export function getMCPConfigRaw(): Promise<MCPRawConfig> {
 	return api
 		.get<MCPRawResponse>('/mcp/config/raw')
-		.then((res) => res.content)
+		.then((res) => ({ content: res.content, warnings: res.warnings ?? [] }))
 }
 
-export function updateMCPConfigRaw(content: string): Promise<void> {
-	return api.put<void>('/mcp/config/raw', { content })
+export function updateMCPConfigRaw(content: string): Promise<string[]> {
+	return api
+		.put<MCPSaveResponse | undefined>('/mcp/config/raw', { content })
+		.then((res) => res?.warnings ?? [])
 }
