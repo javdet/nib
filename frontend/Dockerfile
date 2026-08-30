@@ -2,8 +2,12 @@
 
 # -----------------------------------------------------------------------------
 # Dependencies — cache bun installs separately from source changes.
+#
+# deps and build are pinned to BUILDPLATFORM: the Vite output in /app/dist is
+# plain static assets, identical for every target arch, so there is no reason
+# to run bun under QEMU when building the linux/arm64 image.
 # -----------------------------------------------------------------------------
-FROM oven/bun:1.3-alpine AS deps
+FROM --platform=$BUILDPLATFORM oven/bun:1.3-alpine AS deps
 
 WORKDIR /app
 
@@ -15,7 +19,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 # -----------------------------------------------------------------------------
 # Build — compile TypeScript and bundle static assets with Vite.
 # -----------------------------------------------------------------------------
-FROM oven/bun:1.3-alpine AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.3-alpine AS build
 
 WORKDIR /app
 

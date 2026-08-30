@@ -38,7 +38,7 @@ services:
       - nib
 
   kb-mcp:
-    image: ${NIB_KB_IMAGE:-javdet/nib-kb}:${NIB_KB_VERSION:-latest}
+    image: javdet/nib-kb:v0.7.5
     container_name: nib-kb-mcp
     restart: unless-stopped
     depends_on:
@@ -67,7 +67,7 @@ services:
       - nib
 
   backend:
-    image: ${NIB_BACKEND_IMAGE:-javdet/nib-backend}:${NIB_VERSION:-latest}
+    image: javdet/nib-backend:v0.7.5
     container_name: nib-backend
     restart: unless-stopped
     depends_on:
@@ -132,7 +132,7 @@ services:
       - nib
 
   frontend:
-    image: ${NIB_FRONTEND_IMAGE:-javdet/nib-frontend}:${NIB_VERSION:-latest}
+    image: javdet/nib-frontend:v0.7.5
     container_name: nib-frontend
     restart: unless-stopped
     depends_on:

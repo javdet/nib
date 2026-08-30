@@ -1,7 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage: compile a static kb binary.
-FROM golang:1.26-alpine AS build
+#
+# Pinned to BUILDPLATFORM — the toolchain runs natively on the builder and
+# cross-compiles via GOARCH, so a linux/arm64 image costs no QEMU emulation.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -15,7 +21,7 @@ COPY internal ./internal
 # CGO disabled so the binary is fully static and runs on distroless/static.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
         -trimpath \
         -ldflags="-s -w" \
         -o /out/kb ./cmd/kb

@@ -2,10 +2,16 @@
 
 # -----------------------------------------------------------------------------
 # Build — compile static Go binaries (CGO disabled for a portable executable).
+#
+# Pinned to BUILDPLATFORM so the compiler always runs natively on the builder;
+# the target architecture comes from GOARCH. Cross-compiling is free with
+# CGO_ENABLED=0 and avoids running the whole Go toolchain under QEMU.
 # -----------------------------------------------------------------------------
-FROM golang:1.26-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
 
 ARG VERSION=dev
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -18,12 +24,12 @@ COPY . .
 # Align go.mod/go.sum with all packages in the module.
 RUN go mod tidy
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 	-trimpath \
 	-ldflags="-s -w -X github.com/javdet/nib/internal/version.value=${VERSION}" \
 	-o /out/nib ./cmd/nib
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 	-trimpath \
 	-ldflags="-s -w" \
 	-o /out/toolcatalog ./cmd/toolcatalog

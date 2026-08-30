@@ -1,4 +1,4 @@
-.PHONY: up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev
+.PHONY: up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev buildx-setup images-local images-push
 
 COMPOSE_DEV = docker compose -f docker-compose.dev.yml
 
@@ -15,6 +15,36 @@ restart: ## Restart production compose stack
 
 logs: ## Tail production compose logs
 	docker compose logs -f
+
+# --- Docker images ---
+
+VERSION   ?= $(shell tr -d '[:space:]' < VERSION)
+REGISTRY  ?= javdet
+PLATFORMS ?= linux/amd64,linux/arm64
+BUILDER   ?= nib-multiarch
+
+buildx-setup: ## Create the docker-container builder needed for multi-arch builds
+	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 \
+		|| docker buildx create --name $(BUILDER) --driver docker-container --bootstrap
+
+images-local: ## Build all three images for THIS machine's arch into the local daemon
+	docker buildx build --load -t $(REGISTRY)/nib-backend:$(VERSION) \
+		--build-arg VERSION=$(VERSION) -f backend/Dockerfile backend
+	docker buildx build --load -t $(REGISTRY)/nib-kb:$(VERSION) \
+		-f backend/Dockerfile.kb backend
+	docker buildx build --load -t $(REGISTRY)/nib-frontend:$(VERSION) \
+		-f frontend/Dockerfile frontend
+
+images-push: buildx-setup ## Build all three images for $(PLATFORMS) and push (needs `docker login`)
+	docker buildx build --builder $(BUILDER) --platform $(PLATFORMS) --push \
+		-t $(REGISTRY)/nib-backend:$(VERSION) -t $(REGISTRY)/nib-backend:latest \
+		--build-arg VERSION=$(VERSION) -f backend/Dockerfile backend
+	docker buildx build --builder $(BUILDER) --platform $(PLATFORMS) --push \
+		-t $(REGISTRY)/nib-kb:$(VERSION) -t $(REGISTRY)/nib-kb:latest \
+		-f backend/Dockerfile.kb backend
+	docker buildx build --builder $(BUILDER) --platform $(PLATFORMS) --push \
+		-t $(REGISTRY)/nib-frontend:$(VERSION) -t $(REGISTRY)/nib-frontend:latest \
+		-f frontend/Dockerfile frontend
 
 # --- Docker (local development) ---
 
