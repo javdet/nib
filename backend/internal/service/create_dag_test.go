@@ -164,3 +164,90 @@ func TestAddLocalTools_excludesCreateDAGWithoutAllowList(t *testing.T) {
 		t.Fatal("did not expect create_dag handler when not in allow list")
 	}
 }
+
+func TestDAGStageTitles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		markdown string
+		want     []string
+	}{
+		{
+			name:     "quoted labels on one edge",
+			markdown: "```mermaid\nflowchart TD\n  jmx[\"Configure Cassandra JMX\"] --> reaper[\"Setup and connect Cassandra Reaper\"]\n```",
+			want:     []string{"Configure Cassandra JMX", "Setup and connect Cassandra Reaper"},
+		},
+		{
+			name:     "unquoted labels",
+			markdown: "flowchart TD\n  a[Step A] --> b[Step B]",
+			want:     []string{"Step A", "Step B"},
+		},
+		{
+			name:     "parentheses inside a quoted label",
+			markdown: "flowchart TD\n  one[\"Deploy Centrifugo (prod)\"] --> two{\"Traffic healthy?\"}",
+			want:     []string{"Deploy Centrifugo (prod)", "Traffic healthy?"},
+		},
+		{
+			name:     "edge labels and repeated nodes are not stages",
+			markdown: "flowchart TD\n  a[\"Build\"] -->|ok| b[\"Ship\"]\n  b[\"Ship\"] --> c\n  %% a[\"Commented\"]",
+			want:     []string{"Build", "Ship"},
+		},
+		{
+			name:     "declaration order is kept across lines",
+			markdown: "flowchart TD\n  a([\"Round\"])\n  b[[\"Subroutine\"]]\n  c{{\"Hexagon\"}}\n  a --> b --> c",
+			want:     []string{"Round", "Subroutine", "Hexagon"},
+		},
+		{
+			name:     "diagram without labels has no stages",
+			markdown: "flowchart TD\n  a --> b",
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := dagStageTitles(tt.markdown)
+			if len(got) != len(tt.want) {
+				t.Fatalf("titles = %#v, want %#v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("titles = %#v, want %#v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestMatchDAGStage(t *testing.T) {
+	t.Parallel()
+
+	titles := []string{"Configure Cassandra JMX", "Setup and connect Cassandra Reaper"}
+
+	t.Run("returns the DAG spelling for a fuzzy match", func(t *testing.T) {
+		t.Parallel()
+		got, ok := matchDAGStage(titles, "  configure   cassandra jmx ")
+		if !ok {
+			t.Fatal("expected a match")
+		}
+		if got != "Configure Cassandra JMX" {
+			t.Fatalf("title = %q, want %q", got, "Configure Cassandra JMX")
+		}
+	})
+
+	t.Run("rejects a stage the DAG does not name", func(t *testing.T) {
+		t.Parallel()
+		if _, ok := matchDAGStage(titles, "Install Prometheus"); ok {
+			t.Fatal("expected no match")
+		}
+	})
+
+	t.Run("rejects a blank name", func(t *testing.T) {
+		t.Parallel()
+		if _, ok := matchDAGStage(titles, "   "); ok {
+			t.Fatal("expected no match")
+		}
+	})
+}

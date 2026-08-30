@@ -56,6 +56,26 @@ func (r *memoryVariableRepo) LoadAll(context.Context) (map[string]map[string]any
 	return out, nil
 }
 
+func TestCompanyServiceEnsureDefaultsIssueProject(t *testing.T) {
+	t.Parallel()
+
+	repo := newMemoryVariableRepo()
+	svc := NewCompanyService(repo)
+	ctx := context.Background()
+
+	if err := svc.EnsureDefaults(ctx); err != nil {
+		t.Fatalf("EnsureDefaults() error = %v", err)
+	}
+
+	got, err := svc.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.IssueProject != "DEVOPS" {
+		t.Fatalf("Get() IssueProject = %q, want %q", got.IssueProject, "DEVOPS")
+	}
+}
+
 func TestCompanyServiceSaveAndGetGitIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -73,6 +93,7 @@ func TestCompanyServiceSaveAndGetGitIdentity(t *testing.T) {
 		GitBaseURL:           "https://github.com/acme",
 		GitUsername:          "agent-runner",
 		GitEmail:             "agent-runner@localhost",
+		IssueProject:         "DEVOPS",
 	}
 
 	saved, err := svc.Save(ctx, want)
@@ -95,6 +116,9 @@ func TestCompanyServiceSaveAndGetGitIdentity(t *testing.T) {
 	}
 	if got.GitEmail != want.GitEmail {
 		t.Fatalf("Get() GitEmail = %q, want %q", got.GitEmail, want.GitEmail)
+	}
+	if got.IssueProject != want.IssueProject {
+		t.Fatalf("Get() IssueProject = %q, want %q", got.IssueProject, want.IssueProject)
 	}
 }
 

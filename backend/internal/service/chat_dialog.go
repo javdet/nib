@@ -389,7 +389,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				toolFailures++
 			} else {
 				logCallToolResult(tc.ID, out, roundLog)
-				if tc.Name == CreateActionPlanToolName {
+				if tc.Name == CreateActionPlanToolName || tc.Name == UpdateActionPlanToolName {
 					actionPlanUpdated = true
 				}
 			}

@@ -26,6 +26,7 @@ var localToolRegistrars = []localToolRegistrar{
 	registerCreateSubjectsTool,
 	registerSetCategoryTool,
 	registerCreateActionPlanTool,
+	registerUpdateActionPlanTool,
 	registerGetActionListTool,
 	registerGetKBDocumentTool,
 	registerUpdateKBTool,
@@ -162,6 +163,14 @@ func registerCreateActionPlanTool(s *ChatService, catalog *toolCatalog, dialogID
 	}
 	catalog.localHandlers[CreateActionPlanToolName] = s.createActionPlanHandler(dialogID)
 	catalog.tools = append(catalog.tools, CreateActionPlanToolDef(s.allowToolsDir))
+}
+
+func registerUpdateActionPlanTool(s *ChatService, catalog *toolCatalog, dialogID uuid.UUID, allow map[string]struct{}) {
+	if dialogID == uuid.Nil || s.dialogRepo == nil || !localToolAllowed(allow, UpdateActionPlanToolName) {
+		return
+	}
+	catalog.localHandlers[UpdateActionPlanToolName] = s.updateActionPlanHandler(dialogID)
+	catalog.tools = append(catalog.tools, UpdateActionPlanToolDef(s.allowToolsDir))
 }
 
 func registerGetActionListTool(s *ChatService, catalog *toolCatalog, dialogID uuid.UUID, allow map[string]struct{}) {

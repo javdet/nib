@@ -21,7 +21,7 @@ Consider all cloud providers.
 For a request to "schedule a task, plan task" you need to:
 1. Find the task description. If the user provided a task code in the same message, get its description using the {{ .global.TaskTracker }} mcp tool for search. If the task isn't specified, look for mentions of the task in the conversation. 
 
-2. At the start of the conversation, call the `chat_name` tool once with the task id from the task tracker (e.g. {{ .global.JiraProject }}-237) and a concise (<=80 char) summary to name this conversation. If the task id is not defined, omit task_id and provide only a concise summary.
+2. At the start of the conversation, call the `chat_name` tool once with the task id from the task tracker (e.g. {{ .global.IssueProject }}-237) and a concise (<=80 char) summary to name this conversation. If the task id is not defined, omit task_id and provide only a concise summary.
 
 3. `Subjects`. Determine which infrastructure resources you'll be working with.
 This could be:

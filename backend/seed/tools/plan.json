@@ -5,6 +5,7 @@
     "get_skill",
     "list_variables",
     "ask_question",
-    "create_action_plan"
+    "create_action_plan",
+    "update_action_plan"
   ]
 }

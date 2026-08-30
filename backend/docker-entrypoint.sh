@@ -9,9 +9,9 @@
 #             the parent directory — a missing logs/ is a startup failure.
 #   rules/    skills/  prompts/  tools/   read and written by the UI.
 #
-# mcp.json and the tools/ defaults (per-mode allow lists and the
-# create_action_plan schema) are seeded from the image only when absent, so user
-# edits made through the UI survive restarts and upgrades. They have to be real
+# mcp.json and the tools/ defaults (per-mode allow lists and the action plan tool
+# schemas) are seeded from the image only when absent, so user edits made through
+# the UI survive restarts and upgrades. They have to be real
 # files inside the volume: the backend rewrites them with a temp file +
 # rename(2), which fails with EBUSY when the path is a bind-mounted single file.
 
@@ -39,7 +39,7 @@ if [ ! -e "${DATA_DIR}/mcp.json" ]; then
 	fi
 fi
 
-# Per-mode allow lists live in tools/, the create_action_plan schema in
+# Per-mode allow lists live in tools/, the action plan tool schemas in
 # tools/schemas/. Copied file by file so a default added in a later release
 # lands in an existing volume without touching the files the operator edited.
 if [ -d "${SEED_DIR}/tools" ]; then
