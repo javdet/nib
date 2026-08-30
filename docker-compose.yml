@@ -24,6 +24,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nib}
     volumes:
       - pgdata:/var/lib/postgresql
+      # Creates the pgvector extension on a fresh data dir, before the backend's
+      # first connection tries to register the vector types.
+      - ./deploy/compose/initdb.sql:/docker-entrypoint-initdb.d/00-vector.sql:ro
     healthcheck:
       test:
         [
