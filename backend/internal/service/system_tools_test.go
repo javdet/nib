@@ -28,6 +28,8 @@ var localSystemToolNames = []string{
 	CreateSubjectsToolName,
 	CreateActionPlanToolName,
 	GetActionListToolName,
+	GetKBDocumentToolName,
+	UpdateKBToolName,
 }
 
 func isLocalSystemTool(name string) bool {

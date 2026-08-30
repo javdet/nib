@@ -27,6 +27,8 @@ var localToolRegistrars = []localToolRegistrar{
 	registerSetCategoryTool,
 	registerCreateActionPlanTool,
 	registerGetActionListTool,
+	registerGetKBDocumentTool,
+	registerUpdateKBTool,
 }
 
 func (s *ChatService) addLocalTools(catalog *toolCatalog, allow map[string]struct{}, dialogID uuid.UUID) {
@@ -168,4 +170,20 @@ func registerGetActionListTool(s *ChatService, catalog *toolCatalog, dialogID uu
 	}
 	catalog.localHandlers[GetActionListToolName] = s.getActionListHandler(dialogID)
 	catalog.tools = append(catalog.tools, GetActionListToolDef())
+}
+
+func registerGetKBDocumentTool(s *ChatService, catalog *toolCatalog, _ uuid.UUID, allow map[string]struct{}) {
+	if s.knowledgeSvc == nil || !localToolAllowed(allow, GetKBDocumentToolName) {
+		return
+	}
+	catalog.localHandlers[GetKBDocumentToolName] = s.knowledgeSvc.ExecuteGetKBDocument
+	catalog.tools = append(catalog.tools, GetKBDocumentToolDef())
+}
+
+func registerUpdateKBTool(s *ChatService, catalog *toolCatalog, _ uuid.UUID, allow map[string]struct{}) {
+	if s.knowledgeSvc == nil || !localToolAllowed(allow, UpdateKBToolName) {
+		return
+	}
+	catalog.localHandlers[UpdateKBToolName] = s.knowledgeSvc.ExecuteUpdateKB
+	catalog.tools = append(catalog.tools, UpdateKBToolDef())
 }
