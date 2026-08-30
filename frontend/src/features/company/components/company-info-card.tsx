@@ -35,6 +35,7 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
+type SaveStatus = 'idle' | 'saved' | 'failed'
 
 const emptyValues: FormValues = {
 	companyName: '',
@@ -83,6 +84,7 @@ export function CompanyInfoCard() {
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 	const [savedValues, setSavedValues] = useState<FormValues | null>(null)
 
 	const form = useForm<FormValues>({
@@ -116,6 +118,7 @@ export function CompanyInfoCard() {
 	async function handleSubmit(values: FormValues) {
 		setSaving(true)
 		setError(null)
+		setSaveStatus('idle')
 		try {
 			const payload: CompanyInfo = {
 				...values,
@@ -125,8 +128,10 @@ export function CompanyInfoCard() {
 			const nextValues = toFormValues(saved)
 			form.reset(nextValues)
 			setSavedValues(nextValues)
+			setSaveStatus('saved')
 		} catch (err) {
 			setError(extractErrorMessage(err))
+			setSaveStatus('failed')
 		} finally {
 			setSaving(false)
 		}
@@ -318,7 +323,23 @@ export function CompanyInfoCard() {
 							/>
 						</div>
 
-						<div className="flex justify-end">
+						<div className="flex items-center justify-end gap-3">
+							{saveStatus === 'saved' && !dirty && (
+								<span
+									className="text-sm text-green-600"
+									aria-live="polite"
+								>
+									Saved
+								</span>
+							)}
+							{saveStatus === 'failed' && (
+								<span
+									className="text-sm text-destructive"
+									aria-live="polite"
+								>
+									Save failed
+								</span>
+							)}
 							<Button type="submit" size="sm" disabled={saving || !dirty}>
 								<Save className="h-4 w-4" />
 								{saving ? 'Saving…' : 'Save'}

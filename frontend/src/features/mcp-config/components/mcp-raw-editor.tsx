@@ -2,12 +2,15 @@ import { useMemo } from 'react'
 import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { validateMCPJSON } from '../lib/validate-mcp-json'
 
 interface MCPRawEditorProps {
 	content: string
 	isDirty: boolean
 	loading: boolean
 	saving: boolean
+	/** Set once the current content has been written to disk. */
+	saved: boolean
 	onChange: (content: string) => void
 	onSave: () => void
 }
@@ -19,39 +22,12 @@ const textareaClasses = cn(
 	'whitespace-pre',
 )
 
-function validateMCPJSON(text: string): string | null {
-	const trimmed = text.trim()
-	if (!trimmed) {
-		return 'JSON cannot be empty'
-	}
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(trimmed)
-	} catch {
-		return 'Invalid JSON syntax'
-	}
-	if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-		return 'Root value must be a JSON object'
-	}
-	const doc = parsed as Record<string, unknown>
-	if (!('mcpServers' in doc)) {
-		return 'Missing required "mcpServers" property'
-	}
-	if (
-		doc.mcpServers === null ||
-		typeof doc.mcpServers !== 'object' ||
-		Array.isArray(doc.mcpServers)
-	) {
-		return '"mcpServers" must be an object'
-	}
-	return null
-}
-
 export function MCPRawEditor({
 	content,
 	isDirty,
 	loading,
 	saving,
+	saved,
 	onChange,
 	onSave,
 }: MCPRawEditorProps) {
@@ -69,10 +45,16 @@ export function MCPRawEditor({
 		<div className="flex min-h-0 flex-1 flex-col gap-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<h3 className="text-sm font-medium">mcp.json</h3>
-				{isDirty && (
+				{isDirty ? (
 					<span className="text-xs text-muted-foreground">
 						Unsaved changes
 					</span>
+				) : (
+					saved && (
+						<span className="text-xs text-muted-foreground">
+							Saved
+						</span>
+					)
 				)}
 				<div className="ml-auto">
 					<Button
@@ -120,5 +102,3 @@ export function MCPRawEditor({
 		</div>
 	)
 }
-
-export { validateMCPJSON }

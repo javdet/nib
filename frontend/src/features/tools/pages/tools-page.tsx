@@ -44,6 +44,7 @@ export function ToolsPage() {
 	const [rawContent, setRawContent] = useState('')
 	const [savedRawContent, setSavedRawContent] = useState('')
 	const [rawLoading, setRawLoading] = useState(false)
+	const [rawSaved, setRawSaved] = useState(false)
 	const [serversListExpanded, setServersListExpanded] = useState(true)
 	const [toolsDialogServer, setToolsDialogServer] =
 		useState<MCPServer | null>(null)
@@ -65,6 +66,7 @@ export function ToolsPage() {
 	const loadRaw = useCallback(async () => {
 		setRawLoading(true)
 		setError(null)
+		setRawSaved(false)
 		try {
 			const content = await getMCPConfigRaw()
 			setRawContent(content)
@@ -148,6 +150,7 @@ export function ToolsPage() {
 		try {
 			await updateMCPConfigRaw(rawContent)
 			setSavedRawContent(rawContent)
+			setRawSaved(true)
 			await refreshServers()
 		} catch (err) {
 			setError(extractErrorMessage(err))
@@ -363,7 +366,11 @@ export function ToolsPage() {
 									isDirty={rawDirty}
 									loading={rawLoading}
 									saving={saving}
-									onChange={setRawContent}
+									saved={rawSaved}
+									onChange={(next) => {
+										setRawContent(next)
+										setRawSaved(false)
+									}}
 									onSave={() => void handleRawSave()}
 								/>
 							)}

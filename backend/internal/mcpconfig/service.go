@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/repository"
 )
@@ -162,16 +163,18 @@ func (s *Service) AddServer(name string, entry ServerEntry) error {
 		return err
 	}
 
-	doc, err := s.readDocumentLocked()
+	doc, err := s.readRawDocLocked()
 	if err != nil {
 		return err
 	}
-	if _, ok := doc.MCPServers[name]; ok {
+	if doc.has(name) {
 		return repository.ErrAlreadyExists
 	}
 
-	doc.MCPServers[name] = entry
-	if err := s.writeDocumentLocked(doc); err != nil {
+	if err := doc.set(name, entry); err != nil {
+		return err
+	}
+	if err := s.writeRawDocLocked(doc); err != nil {
 		return err
 	}
 	s.notifyChange()
@@ -193,23 +196,28 @@ func (s *Service) UpdateServer(oldName, newName string, entry ServerEntry) error
 		return err
 	}
 
-	doc, err := s.readDocumentLocked()
+	doc, err := s.readRawDocLocked()
 	if err != nil {
 		return err
 	}
-	if _, ok := doc.MCPServers[oldName]; !ok {
+	if !doc.has(oldName) {
 		return repository.ErrNotFound
 	}
 
 	if oldName != newName {
-		if _, ok := doc.MCPServers[newName]; ok {
+		if doc.has(newName) {
 			return repository.ErrAlreadyExists
 		}
-		delete(doc.MCPServers, oldName)
+		// A rename keeps the old entry's unmodelled fields: move it under the
+		// new key before the edit is merged in.
+		doc.servers[newName] = doc.servers[oldName]
+		doc.delete(oldName)
 	}
 
-	doc.MCPServers[newName] = entry
-	if err := s.writeDocumentLocked(doc); err != nil {
+	if err := doc.set(newName, entry); err != nil {
+		return err
+	}
+	if err := s.writeRawDocLocked(doc); err != nil {
 		return err
 	}
 	s.notifyChange()
@@ -228,23 +236,25 @@ func (s *Service) DeleteServer(name string) error {
 		return err
 	}
 
-	doc, err := s.readDocumentLocked()
+	doc, err := s.readRawDocLocked()
 	if err != nil {
 		return err
 	}
-	if _, ok := doc.MCPServers[name]; !ok {
+	if !doc.has(name) {
 		return repository.ErrNotFound
 	}
 
-	delete(doc.MCPServers, name)
-	if err := s.writeDocumentLocked(doc); err != nil {
+	doc.delete(name)
+	if err := s.writeRawDocLocked(doc); err != nil {
 		return err
 	}
 	s.notifyChange()
 	return nil
 }
 
-// GetRaw returns the pretty-printed mcp.json file contents.
+// GetRaw returns the mcp.json file contents verbatim, so the editor shows the
+// bytes on disk — comments, key order and all — rather than a re-rendering of
+// the fields this package models.
 func (s *Service) GetRaw() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -253,14 +263,17 @@ func (s *Service) GetRaw() (string, error) {
 		return "", err
 	}
 
-	doc, err := s.readDocumentLocked()
+	data, err := os.ReadFile(s.filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read mcp config: %w", err)
 	}
-	return formatDocument(doc)
+	return string(data), nil
 }
 
-// SetRaw replaces the entire mcp.json file after validation.
+// SetRaw replaces the entire mcp.json file. Valid JSON is stored byte for byte:
+// comments, formatting, other top-level keys and fields belonging to other MCP
+// clients all survive, and a server that cannot be reached is still saved —
+// connectivity shows up when its tools are listed, not on save.
 func (s *Service) SetRaw(content string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,6 +282,20 @@ func (s *Service) SetRaw(content string) error {
 		return err
 	}
 
+	if err := validateRawContent(content); err != nil {
+		return err
+	}
+	if err := s.writeContentLocked(content); err != nil {
+		return err
+	}
+	s.notifyChange()
+	return nil
+}
+
+// validateRawContent rejects content the reader could not load back: the file
+// has to parse as JSON (comments allowed) into the document shape, and every
+// server name has to be usable as a map key.
+func validateRawContent(content string) error {
 	doc, err := parseDocument(content)
 	if err != nil {
 		return err
@@ -278,10 +305,6 @@ func (s *Service) SetRaw(content string) error {
 			return err
 		}
 	}
-	if err := s.writeDocumentLocked(doc); err != nil {
-		return err
-	}
-	s.notifyChange()
 	return nil
 }
 
@@ -333,35 +356,42 @@ func serversFromDocument(doc Document) []Server {
 	return servers
 }
 
-func (s *Service) writeDocumentLocked(doc Document) error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create mcp config directory: %w", err)
+func (s *Service) readRawDocLocked() (rawDoc, error) {
+	data, err := os.ReadFile(s.filePath)
+	if err != nil {
+		return rawDoc{}, fmt.Errorf("read mcp config: %w", err)
 	}
+	return parseRawDoc(string(data))
+}
 
+func (s *Service) writeRawDocLocked(doc rawDoc) error {
+	formatted, err := doc.format()
+	if err != nil {
+		return err
+	}
+	return s.writeContentLocked(formatted)
+}
+
+func (s *Service) writeDocumentLocked(doc Document) error {
 	formatted, err := formatDocument(doc)
 	if err != nil {
 		return err
 	}
+	return s.writeContentLocked(formatted)
+}
 
-	tmp, err := os.CreateTemp(dir, ".mcp-*.json")
-	if err != nil {
-		return fmt.Errorf("create temp mcp config file: %w", err)
+// writeContentLocked replaces mcp.json atomically. Content is stored as given,
+// with a trailing newline so the file stays diffable.
+func (s *Service) writeContentLocked(content string) error {
+	dir := filepath.Dir(s.filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create mcp config directory: %w", err)
 	}
-	tmpName := tmp.Name()
-
-	if _, err := tmp.WriteString(formatted); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return fmt.Errorf("write temp mcp config file: %w", err)
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
 	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("close temp mcp config file: %w", err)
-	}
-	if err := os.Rename(tmpName, s.filePath); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("rename temp mcp config file: %w", err)
+	if err := atomicfile.WriteString(s.filePath, content); err != nil {
+		return fmt.Errorf("write mcp config: %w", err)
 	}
 	return nil
 }
