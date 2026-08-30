@@ -30,6 +30,7 @@ const schema = z.object({
 	gitEmail: z.union([z.literal(''), z.string().email()]),
 	ciCdSystem: z.string(),
 	taskTracker: z.string(),
+	issueProject: z.string(),
 	wiki: z.string(),
 	messenger: z.string(),
 })
@@ -46,6 +47,7 @@ const emptyValues: FormValues = {
 	gitEmail: '',
 	ciCdSystem: '',
 	taskTracker: '',
+	issueProject: '',
 	wiki: '',
 	messenger: '',
 }
@@ -60,6 +62,7 @@ function toFormValues(info: Partial<CompanyInfo>): FormValues {
 		gitEmail: info.gitEmail ?? '',
 		ciCdSystem: info.ciCdSystem ?? '',
 		taskTracker: info.taskTracker ?? '',
+		issueProject: info.issueProject ?? '',
 		wiki: info.wiki ?? '',
 		messenger: info.messenger ?? '',
 	}
@@ -288,6 +291,20 @@ export function CompanyInfoCard() {
 										<FormLabel>Task tracker</FormLabel>
 										<FormControl>
 											<Input placeholder="Jira" {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name="issueProject"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Issue project</FormLabel>
+										<FormControl>
+											<Input placeholder="DEVOPS" {...field} />
 										</FormControl>
 										<FormMessage />
 									</FormItem>

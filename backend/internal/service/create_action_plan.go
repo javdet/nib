@@ -31,7 +31,7 @@ const maxActionPlanReminders = 2
 // which otherwise ends the turn with nothing to render.
 const actionPlanReminder = "Your last message contained no tool calls, which ends the turn, and this dialog still has no action plan. " +
 	"Describing calls you intend to make has no effect: only an actual tool call runs. " +
-	"Issue the calls you need now, and once you have enough information call create_action_plan with the full plan object."
+	"Issue the calls you need now, and store the plan itself: update_action_plan for each stage you have finished, or create_action_plan with the full plan object."
 
 // needsActionPlanReminder reports whether a tool-free reply is ending a plan
 // turn before any plan was persisted. Later turns of a dialog that already has

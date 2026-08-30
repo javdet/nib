@@ -26,16 +26,18 @@ type CompanyInfo struct {
 	GitEmail              string `json:"gitEmail"`
 	CICDSystem            string `json:"ciCdSystem"`
 	TaskTracker           string `json:"taskTracker"`
+	IssueProject          string `json:"issueProject"`
 	Wiki                  string `json:"wiki"`
 	Messenger             string `json:"messenger"`
 }
 
 type companyField struct {
-	jsonKey     string
-	varName     string
-	description string
-	getValue    func(*CompanyInfo) string
-	setValue    func(*CompanyInfo, string)
+	jsonKey       string
+	varName       string
+	description   string
+	defaultValue  string
+	getValue      func(*CompanyInfo) string
+	setValue      func(*CompanyInfo, string)
 }
 
 var companyFields = []companyField{
@@ -96,6 +98,14 @@ var companyFields = []companyField{
 		setValue:    func(c *CompanyInfo, v string) { c.TaskTracker = v },
 	},
 	{
+		jsonKey:      "issueProject",
+		varName:      "IssueProject",
+		description:  "Issue project",
+		defaultValue: "DEVOPS",
+		getValue:     func(c *CompanyInfo) string { return c.IssueProject },
+		setValue:     func(c *CompanyInfo, v string) { c.IssueProject = v },
+	},
+	{
 		jsonKey:     "wiki",
 		varName:     "Wiki",
 		description: "Wiki",
@@ -127,7 +137,7 @@ func (s *CompanyService) EnsureDefaults(ctx context.Context) error {
 			Scope:       companyVariableScope,
 			Name:        field.varName,
 			Description: field.description,
-			Value:       "",
+			Value:       field.defaultValue,
 			Kind:        VariableKindString,
 		}); err != nil {
 			return fmt.Errorf("ensure company variable %s: %w", field.varName, err)

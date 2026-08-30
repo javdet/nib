@@ -9,6 +9,7 @@ export interface CompanyInfo {
 	gitEmail: string
 	ciCdSystem: string
 	taskTracker: string
+	issueProject: string
 	wiki: string
 	messenger: string
 }

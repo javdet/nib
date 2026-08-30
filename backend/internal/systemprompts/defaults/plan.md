@@ -39,8 +39,9 @@ Atomicity applies to `web`, `curl`, `shell` and `other` steps. `code` steps are 
    - the calls you are issuing now and what you expect to learn from each,
    - which of them run in parallel,
    and issue those calls in that same response.
-* **The turn ends only after `create_action_plan` returns successfully**, or
-   after `ask_question`, which suspends the turn until the user answers.
+* **The turn ends only after `create_action_plan` or `update_action_plan`
+   returns successfully**, or after `ask_question`, which suspends the turn until
+   the user answers.
 * Use `list_variables` to read company and infrastructure variables (company name, VCS, CI/CD, task tracker, wiki, messenger, tool categories) instead of guessing them.
 * Use a tool `knowledge_search` to find information about how a resource or system is managed. Collection `infrastructure`.
 * Use Github MCP tools to find specific locations in code. Read README.md in root repository to better understand the repository structure
@@ -178,3 +179,12 @@ Call `create_action_plan` with a `plan` object matching this schema:
     }
 }
 ```
+
+## Publishing stages while you work
+Every stage you store appears in the web interface immediately, so the user watches the plan fill in instead of waiting for the whole turn to finish.
+
+* **Call `update_action_plan` as soon as a stage is worked out**, once per stage, passing the stage name in `stage` and its body in `content` (`description`, `steps`, `checks` — the stage object of `create_action_plan` without `number` and `title`). Do not hold finished stages back so you can send them together.
+* `stage` must name a stage of the `DAG`. Anything else is refused and the tool answers with the names you may use. The DAG also fixes the order, so the call order does not matter and you never pass `number`.
+* Calling it again for the same stage replaces that stage and leaves the others and the rollback alone.
+* When the plan already exists and the user asks to change one stage, **send that stage alone with `update_action_plan`**. Never rebuild the whole plan with `create_action_plan` for a single-stage edit: that discards the operator's checkboxes, comments and action runs.
+* Use `create_action_plan` for the first full write of a plan, since it is what carries `rollback`.
