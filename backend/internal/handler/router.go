@@ -133,6 +133,7 @@ func NewRouter(
 			r.Get("/connection", knowledge.GetConnection())
 			r.Put("/connection", knowledge.UpdateConnection())
 			r.Get("/collections", knowledge.ListCollections())
+			r.Get("/documents", knowledge.GetDocument())
 			r.Post("/documents", knowledge.UploadDocument())
 			r.Get("/status", knowledge.GetStatus())
 		})

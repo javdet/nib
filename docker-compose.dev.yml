@@ -101,8 +101,6 @@ services:
       AGENT_WEBHOOK_TOKEN: ${AGENT_WEBHOOK_TOKEN:-}
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
       APP_VERSION: ${APP_VERSION:-dev}
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      MCP_GW_TOKEN: ${MCP_GW_TOKEN:-}
       DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
       - ./backend:/app

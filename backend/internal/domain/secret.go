@@ -11,6 +11,7 @@ import (
 type PromptSecret struct {
 	ID          uuid.UUID `json:"id"`
 	Scope       string    `json:"scope"`
+	ScopeName   string    `json:"scopeName"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"createdAt"`

@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/service"
 )
 
@@ -80,6 +82,49 @@ func (h *KnowledgeHandler) UploadDocument() http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+// knowledgeDocumentResponse is the current source document behind a collection.
+// Filename and UpdatedAt are absent for the built-in template: nothing has been
+// uploaded, so there is no file to name or date.
+type knowledgeDocumentResponse struct {
+	Collection string     `json:"collection"`
+	Filename   string     `json:"filename,omitempty"`
+	Content    string     `json:"content"`
+	Source     string     `json:"source"`
+	UpdatedAt  *time.Time `json:"updatedAt,omitempty"`
+}
+
+func (h *KnowledgeHandler) GetDocument() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		collection := r.URL.Query().Get("collection")
+
+		doc, err := h.svc.GetDocument(r.Context(), collection)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+
+		resp := knowledgeDocumentResponse{
+			Collection: doc.Collection,
+			Content:    doc.Content,
+			Source:     string(doc.Source),
+		}
+		if doc.Source == kbdoc.SourceUploaded {
+			if !doc.UpdatedAt.IsZero() {
+				updatedAt := doc.UpdatedAt.UTC()
+				resp.UpdatedAt = &updatedAt
+			}
+			// The original filename lives in the vector store, not on disk.
+			// Losing it must not cost the operator the document itself, so a
+			// status failure is ignored rather than surfaced.
+			if status, statusErr := h.svc.Status(r.Context(), doc.Collection); statusErr == nil {
+				resp.Filename = status.SourceURI
+			}
+		}
+
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

@@ -75,9 +75,10 @@ export function MCPRawEditor({
 
 			<p className="text-xs text-muted-foreground">
 				Use <code className="font-mono">{'${SECRET_NAME}'}</code> in any
-				value to reference a secret or environment variable. It is
+				value to reference a secret from Variables → Secrets. It is
 				substituted when the server is contacted, so the token itself is
-				never stored here.
+				never stored here. Secrets are the only source: the backend's own
+				environment variables cannot be referenced.
 			</p>
 
 			{loading ? (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"strings"
 
 	"github.com/javdet/nib/internal/repository"
 )
@@ -64,7 +64,7 @@ func (e *redactedError) Error() string { return e.msg }
 func (e *redactedError) Unwrap() error { return e.err }
 
 // SetSecretLookup registers the secret source used to expand ${NAME}
-// references in mcp.json. A nil lookup means environment variables only.
+// references in mcp.json. With a nil lookup nothing resolves.
 func (s *Service) SetSecretLookup(lookup SecretLookup) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,6 +122,9 @@ func (r *resolver) resolveEntry(ctx context.Context, entry ServerEntry) (ServerE
 	if out.Headers, err = r.expandMap(ctx, entry.Headers); err != nil {
 		return ServerEntry{}, err
 	}
+	if err := validateHeaders(entry.Headers, out.Headers); err != nil {
+		return ServerEntry{}, err
+	}
 	if out.Env, err = r.expandMap(ctx, entry.Env); err != nil {
 		return ServerEntry{}, err
 	}
@@ -156,38 +159,40 @@ func (r *resolver) expand(ctx context.Context, s string) (string, error) {
 	return expandString(ctx, s, r.lookup)
 }
 
-// lookup resolves a name from the encrypted secret store first, then the
-// process environment. A secret that simply does not exist falls through to
-// the environment; any other secret store failure is reported only when the
-// environment has no value either, so a working env var still wins.
+// lookup resolves a name from the encrypted secret store, and nowhere else.
+//
+// The process environment is deliberately not a source. The backend's own
+// environment holds credentials that have nothing to do with MCP — LLM and
+// database keys, executor tokens — and expanding them here would make an
+// mcp.json edit a way to read them back out through any URL or header the
+// agent is then told to call. Secrets added through the UI are the one supply
+// of values, so what a server can be handed is exactly what someone chose to
+// put in the secret store.
 func (r *resolver) lookup(ctx context.Context, name string) (string, bool, error) {
 	if v, ok := r.cache[name]; ok {
 		return v, true, nil
 	}
-
-	var secretErr error
-	if r.secrets != nil {
-		v, err := r.secrets.GetValueByName(ctx, secretScope, name)
-		switch {
-		case err == nil:
-			r.remember(name, v)
-			return v, true, nil
-		case errors.Is(err, repository.ErrNotFound):
-			// Not configured as a secret; try the environment.
-		default:
-			secretErr = err
-		}
+	if r.secrets == nil {
+		return "", false, nil
 	}
 
-	if v, ok := os.LookupEnv(name); ok {
+	v, err := r.secrets.GetValueByName(ctx, secretScope, name)
+	switch {
+	case err == nil:
+		// Surrounding whitespace is stripped because every field a reference
+		// can land in — a URL, a header, an env value, an argument — is a
+		// single line. A token pasted with its trailing newline would
+		// otherwise be sent verbatim, and net/http rejects the whole request
+		// with "invalid header field value". The stored secret is untouched:
+		// only what is substituted here is trimmed.
+		v = strings.TrimSpace(v)
 		r.remember(name, v)
 		return v, true, nil
+	case errors.Is(err, repository.ErrNotFound):
+		return "", false, nil
+	default:
+		return "", false, fmt.Errorf("resolve ${%s}: %w", name, err)
 	}
-
-	if secretErr != nil {
-		return "", false, fmt.Errorf("resolve ${%s}: %w", name, secretErr)
-	}
-	return "", false, nil
 }
 
 func (r *resolver) remember(name, value string) {

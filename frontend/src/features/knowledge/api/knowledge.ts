@@ -1,5 +1,12 @@
 import { api } from '@/lib/api-client'
 
+export {
+	DEFAULT_COLLECTION,
+	KNOWLEDGE_COLLECTION_NAME_PATTERN,
+	collectionForProject,
+	isValidKnowledgeCollectionName,
+} from '../lib/collection-name'
+
 export interface KnowledgeConnection {
 	connectionUri: string
 }
@@ -27,16 +34,21 @@ export interface KnowledgeUploadResult {
 	collection: string
 }
 
-export interface UpdateConnectionPayload {
-	connectionUri: string
+/** Where the body of a viewed knowledge base came from. */
+export type KnowledgeDocumentSource = 'uploaded' | 'template'
+
+export interface KnowledgeDocument {
+	collection: string
+	/** Original upload filename; absent for the built-in template. */
+	filename?: string
+	content: string
+	source: KnowledgeDocumentSource
+	/** Absent for the built-in template. */
+	updatedAt?: string
 }
 
-export const KNOWLEDGE_COLLECTION_NAME_PATTERN =
-	/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/
-
-export function isValidKnowledgeCollectionName(name: string): boolean {
-	const trimmed = name.trim()
-	return trimmed.length > 0 && KNOWLEDGE_COLLECTION_NAME_PATTERN.test(trimmed)
+export interface UpdateConnectionPayload {
+	connectionUri: string
 }
 
 export function getConnection() {
@@ -66,6 +78,17 @@ export async function uploadDocument(
 	form.append('file', file)
 	form.append('collection', collection)
 	return api.upload<KnowledgeUploadResult>('/knowledge/documents', form)
+}
+
+/**
+ * Reads the source document behind a collection. The backend answers with the
+ * built-in skeleton when nothing has been uploaded, so this never 404s.
+ */
+export function getDocument(collection: string) {
+	const params = collection.trim()
+		? `?collection=${encodeURIComponent(collection.trim())}`
+		: ''
+	return api.get<KnowledgeDocument>(`/knowledge/documents${params}`)
 }
 
 export interface DiscussPrompt {

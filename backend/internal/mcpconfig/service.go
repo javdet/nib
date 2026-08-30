@@ -122,7 +122,10 @@ func (s *Service) ListServerTools(ctx context.Context, name string) ([]mcpclient
 		&http.Client{Timeout: mcpclient.DefaultUIDiscoveryTimeout},
 	)
 	if err != nil {
-		return nil, resolved.RedactError(err)
+		// Wrapped so the handler answers with the cause — a rejected token, an
+		// unreachable host — instead of a bare 500. RedactError has already
+		// stripped every substituted secret from the message.
+		return nil, fmt.Errorf("%w: %w", ErrDiscoveryFailed, resolved.RedactError(err))
 	}
 	return tools, nil
 }

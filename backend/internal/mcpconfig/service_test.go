@@ -1,7 +1,10 @@
 package mcpconfig
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,4 +207,25 @@ func TestStructuredEditsPreserveUnmodelledContent(t *testing.T) {
 			t.Fatalf("DeleteServer error = %v, want ErrNotFound", err)
 		}
 	})
+}
+
+// Discovery failures reach the handler as ErrDiscoveryFailed carrying the
+// transport's own message; without that they degrade to "internal server error"
+// in the tools dialog and the cause is only visible in the backend log.
+func TestListServerToolsReportsTransportFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	svc := seededService(t, `{"mcpServers": {"gw": {"url": "`+srv.URL+`/mcp", "headers": {"Authorization": "Bearer ${MCP_GW_TOKEN}"}}}}`)
+	svc.SetSecretLookup(&fakeSecrets{values: map[string]string{"MCP_GW_TOKEN": "ghp_secret"}})
+
+	_, err := svc.ListServerTools(context.Background(), "gw")
+	if !errors.Is(err, ErrDiscoveryFailed) {
+		t.Fatalf("error = %v, want ErrDiscoveryFailed", err)
+	}
+	if strings.Contains(err.Error(), "ghp_secret") {
+		t.Fatalf("error %q leaks the secret value", err.Error())
+	}
 }

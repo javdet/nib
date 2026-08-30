@@ -14,6 +14,7 @@ import type { VariableKind } from '../api/variables'
 
 export interface KeyValueInput {
 	scope?: string
+	scopeName?: string
 	name: string
 	description: string
 	value: string
@@ -28,8 +29,32 @@ interface KeyValueDialogProps {
 	initial?: KeyValueInput | null
 }
 
+const scopeOptions = [
+	{ value: 'global', label: 'Global' },
+	{ value: 'project', label: 'Project' },
+	{ value: 'environment', label: 'Environment' },
+	{ value: 'cloud', label: 'Cloud' },
+	{ value: 'location', label: 'Location' },
+] as const
+
+function scopeNameLabel(scope: string): string {
+	switch (scope) {
+		case 'project':
+			return 'Project name'
+		case 'environment':
+			return 'Environment name'
+		case 'cloud':
+			return 'Cloud name'
+		case 'location':
+			return 'Location name'
+		default:
+			return 'Scope name'
+	}
+}
+
 const emptyInput: KeyValueInput = {
 	scope: 'global',
+	scopeName: '',
 	name: '',
 	description: '',
 	value: '',
@@ -65,6 +90,7 @@ export function KeyValueDialog({
 				initial
 					? {
 							scope: initial.scope,
+							scopeName: initial.scopeName ?? '',
 							name: initial.name,
 							description: initial.description,
 							value: kind === 'secret' && isEditing ? '' : initial.value,
@@ -76,14 +102,23 @@ export function KeyValueDialog({
 	}, [open, initial, kind, isEditing])
 
 	function handleSave() {
+		const trimmedScope = draft.scope?.trim() || 'global'
 		onSave({
 			...draft,
-			scope: draft.scope?.trim() || 'global',
+			scope: trimmedScope,
+			scopeName:
+				trimmedScope === 'global'
+					? ''
+					: draft.scopeName?.trim() || '',
 		})
 	}
 
+	const scope = draft.scope?.trim() || 'global'
+	const needsScopeName = scope !== 'global'
+
 	const canSave =
 		draft.name.trim() !== '' &&
+		(!needsScopeName || (draft.scopeName?.trim() ?? '') !== '') &&
 		(isEditing || kind === 'secret' || isList || (draft.value?.trim() ?? '') !== '')
 
 	return (
@@ -118,14 +153,44 @@ export function KeyValueDialog({
 					)}
 					<div className="space-y-2">
 						<Label htmlFor={`${kind}-scope`}>Scope</Label>
-						<Input
+						<select
 							id={`${kind}-scope`}
-							value={draft.scope ?? 'global'}
-							onChange={(e) =>
-								setDraft((prev) => ({ ...prev, scope: e.target.value }))
-							}
-						/>
+							className={selectClasses}
+							value={scope}
+							onChange={(e) => {
+								const nextScope = e.target.value
+								setDraft((prev) => ({
+									...prev,
+									scope: nextScope,
+									scopeName:
+										nextScope === 'global' ? '' : prev.scopeName,
+								}))
+							}}
+						>
+							{scopeOptions.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
 					</div>
+					{needsScopeName && (
+						<div className="space-y-2">
+							<Label htmlFor={`${kind}-scope-name`}>
+								{scopeNameLabel(scope)}
+							</Label>
+							<Input
+								id={`${kind}-scope-name`}
+								value={draft.scopeName ?? ''}
+								onChange={(e) =>
+									setDraft((prev) => ({
+										...prev,
+										scopeName: e.target.value,
+									}))
+								}
+							/>
+						</div>
+					)}
 					<div className="space-y-2">
 						<Label htmlFor={`${kind}-name`}>Name</Label>
 						<Input

@@ -25,7 +25,7 @@ func NewVariableRepo(pool *pgxpool.Pool) *VariableRepo {
 	return &VariableRepo{pool: pool}
 }
 
-const variableColumns = `id, scope, name, description, value, kind, deletable, created_at, updated_at`
+const variableColumns = `id, scope, scope_name, name, description, value, kind, deletable, created_at, updated_at`
 
 func (r *VariableRepo) List(ctx context.Context) ([]domain.PromptVariable, error) {
 	rows, err := r.pool.Query(ctx,
@@ -66,10 +66,10 @@ func (r *VariableRepo) GetByID(ctx context.Context, id uuid.UUID) (domain.Prompt
 
 func (r *VariableRepo) Create(ctx context.Context, v domain.PromptVariable) (domain.PromptVariable, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO prompt_variables (scope, name, description, value, kind, deletable)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO prompt_variables (scope, scope_name, name, description, value, kind, deletable)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING `+variableColumns,
-		v.Scope, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
+		v.Scope, v.ScopeName, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
 
 	result, err := scanVariableRow(row)
 	if err != nil {
@@ -84,10 +84,10 @@ func (r *VariableRepo) Create(ctx context.Context, v domain.PromptVariable) (dom
 func (r *VariableRepo) Update(ctx context.Context, id uuid.UUID, v domain.PromptVariable) (domain.PromptVariable, error) {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE prompt_variables
-		 SET scope = $2, name = $3, description = $4, value = $5, kind = $6, deletable = $7, updated_at = now()
+		 SET scope = $2, scope_name = $3, name = $4, description = $5, value = $6, kind = $7, deletable = $8, updated_at = now()
 		 WHERE id = $1
 		 RETURNING `+variableColumns,
-		id, v.Scope, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
+		id, v.Scope, v.ScopeName, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
 
 	result, err := scanVariableRow(row)
 	if err != nil {
@@ -104,10 +104,10 @@ func (r *VariableRepo) Update(ctx context.Context, id uuid.UUID, v domain.Prompt
 
 func (r *VariableRepo) EnsureExists(ctx context.Context, v domain.PromptVariable) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO prompt_variables (scope, name, description, value, kind, deletable)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (scope, name) DO NOTHING`,
-		v.Scope, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
+		`INSERT INTO prompt_variables (scope, scope_name, name, description, value, kind, deletable)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (scope, scope_name, name) DO NOTHING`,
+		v.Scope, v.ScopeName, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
 	if err != nil {
 		return fmt.Errorf("ensure prompt variable: %w", err)
 	}
@@ -116,11 +116,11 @@ func (r *VariableRepo) EnsureExists(ctx context.Context, v domain.PromptVariable
 
 func (r *VariableRepo) EnsureBuiltin(ctx context.Context, v domain.PromptVariable) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO prompt_variables (scope, name, description, value, kind, deletable)
-		 VALUES ($1, $2, $3, $4, $5, false)
-		 ON CONFLICT (scope, name)
+		`INSERT INTO prompt_variables (scope, scope_name, name, description, value, kind, deletable)
+		 VALUES ($1, $2, $3, $4, $5, $6, false)
+		 ON CONFLICT (scope, scope_name, name)
 		 DO UPDATE SET kind = EXCLUDED.kind, deletable = false, updated_at = now()`,
-		v.Scope, v.Name, v.Description, v.Value, v.Kind)
+		v.Scope, v.ScopeName, v.Name, v.Description, v.Value, v.Kind)
 	if err != nil {
 		return fmt.Errorf("ensure builtin prompt variable: %w", err)
 	}
@@ -129,12 +129,12 @@ func (r *VariableRepo) EnsureBuiltin(ctx context.Context, v domain.PromptVariabl
 
 func (r *VariableRepo) Upsert(ctx context.Context, v domain.PromptVariable) (domain.PromptVariable, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO prompt_variables (scope, name, description, value, kind, deletable)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (scope, name)
+		`INSERT INTO prompt_variables (scope, scope_name, name, description, value, kind, deletable)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (scope, scope_name, name)
 		 DO UPDATE SET value = EXCLUDED.value, updated_at = now()
 		 RETURNING `+variableColumns,
-		v.Scope, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
+		v.Scope, v.ScopeName, v.Name, v.Description, v.Value, v.Kind, v.Deletable)
 
 	result, err := scanVariableRow(row)
 	if err != nil {
@@ -193,7 +193,7 @@ func parseVariableValue(kind, value string) any {
 
 func scanVariable(rows pgx.Rows) (domain.PromptVariable, error) {
 	var v domain.PromptVariable
-	err := rows.Scan(&v.ID, &v.Scope, &v.Name, &v.Description, &v.Value, &v.Kind, &v.Deletable, &v.CreatedAt, &v.UpdatedAt)
+	err := rows.Scan(&v.ID, &v.Scope, &v.ScopeName, &v.Name, &v.Description, &v.Value, &v.Kind, &v.Deletable, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return domain.PromptVariable{}, err
 	}
@@ -202,7 +202,7 @@ func scanVariable(rows pgx.Rows) (domain.PromptVariable, error) {
 
 func scanVariableRow(row pgx.Row) (domain.PromptVariable, error) {
 	var v domain.PromptVariable
-	err := row.Scan(&v.ID, &v.Scope, &v.Name, &v.Description, &v.Value, &v.Kind, &v.Deletable, &v.CreatedAt, &v.UpdatedAt)
+	err := row.Scan(&v.ID, &v.Scope, &v.ScopeName, &v.Name, &v.Description, &v.Value, &v.Kind, &v.Deletable, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return domain.PromptVariable{}, err
 	}

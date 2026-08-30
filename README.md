@@ -41,8 +41,9 @@ Tools can be sorted into different categories.
 
 Any value in an MCP server entry may use a reference of the form `${NAME}` - for example `"Authorization": "Bearer ${MCP_GITHUB_TOKEN}"`.
 Substitution happens only at the moment the MCP server is called, so the token itself never lands in `data/mcp.json`.
-The value is looked up first in the encrypted secrets (Variables -> Secrets), then in the backend environment variables.
-If it is in neither, only that one server stops working; the rest carry on. For a literal `${`, use `$${`.
+The value comes from the encrypted secrets (Variables -> Secrets) and from nowhere else - the backend's own environment
+is not a source, so an entry in `mcp.json` cannot name the LLM key, the database password or any other variable the
+backend runs with. A name with no secret behind it stops only that one server; the rest carry on. For a literal `${`, use `$${`.
 
 ### Templating
 Go templates are supported when writing rules, skills, and the Discuss mode system prompt.

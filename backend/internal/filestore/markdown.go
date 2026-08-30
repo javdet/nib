@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/repository"
@@ -209,6 +210,45 @@ func (s *MarkdownStore) Delete(name string) error {
 		return fmt.Errorf("delete %s %s: %w", s.entityLabel, name, err)
 	}
 	return nil
+}
+
+// Put writes content for name, creating the document or replacing an existing
+// one. Create and Set both fail on the wrong pre-existing state; Put is for the
+// callers that only care about the end result, such as a re-upload overwriting
+// whatever was stored before.
+func (s *MarkdownStore) Put(name, content string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.ensureInitialized(); err != nil {
+		return err
+	}
+	// writeFileLocked joins the path without validating, so the name has to be
+	// checked here or a caller could write outside the directory.
+	if _, err := s.docPath(name); err != nil {
+		return err
+	}
+	return s.writeFileLocked(name, content)
+}
+
+// ModTime returns the last modification time of a document.
+func (s *MarkdownStore) ModTime(name string) (time.Time, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path, err := s.docPath(name)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return time.Time{}, repository.ErrNotFound
+		}
+		return time.Time{}, fmt.Errorf("stat %s %s: %w", s.entityLabel, name, err)
+	}
+	return info.ModTime(), nil
 }
 
 // WriteFileLocked writes content for name; caller must hold s.mu.

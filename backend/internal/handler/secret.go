@@ -20,6 +20,7 @@ func NewSecretHandler(svc *service.SecretService) *SecretHandler {
 
 type secretPayload struct {
 	Scope       string `json:"scope"`
+	ScopeName   string `json:"scopeName"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Value       string `json:"value"`
@@ -52,6 +53,7 @@ func (h *SecretHandler) Create() http.HandlerFunc {
 
 		s, err := h.svc.Create(r.Context(), service.SecretInput{
 			Scope:       req.Scope,
+			ScopeName:   req.ScopeName,
 			Name:        req.Name,
 			Description: req.Description,
 			Value:       req.Value,
@@ -83,6 +85,7 @@ func (h *SecretHandler) Update() http.HandlerFunc {
 
 		s, err := h.svc.Update(r.Context(), id, service.SecretInput{
 			Scope:       req.Scope,
+			ScopeName:   req.ScopeName,
 			Name:        req.Name,
 			Description: req.Description,
 			Value:       req.Value,

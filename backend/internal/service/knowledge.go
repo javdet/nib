@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/kb"
+	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/jackc/pgx/v5"
 )
@@ -21,8 +21,6 @@ var (
 	ErrNoChunks              = errors.New("no chunks produced from document")
 	ErrInvalidCollectionName = errors.New("invalid collection name")
 )
-
-var knowledgeCollectionNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
 
 const (
 	knowledgeDefaultMetric  = "cosine"
@@ -67,6 +65,7 @@ type KnowledgeService struct {
 	embeddingModel    string
 	store             *kb.Store
 	embedder          llm.Embedder
+	docs              *kbdoc.Service
 }
 
 // NewKnowledgeService wires config I/O, the KB store, and the embedding provider.
@@ -76,6 +75,7 @@ func NewKnowledgeService(
 	embeddingModel string,
 	store *kb.Store,
 	embedder llm.Embedder,
+	docs *kbdoc.Service,
 ) *KnowledgeService {
 	if strings.TrimSpace(defaultCollection) == "" {
 		defaultCollection = kb.DefaultCollectionName
@@ -89,6 +89,7 @@ func NewKnowledgeService(
 		embeddingModel:    embeddingModel,
 		store:             store,
 		embedder:          embedder,
+		docs:              docs,
 	}
 }
 
@@ -97,7 +98,8 @@ func (s *KnowledgeService) resolveCollection(name string) (string, error) {
 	if name == "" {
 		return s.defaultCollection, nil
 	}
-	if !knowledgeCollectionNamePattern.MatchString(name) {
+	// kbdoc owns the pattern: a collection is also a document basename.
+	if !kbdoc.ValidName(name) {
 		return "", ErrInvalidCollectionName
 	}
 	return name, nil
@@ -169,6 +171,13 @@ func (s *KnowledgeService) UploadDocument(ctx context.Context, collection, filen
 		return KnowledgeUploadResult{}, fmt.Errorf("replace document: %w", err)
 	}
 
+	// The file mirrors what was indexed, so it is written only once the chunks
+	// are committed: a failed ingest must not leave a document on disk claiming
+	// to be searchable.
+	if err := s.docs.Save(coll.Name, text); err != nil {
+		return KnowledgeUploadResult{}, fmt.Errorf("save knowledge document: %w", err)
+	}
+
 	return KnowledgeUploadResult{
 		Filename:   filename,
 		ChunkCount: len(inputs),
@@ -202,6 +211,16 @@ func (s *KnowledgeService) embedTexts(ctx context.Context, texts []string) ([][]
 	}
 
 	return all, dim, nil
+}
+
+// GetDocument returns the source document last uploaded to a collection, or the
+// skeleton compiled into the binary when nothing has been uploaded yet.
+func (s *KnowledgeService) GetDocument(_ context.Context, collection string) (kbdoc.Document, error) {
+	collectionName, err := s.resolveCollection(collection)
+	if err != nil {
+		return kbdoc.Document{}, err
+	}
+	return s.docs.Get(collectionName)
 }
 
 // Status returns collection metadata and chunk count for the named collection.

@@ -24,6 +24,13 @@ import {
 } from '@/features/secrets/api/secrets'
 import { cn } from '@/lib/utils'
 
+function formatScopeLabel(scope: string, scopeName?: string): string {
+	if (scopeName?.trim()) {
+		return `${scope} · ${scopeName.trim()}`
+	}
+	return scope
+}
+
 export function VariablesPage() {
 	const [variables, setVariables] = useState<Variable[]>([])
 	const [variablesLoading, setVariablesLoading] = useState(true)
@@ -195,7 +202,10 @@ export function VariablesPage() {
 													)}
 												</div>
 												<p className="mt-0.5 pl-6 text-xs text-muted-foreground">
-													{variable.scope}
+													{formatScopeLabel(
+														variable.scope,
+														variable.scopeName,
+													)}
 												</p>
 											</div>
 											<div className="ml-2 flex shrink-0 gap-1">
@@ -276,7 +286,10 @@ export function VariablesPage() {
 													</span>
 												</div>
 												<p className="mt-0.5 pl-6 text-xs text-muted-foreground">
-													{secret.scope}
+													{formatScopeLabel(
+														secret.scope,
+														secret.scopeName,
+													)}
 												</p>
 											</div>
 											<div className="ml-2 flex shrink-0 gap-1">

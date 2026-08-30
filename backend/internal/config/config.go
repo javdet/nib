@@ -21,6 +21,7 @@ type Config struct {
 	ConfigPath       string
 	DataDir          string
 	KnowledgeBaseURI string
+	KnowledgeBaseDir string
 	Agent            AgentConfig
 	Log              LogConfig
 	Skills           SkillsConfig
@@ -113,9 +114,12 @@ type ExecutorConfig struct {
 	File         string `yaml:"file"`
 }
 
-// KnowledgeBaseConfig holds knowledge-base connection settings from YAML.
+// KnowledgeBaseConfig holds knowledge-base settings from YAML.
 type KnowledgeBaseConfig struct {
 	URI string `yaml:"uri"`
+	// Dir holds the last uploaded source document per collection
+	// ({dir}/{collection}.md). Empty resolves to {DATA_DIR}/knowledgebase.
+	Dir string `yaml:"dir"`
 }
 
 type OAuthConfig struct {
@@ -287,6 +291,7 @@ func Load(path string) (Config, error) {
 	cfg.ConfigPath = path
 	cfg.DataDir = envOrDefault("DATA_DIR", "data")
 	cfg.KnowledgeBaseURI = strings.TrimSpace(fc.KnowledgeBase.URI)
+	cfg.KnowledgeBaseDir = strings.TrimSpace(fc.KnowledgeBase.Dir)
 	applyFileLLMConfig(&cfg.LLM, fc.LLM)
 	applyLLMDefaults(&cfg.LLM)
 	applyFileAppConfig(&cfg, fc)

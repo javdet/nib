@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/javdet/nib/internal/llm"
+	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/service"
 	"github.com/javdet/nib/internal/systemprompts"
 )
@@ -31,6 +33,40 @@ func TestHandleServiceError_tooManyToolFailures(t *testing.T) {
 	}
 	if body.Error == "" || errors.Is(errors.New(body.Error), service.ErrTooManyToolFailures) {
 		t.Fatalf("message = %q, want readable user-facing text", body.Error)
+	}
+}
+
+// The tools dialog shows the "error" field verbatim, so a failure to reach an
+// MCP server has to arrive as its own message rather than a generic 500.
+func TestHandleServiceError_mcpDiscoveryFailed(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	handleServiceError(rec, fmt.Errorf("%w: mcp connect: connection refused", mcpconfig.ErrDiscoveryFailed))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if !strings.Contains(body.Error, "connection refused") {
+		t.Fatalf("message = %q, want the transport cause", body.Error)
+	}
+}
+
+func TestHandleServiceError_mcpInvalidHeader(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	handleServiceError(rec, fmt.Errorf("%w: %q holds a newline", mcpconfig.ErrInvalidHeader, "Authorization"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
 

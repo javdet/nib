@@ -17,6 +17,17 @@ func TestNormalizeVariable_emptyScopeDefaultsToGlobal(t *testing.T) {
 	}
 }
 
+func TestNormalizeVariable_clearsScopeNameForGlobal(t *testing.T) {
+	v := normalizeVariable(domain.PromptVariable{
+		Scope:     "global",
+		ScopeName: "myproject",
+		Name:      "CompanyName",
+	})
+	if v.ScopeName != "" {
+		t.Fatalf("scopeName = %q, want empty for global", v.ScopeName)
+	}
+}
+
 func TestValidateVariable(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -26,6 +37,14 @@ func TestValidateVariable(t *testing.T) {
 		{
 			name: "valid",
 			v:    domain.PromptVariable{Scope: "global", Name: "CompanyName"},
+		},
+		{
+			name: "valid project scope",
+			v: domain.PromptVariable{
+				Scope:     "project",
+				ScopeName: "myproject",
+				Name:      "CompanyName",
+			},
 		},
 		{
 			name:    "empty name",
@@ -43,9 +62,9 @@ func TestValidateVariable(t *testing.T) {
 			wantErr: ErrInvalidVariableName,
 		},
 		{
-			name:    "empty scope after normalize still invalid",
+			name:    "empty scope after normalize defaults to global",
 			v:       domain.PromptVariable{Scope: "   ", Name: "X"},
-			wantErr: nil, // normalize sets global
+			wantErr: nil,
 		},
 		{
 			name:    "invalid scope",
@@ -57,6 +76,14 @@ func TestValidateVariable(t *testing.T) {
 			v:       domain.PromptVariable{Scope: "foo.bar", Name: "X"},
 			wantErr: ErrInvalidVariableScope,
 		},
+		{
+			name: "missing scope name for project",
+			v: domain.PromptVariable{
+				Scope: "project",
+				Name:  "CompanyName",
+			},
+			wantErr: ErrInvalidVariableScope,
+		},
 	}
 
 	for _, tt := range tests {
@@ -64,7 +91,7 @@ func TestValidateVariable(t *testing.T) {
 			v := normalizeVariable(tt.v)
 			err := validateVariable(v)
 			if tt.wantErr == nil {
-				if tt.name == "empty scope after normalize still invalid" {
+				if tt.name == "empty scope after normalize defaults to global" {
 					if err != nil {
 						t.Fatalf("validateVariable() error = %v, want nil", err)
 					}

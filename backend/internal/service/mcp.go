@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -13,6 +14,12 @@ import (
 	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
 )
+
+// ErrMCPConnectionUnavailable marks a live MCP session that could not be
+// established or used. The handler reports the cause rather than a bare 500,
+// which is the difference between "internal server error" in the tools dialog
+// and a message naming the rejected credential or unreachable host.
+var ErrMCPConnectionUnavailable = errors.New("mcp connection unavailable")
 
 // MCPService orchestrates MCP connection CRUD, OAuth flows, and live MCP sessions.
 type MCPService struct {
@@ -248,10 +255,14 @@ func (s *MCPService) Reconnect(ctx context.Context, id uuid.UUID) error {
 func (s *MCPService) ListTools(ctx context.Context, connID uuid.UUID) ([]mcpclient.ToolInfo, error) {
 	if !s.manager.IsConnected(connID) {
 		if err := s.Reconnect(ctx, connID); err != nil {
-			return nil, fmt.Errorf("reconnect for list tools: %w", err)
+			return nil, fmt.Errorf("%w: reconnect for list tools: %w", ErrMCPConnectionUnavailable, err)
 		}
 	}
-	return s.manager.ListTools(ctx, connID)
+	tools, err := s.manager.ListTools(ctx, connID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMCPConnectionUnavailable, err)
+	}
+	return tools, nil
 }
 
 func (s *MCPService) CallTool(ctx context.Context, connID uuid.UUID, toolName string, arguments map[string]any) (any, error) {

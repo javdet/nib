@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileUp, Upload } from 'lucide-react'
+import { Eye, FileUp, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -8,6 +8,7 @@ import {
 	isValidKnowledgeCollectionName,
 } from '../api/knowledge'
 import { CollectionSelect } from './collection-select'
+import { ViewDocumentDialog } from './view-document-dialog'
 
 interface UploadDocumentCardProps {
 	collections: KnowledgeCollection[]
@@ -26,6 +27,7 @@ export function UploadDocumentCard({
 }: UploadDocumentCardProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
 	const [selectedName, setSelectedName] = useState<string | null>(null)
+	const [viewOpen, setViewOpen] = useState(false)
 
 	const trimmedCollection = collection.trim()
 	const selectedCollection = collections.find(
@@ -113,7 +115,15 @@ export function UploadDocumentCard({
 						onChange={handleFileChange}
 						disabled={uploading}
 					/>
-					<div className="flex justify-end">
+					<div className="flex justify-end gap-2">
+						<Button
+							variant="outline"
+							onClick={() => setViewOpen(true)}
+							disabled={!isValidKnowledgeCollectionName(displayCollection)}
+						>
+							<Eye className="h-4 w-4" />
+							View current
+						</Button>
 						<Button
 							onClick={handleUpload}
 							disabled={
@@ -140,6 +150,12 @@ export function UploadDocumentCard({
 						Ready: {selectedName}
 					</p>
 				)}
+
+				<ViewDocumentDialog
+					collection={displayCollection}
+					open={viewOpen}
+					onOpenChange={setViewOpen}
+				/>
 			</CardContent>
 		</Card>
 	)

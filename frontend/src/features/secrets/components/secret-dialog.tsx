@@ -24,6 +24,7 @@ export function SecretDialog({
 				initialSecret
 					? {
 							scope: initialSecret.scope,
+							scopeName: initialSecret.scopeName,
 							name: initialSecret.name,
 							description: initialSecret.description,
 							value: '',

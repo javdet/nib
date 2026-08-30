@@ -28,6 +28,7 @@ func ListVariablesToolDef() llm.ToolDef {
 
 type listVariablesRow struct {
 	Scope       string `json:"scope"`
+	ScopeName   string `json:"scopeName,omitempty"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Value       string `json:"value"`
@@ -49,6 +50,7 @@ func (s *ChatService) ExecuteListVariables(ctx context.Context, args map[string]
 	for _, v := range vars {
 		out = append(out, listVariablesRow{
 			Scope:       v.Scope,
+			ScopeName:   v.ScopeName,
 			Name:        v.Name,
 			Description: v.Description,
 			Value:       v.Value,

@@ -20,6 +20,7 @@ func NewVariableHandler(svc *service.VariableService) *VariableHandler {
 
 type variablePayload struct {
 	Scope       string `json:"scope"`
+	ScopeName   string `json:"scopeName"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Value       string `json:"value"`
@@ -53,6 +54,7 @@ func (h *VariableHandler) Create() http.HandlerFunc {
 
 		v, err := h.svc.Create(r.Context(), domain.PromptVariable{
 			Scope:       req.Scope,
+			ScopeName:   req.ScopeName,
 			Name:        req.Name,
 			Description: req.Description,
 			Value:       req.Value,
@@ -102,6 +104,7 @@ func (h *VariableHandler) Update() http.HandlerFunc {
 
 		v, err := h.svc.Update(r.Context(), id, domain.PromptVariable{
 			Scope:       req.Scope,
+			ScopeName:   req.ScopeName,
 			Name:        req.Name,
 			Description: req.Description,
 			Value:       req.Value,
