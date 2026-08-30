@@ -123,28 +123,3 @@ What is backed up, on what schedule, with what retention, and where the backups
 are stored. RPO and RTO targets per store. Tested restore procedures and when a
 restore was last exercised. Cross-region replication, if any.
 
-## Scaling and Capacity
-Autoscaling policies for workloads and node pools. Instance and disk sizing per
-data store. Current resource quotas and limits per namespace. Baseline and peak
-traffic, and the bottlenecks already known.
-
-## Cost
-Baseline monthly spend per provider and the largest drivers. Tagging strategy
-used for attribution. Reservations or committed-use discounts. Active
-optimisation targets.
-
-## Constraints and Guardrails
-What must never be changed automatically. Protected resources, change windows,
-and operations that require human approval. Compliance and regulatory
-obligations that limit where data may live or who may access it.
-
-## Runbooks and Common Procedures
-Index of frequent operations — add a service, rotate a certificate, scale a data
-store, drain a node — each with a link or an inline step list.
-
-## Glossary
-Project-specific abbreviations, internal codenames and legacy names that appear
-in host names, repositories or dashboards.
-
-## Open Questions
-Known gaps in this document, so the agent can say "unknown" instead of guessing.

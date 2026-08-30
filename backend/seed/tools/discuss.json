@@ -4,6 +4,8 @@
     "tool_search",
     "get_skill",
     "list_variables",
-    "create_table"
+    "get_kb_document",
+    "create_table",
+    "update_kb"
   ]
 }

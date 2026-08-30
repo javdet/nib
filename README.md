@@ -26,6 +26,10 @@ falling back to OpenRouter are described in [docs/llm-providers.md](docs/llm-pro
 
 ### Knowledge base
 The knowledge base is backed by pgvector.
+Each project's document follows a skeleton that ships with the image; the agent reads the current
+one with the `get_kb_document` tool and writes the collection back with `update_kb`. The
+`build-knowledge-base` skill drives the whole round trip - give it a project name and a list of
+repositories and it fills the skeleton in from what the repos say.
 
 ### Rules
 Rules describe the company's accepted principles for working with the various infrastructure components. While decomposing, the agent works out the problem domain and which systems it will have to deal with. It lists them, and where such rules exist their descriptions are added to the prompt during detailed planning.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Save, Server } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Save, Server, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -7,11 +7,17 @@ import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api-client'
 import { listModes } from '@/features/modes/api/modes'
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
 	getIncludedTools,
 	setIncludedTools,
 	listCatalogTools,
 	type CatalogTool,
 } from '../api/included-tools'
+import { summarizeToolDescription } from '../lib/tool-description'
 
 const selectClasses = cn(
 	'flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
@@ -45,6 +51,40 @@ function groupByServer(tools: ToolEntry[]): Map<string, ToolEntry[]> {
 		}
 		return a.localeCompare(b)
 	}))
+}
+
+function ToolName({
+	name,
+	description,
+}: {
+	name: string
+	description: string
+}) {
+	const summary = summarizeToolDescription(description)
+
+	if (!summary) {
+		return (
+			<span className="min-w-0 flex-1 truncate font-mono font-medium">
+				{name}
+			</span>
+		)
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="min-w-0 flex-1 truncate font-mono font-medium">
+					{name}
+				</span>
+			</TooltipTrigger>
+			<TooltipContent
+				side="top"
+				className="max-w-xs whitespace-normal text-left leading-relaxed"
+			>
+				{summary}
+			</TooltipContent>
+		</Tooltip>
+	)
 }
 
 function matchesFilter(tool: ToolEntry, filter: string): boolean {
@@ -121,16 +161,17 @@ function ToolListPanel({
 										<li key={tool.name}>
 											<button
 												type="button"
-												title={moveLabel}
+												aria-label={`${moveLabel} ${tool.name}`}
 												onClick={() => onMove(tool.name)}
 												className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-sm hover:bg-muted/50"
 											>
 												{direction === 'left' && (
 													<ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
 												)}
-												<span className="min-w-0 flex-1 truncate font-mono font-medium">
-													{tool.name}
-												</span>
+												<ToolName
+													name={tool.name}
+													description={tool.description}
+												/>
 												{direction === 'right' && (
 													<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 												)}
@@ -412,13 +453,27 @@ export function IncludedToolsCard() {
 					>
 						Filter tools
 					</label>
-					<Input
-						id={filterId}
-						value={filter}
-						onChange={(e) => setFilter(e.target.value)}
-						placeholder="Search by name, server, or description"
-						disabled={loading || saving}
-					/>
+					<div className="relative">
+						<Input
+							id={filterId}
+							value={filter}
+							onChange={(e) => setFilter(e.target.value)}
+							placeholder="Search by name, server, or description"
+							disabled={loading || saving}
+							className={filter ? 'pr-8' : undefined}
+						/>
+						{filter ? (
+							<button
+								type="button"
+								aria-label="Clear filter"
+								onClick={() => setFilter('')}
+								disabled={loading || saving}
+								className="absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+							>
+								<X className="h-4 w-4" />
+							</button>
+						) : null}
+					</div>
 				</div>
 
 				{loading ? (
