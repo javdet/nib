@@ -55,12 +55,18 @@ function navLinkClassName(
 	nested: boolean,
 ) {
 	return cn(
-		'flex items-center rounded-md text-sm font-medium transition-colors',
+		'relative flex cursor-pointer items-center rounded-md text-sm font-medium',
+		'transition-colors duration-[var(--dur-fast)] focus-ring',
 		collapsed ? 'justify-center p-2' : 'gap-3 py-2',
 		!collapsed && (nested ? 'pl-9 pr-3' : 'px-3'),
 		isActive
-			? 'bg-sidebar-accent text-sidebar-accent-foreground'
-			: 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
+			? cn(
+					'bg-foreground/[0.09] text-sidebar-accent-foreground',
+					'before:absolute before:top-1/2 before:h-5 before:w-[3px]',
+					'before:-translate-y-1/2 before:rounded-full before:bg-primary',
+					collapsed ? 'before:hidden' : 'before:-left-1',
+				)
+			: 'text-sidebar-foreground/70 hover:bg-foreground/[0.06] hover:text-sidebar-accent-foreground',
 	)
 }
 
@@ -145,7 +151,7 @@ export function Sidebar() {
 				)}
 			</div>
 
-			<Separator className="bg-[oklch(1_0_0/0.45)] dark:bg-[oklch(1_0_0/0.12)]" />
+			<Separator className="hairline" />
 
 			<nav className="flex-1 space-y-1 overflow-y-auto p-2">
 				{WORKPLACE_NAV.map((item) => (
@@ -160,7 +166,7 @@ export function Sidebar() {
 				))}
 			</nav>
 
-			<Separator className="bg-[oklch(1_0_0/0.45)] dark:bg-[oklch(1_0_0/0.12)]" />
+			<Separator className="hairline" />
 
 			<div className="shrink-0 space-y-1 p-2">
 				<SidebarHelpMenu collapsed={collapsed} />
@@ -170,7 +176,12 @@ export function Sidebar() {
 							<button
 								type="button"
 								onClick={toggle}
-								className="flex w-full cursor-pointer items-center justify-center rounded-md p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+								className={cn(
+									'flex w-full cursor-pointer items-center justify-center',
+									'rounded-md p-2 text-sidebar-foreground/70 focus-ring',
+									'transition-colors duration-[var(--dur-fast)]',
+									'hover:bg-foreground/[0.06] hover:text-sidebar-accent-foreground',
+								)}
 							>
 								<ChevronsRight className="h-4 w-4" />
 							</button>
@@ -183,7 +194,12 @@ export function Sidebar() {
 					<button
 						type="button"
 						onClick={toggle}
-						className="flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+						className={cn(
+								'flex w-full cursor-pointer items-center gap-3 rounded-md px-3',
+								'py-2 text-sm font-medium text-sidebar-foreground/70 focus-ring',
+								'transition-colors duration-[var(--dur-fast)]',
+								'hover:bg-foreground/[0.06] hover:text-sidebar-accent-foreground',
+							)}
 					>
 						<ChevronsLeft className="h-4 w-4 shrink-0" />
 						<span>Collapse</span>

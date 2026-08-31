@@ -36,7 +36,7 @@ export function MCPToolsList({
 	if (error) {
 		return (
 			<div className="space-y-3">
-				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive break-words whitespace-pre-wrap">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive break-words whitespace-pre-wrap">
 					{error}
 				</div>
 				<Button variant="outline" size="sm" onClick={onRefresh}>

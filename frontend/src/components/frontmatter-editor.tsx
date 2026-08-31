@@ -3,7 +3,7 @@ import { Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	buildContent,
 	parseFrontmatter,
@@ -21,17 +21,6 @@ interface FrontmatterEditorProps {
 	onSave: () => void
 	onDelete: () => void
 }
-
-const textareaClasses = cn(
-	'w-full resize-y rounded-md border border-input bg-transparent px-3 py-2',
-	'text-sm shadow-sm placeholder:text-muted-foreground',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-)
-
-const bodyTextareaClasses = cn(
-	textareaClasses,
-	'min-h-0 flex-1 font-mono whitespace-pre resize-none',
-)
 
 export function FrontmatterEditor({
 	fileName,
@@ -102,14 +91,13 @@ export function FrontmatterEditor({
 
 					<div className="space-y-2">
 						<Label htmlFor={`${fileName}-description`}>Description</Label>
-						<textarea
+						<Textarea
 							id={`${fileName}-description`}
 							value={fields.description}
 							onChange={(e) => updateField('description', e.target.value)}
 							placeholder="Short description"
 							rows={2}
 							disabled={saving}
-							className={textareaClasses}
 						/>
 					</div>
 
@@ -150,13 +138,13 @@ export function FrontmatterEditor({
 
 					<div className="flex min-h-0 flex-1 flex-col gap-2">
 						<Label htmlFor={`${fileName}-body`}>Body</Label>
-						<textarea
+						<Textarea
 							id={`${fileName}-body`}
 							value={fields.body}
 							onChange={(e) => updateField('body', e.target.value)}
 							spellCheck={false}
 							disabled={saving}
-							className={bodyTextareaClasses}
+							className="min-h-0 flex-1 resize-none whitespace-pre font-mono"
 							placeholder="Markdown content..."
 						/>
 					</div>

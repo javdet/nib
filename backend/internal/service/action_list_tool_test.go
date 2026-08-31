@@ -313,7 +313,7 @@ func TestAddLocalTools_includesGetActionListForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{GetActionListToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetActionListToolName]; !ok {
 		t.Fatal("expected get_action_list handler")
@@ -339,7 +339,7 @@ func TestAddLocalTools_excludesGetActionListWithoutDialogRepo(t *testing.T) {
 	}
 	allow := map[string]struct{}{GetActionListToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetActionListToolName]; ok {
 		t.Fatal("did not expect get_action_list handler without dialog repo")
@@ -355,7 +355,7 @@ func TestAddLocalTools_excludesGetActionListWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetActionListToolName]; ok {
 		t.Fatal("did not expect get_action_list handler when not in allow list")

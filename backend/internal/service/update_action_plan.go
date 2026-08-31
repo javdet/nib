@@ -96,8 +96,10 @@ func loadUpdateActionPlanParameters(allowToolsDir string) json.RawMessage {
 	return params
 }
 
-// updateActionPlanHandler returns a local tool handler bound to a specific dialog.
-func (s *ChatService) updateActionPlanHandler(dialogID uuid.UUID) localToolHandler {
+// updateActionPlanHandler returns a local tool handler that writes into the
+// action plan owned by planID. When stage is set the handler accepts that stage
+// alone, so a fan-out subagent cannot overwrite a sibling's work.
+func (s *ChatService) updateActionPlanHandler(planID uuid.UUID, stage string) localToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
 		name := strings.TrimSpace(argString(args["stage"]))
 		if name == "" {
@@ -108,17 +110,9 @@ func (s *ChatService) updateActionPlanHandler(dialogID uuid.UUID) localToolHandl
 			return "content must be a JSON object holding the stage description, steps and checks", nil
 		}
 
-		d, err := s.dialogRepo.GetDialog(ctx, dialogID)
-		if err != nil {
-			return "", fmt.Errorf("get dialog: %w", err)
-		}
-		// The DAG belongs to the decompose parent and names the only stages a
-		// plan may hold, so there is nothing to write against anywhere else.
-		if d.Mode != "plan" || d.ParentID == nil {
-			return UpdateActionPlanToolName + " is only available in plan mode", nil
-		}
-
-		dag, found, err := s.ReadDAG(*d.ParentID)
+		// The DAG names the only stages a plan may hold, so a plan owner
+		// without one has nothing to write against.
+		dag, found, err := s.ReadDAG(planID)
 		if err != nil {
 			return "", fmt.Errorf("read dag: %w", err)
 		}
@@ -132,18 +126,34 @@ func (s *ChatService) updateActionPlanHandler(dialogID uuid.UUID) localToolHandl
 			return fmt.Sprintf("stage %q is not in the DAG. Use one of: %s", name, strings.Join(titles, ", ")), nil
 		}
 
-		stageIdx, total, err := s.writeActionPlanStage(dialogID, titles, title, content)
+		if stage != "" && normalizeStageTitle(stage) != normalizeStageTitle(title) {
+			return fmt.Sprintf("you are planning stage %q and may not write stage %q", stage, title), nil
+		}
+
+		stageIdx, total, err := s.writeActionPlanStage(planID, titles, title, content)
 		if err != nil {
 			return "", err
 		}
 
 		// The workplace view refreshes the plan on this event, so the stage is
 		// on screen before the turn that produced it ends.
-		s.activity.Publish(dialogID, domain.AgentActivity{Kind: domain.ActivityActionPlanUpdated})
+		s.activity.Publish(planID, domain.AgentActivity{
+			Kind:  domain.ActivityActionPlanUpdated,
+			Stage: title,
+		})
 
-		relPath := filepath.Join("action_plans", dialogID.String()+".json")
+		relPath := filepath.Join("action_plans", planID.String()+".json")
 		return fmt.Sprintf("Stage %q saved to %s as stage %d of %d", title, relPath, stageIdx+1, total), nil
 	}
+}
+
+// planMutex returns the lock guarding the action plan owned by dialogID. Stage
+// subagents write the same plan concurrently, so the read-modify-write below has
+// to be serialised: atomicfile makes each individual write atomic but does not
+// stop two readers from racing on the same starting document.
+func (s *ChatService) planMutex(dialogID uuid.UUID) *sync.Mutex {
+	mu, _ := s.planWriteMu.LoadOrStore(dialogID, &sync.Mutex{})
+	return mu.(*sync.Mutex)
 }
 
 // writeActionPlanStage stores one stage in the plan file and returns the index
@@ -155,6 +165,10 @@ func (s *ChatService) writeActionPlanStage(
 	title string,
 	content map[string]any,
 ) (int, int, error) {
+	mu := s.planMutex(dialogID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	plan, err := s.readActionPlanDocument(dialogID)
 	if err != nil {
 		return 0, 0, err

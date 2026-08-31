@@ -64,7 +64,7 @@ export function DagView({ content }: DagViewProps) {
 	return (
 		<>
 			{renderError ? (
-				<div className="mb-3 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="mb-3 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{renderError}
 				</div>
 			) : null}

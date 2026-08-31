@@ -29,7 +29,9 @@ export function SidebarHelpMenu({ collapsed }: SidebarHelpMenuProps) {
 	const [aboutOpen, setAboutOpen] = useState(false)
 
 	const triggerClassName = cn(
-		'flex w-full cursor-pointer items-center rounded-md text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
+		'flex w-full cursor-pointer items-center rounded-md text-sm font-medium',
+		'text-sidebar-foreground/70 transition-colors duration-[var(--dur-fast)]',
+		'focus-ring hover:bg-foreground/[0.06] hover:text-sidebar-accent-foreground',
 		collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
 	)
 

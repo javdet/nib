@@ -6,6 +6,7 @@ import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	Form,
 	FormField,
@@ -160,7 +161,7 @@ export function CompanyInfoCard() {
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{error && (
-					<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+					<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
@@ -191,8 +192,8 @@ export function CompanyInfoCard() {
 								<FormItem>
 									<FormLabel>Company description</FormLabel>
 									<FormControl>
-										<textarea
-											className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+										<Textarea
+											className="min-h-[80px]"
 											placeholder="Brief description of the company"
 											{...field}
 										/>

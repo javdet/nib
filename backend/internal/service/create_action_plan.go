@@ -33,20 +33,43 @@ const actionPlanReminder = "Your last message contained no tool calls, which end
 	"Describing calls you intend to make has no effect: only an actual tool call runs. " +
 	"Issue the calls you need now, and store the plan itself: update_action_plan for each stage you have finished, or create_action_plan with the full plan object."
 
-// needsActionPlanReminder reports whether a tool-free reply is ending a plan
-// turn before any plan was persisted. Later turns of a dialog that already has
+// stageActionPlanReminder is the fan-out variant. A stage subagent shares one
+// plan file with its siblings, so "a plan exists" says nothing about whether
+// this stage was written.
+const stageActionPlanReminder = "Your last message contained no tool calls, which ends the turn, and you have not stored your stage yet. " +
+	"Describing calls you intend to make has no effect: only an actual tool call runs. " +
+	"Call update_action_plan now with stage %q and the steps and checks you worked out. " +
+	"If something is still unclear, call report_blocker, then store the stage anyway under a stated assumption."
+
+func actionPlanReminderFor(stage string) string {
+	if stage == "" {
+		return actionPlanReminder
+	}
+	return fmt.Sprintf(stageActionPlanReminder, stage)
+}
+
+// needsActionPlanReminder reports whether a tool-free reply is ending a plan turn
+// before the work it owed was persisted. Later turns of a dialog that already has
 // a plan are free to answer in prose.
-func (s *ChatService) needsActionPlanReminder(dialogID uuid.UUID, modeName string, catalog *toolCatalog, planUpdated bool) bool {
+func (s *ChatService) needsActionPlanReminder(cfg loopConfig, modeName string, catalog *toolCatalog, planUpdated bool) bool {
 	if planUpdated || modeName != "plan" {
 		return false
 	}
-	if _, ok := catalog.localHandlers[CreateActionPlanToolName]; !ok {
+	_, canUpdate := catalog.localHandlers[UpdateActionPlanToolName]
+	_, canCreate := catalog.localHandlers[CreateActionPlanToolName]
+	if !canUpdate && !canCreate {
 		return false
 	}
 
-	_, exists, err := s.ReadActionPlan(dialogID)
+	// A stage subagent owes exactly one stage, and its siblings write the same
+	// file, so the file existing proves nothing about this stage.
+	if cfg.stage != "" {
+		return true
+	}
+
+	_, exists, err := s.ReadActionPlan(cfg.planID)
 	if err != nil {
-		slog.Warn("action plan reminder: read stored plan", "dialog_id", dialogID, "error", err)
+		slog.Warn("action plan reminder: read stored plan", "dialog_id", cfg.planID, "error", err)
 		return false
 	}
 	return !exists

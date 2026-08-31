@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import type { MCPServer, MCPServerEntry } from '../api/mcp-config'
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
@@ -49,17 +50,6 @@ interface MCPServerDialogProps {
 	existingNames?: string[]
 	saving?: boolean
 }
-
-const selectClasses = cn(
-	'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'disabled:cursor-not-allowed disabled:opacity-50',
-)
-
-const textareaClasses = cn(
-	'flex w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
-	'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-)
 
 function newRow(): KeyValueRow {
 	return { id: crypto.randomUUID(), key: '', value: '' }
@@ -346,21 +336,20 @@ export function MCPServerDialog({
 
 					<div className="space-y-2">
 						<Label htmlFor={`${formId}-transport`}>Transport</Label>
-						<select
+						<Select
 							id={`${formId}-transport`}
 							value={draft.transport}
 							onChange={(e) =>
 								updateDraft({ transport: e.target.value })
 							}
 							disabled={saving}
-							className={selectClasses}
 						>
 							{TRANSPORT_OPTIONS.map((opt) => (
 								<option key={opt.value || 'default'} value={opt.value}>
 									{opt.label}
 								</option>
 							))}
-						</select>
+						</Select>
 					</div>
 
 					{renderKeyValueSection(
@@ -427,7 +416,7 @@ export function MCPServerDialog({
 
 					<div className="space-y-2">
 						<Label htmlFor={`${formId}-description`}>Description</Label>
-						<textarea
+						<Textarea
 							id={`${formId}-description`}
 							value={draft.description}
 							onChange={(e) =>
@@ -435,7 +424,6 @@ export function MCPServerDialog({
 							}
 							rows={2}
 							disabled={saving}
-							className={textareaClasses}
 							placeholder="Optional notes about this server"
 						/>
 					</div>

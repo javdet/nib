@@ -8,6 +8,8 @@ import {
 	ChevronsUpDown,
 	Check,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -69,14 +71,16 @@ export function Header() {
 				onOpenChange={(open) => setOpenMenu(open ? 'project' : null)}
 			>
 				<DropdownMenuTrigger asChild>
-					<button
-						className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-8 px-2 text-sm font-medium"
 						disabled={loading}
 					>
 						<FolderKanban className="h-4 w-4 shrink-0" />
 						<span className="max-w-[200px] truncate">{projectLabel}</span>
 						<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-					</button>
+					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" className="w-56">
 					{projects.map((project) => (
@@ -98,14 +102,16 @@ export function Header() {
 				onOpenChange={(open) => setOpenMenu(open ? 'environment' : null)}
 			>
 				<DropdownMenuTrigger asChild>
-					<button
-						className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-8 px-2 text-sm font-medium"
 						disabled={envLoading}
 					>
 						<Globe className="h-4 w-4 shrink-0" />
 						<span className="max-w-[200px] truncate">{envLabel}</span>
 						<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-					</button>
+					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" className="w-56">
 					{environments.map((env) => (
@@ -127,14 +133,16 @@ export function Header() {
 				onOpenChange={(open) => setOpenMenu(open ? 'cloud' : null)}
 			>
 				<DropdownMenuTrigger asChild>
-					<button
-						className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-8 px-2 text-sm font-medium"
 						disabled={cloudLoading}
 					>
 						<Cloud className="h-4 w-4 shrink-0" />
 						<span className="max-w-[200px] truncate">{cloudLabel}</span>
 						<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-					</button>
+					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" className="w-56">
 					{clouds.map((cloud) => (
@@ -156,14 +164,16 @@ export function Header() {
 				onOpenChange={(open) => setOpenMenu(open ? 'location' : null)}
 			>
 				<DropdownMenuTrigger asChild>
-					<button
-						className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-8 px-2 text-sm font-medium"
 						disabled={locationLoading}
 					>
 						<MapPin className="h-4 w-4 shrink-0" />
 						<span className="max-w-[200px] truncate">{locationLabel}</span>
 						<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-					</button>
+					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="start" className="w-56">
 					{locations.map((location) => (
@@ -181,7 +191,11 @@ export function Header() {
 			</DropdownMenu>
 
 			<div
-				className="ml-auto flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3.5 py-1.5 text-sm font-semibold tracking-wide text-foreground shadow-sm ring-1 ring-primary/10"
+				className={cn(
+					'ml-auto flex items-center gap-2 rounded-full border',
+					'border-primary/25 bg-primary/10 px-3.5 py-1.5 text-sm font-semibold',
+					'tracking-wide text-foreground elev-1 ring-1 ring-primary/10',
+				)}
 				aria-label={`Mode: ${modeLabel}`}
 			>
 				<SlidersHorizontal className="h-4 w-4 shrink-0 text-primary" />

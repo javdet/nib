@@ -177,12 +177,12 @@ func TestRunPersistingAgentLoop_remindsPlanTurnToCreateActionPlan(t *testing.T) 
 	}
 
 	dataDir := t.TempDir()
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers[CreateActionPlanToolName] = svc.createActionPlanHandler(dialogID)
 
-	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "plan", catalog)
+	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "plan", catalog, loopConfig{})
 	if err != nil {
 		t.Fatalf("runPersistingAgentLoop: %v", err)
 	}
@@ -230,9 +230,9 @@ func TestRunPersistingAgentLoop_noReminderOutsidePlanMode(t *testing.T) {
 	}
 
 	provider := &retryLLMProvider{responses: []llm.AssistantMessage{{Content: "hello"}}}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
 
-	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "discuss", newToolCatalog())
+	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "discuss", newToolCatalog(), loopConfig{})
 	if err != nil {
 		t.Fatalf("runPersistingAgentLoop: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestRetryLastResponse_truncatesAndRegenerates(t *testing.T) {
 			{Content: "new answer"},
 		},
 	}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
 
 	resp, err := svc.RetryLastResponse(context.Background(), dialogID)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestRetryLastResponse_noUserMessage(t *testing.T) {
 			{DialogID: dialogID, Seq: 0, Role: "system", Content: "You are helpful."},
 		},
 	}
-	svc := NewChatService(&retryLLMProvider{}, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10)
+	svc := NewChatService(&retryLLMProvider{}, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
 
 	_, err := svc.RetryLastResponse(context.Background(), dialogID)
 	if err == nil {

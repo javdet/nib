@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
 import { extractErrorMessage } from '@/lib/api-client'
 import { listModes } from '@/features/modes/api/modes'
 import {
@@ -18,11 +19,6 @@ import {
 	type CatalogTool,
 } from '../api/included-tools'
 import { summarizeToolDescription } from '../lib/tool-description'
-
-const selectClasses = cn(
-	'flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-)
 
 type ToolEntry = {
 	name: string
@@ -163,7 +159,13 @@ function ToolListPanel({
 												type="button"
 												aria-label={`${moveLabel} ${tool.name}`}
 												onClick={() => onMove(tool.name)}
-												className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-sm hover:bg-muted/50"
+												className={cn(
+												'flex w-full cursor-pointer items-center justify-between',
+												'gap-2 rounded-md border border-border/60 px-2 py-1.5',
+												'text-left text-sm transition-colors focus-ring',
+												'duration-[var(--dur-fast)] hover:border-ring/40',
+												'hover:bg-foreground/[0.05]',
+											)}
 											>
 												{direction === 'left' && (
 													<ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -406,9 +408,9 @@ export function IncludedToolsCard() {
 						>
 							Mode
 						</label>
-						<select
+						<Select
 							id={modeSelectId}
-							className={selectClasses}
+							wrapperClassName="max-w-xs"
 							value={selectedMode}
 							onChange={(e) => setSelectedMode(e.target.value)}
 							disabled={
@@ -420,7 +422,7 @@ export function IncludedToolsCard() {
 									{mode}
 								</option>
 							))}
-						</select>
+						</Select>
 					</div>
 					<div className="flex justify-end">
 						<Button
@@ -441,7 +443,7 @@ export function IncludedToolsCard() {
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{error && (
-					<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+					<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
@@ -468,7 +470,14 @@ export function IncludedToolsCard() {
 								aria-label="Clear filter"
 								onClick={() => setFilter('')}
 								disabled={loading || saving}
-								className="absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+								className={cn(
+									'absolute right-1 top-1/2 flex size-6 -translate-y-1/2',
+									'cursor-pointer items-center justify-center rounded-md',
+									'text-muted-foreground transition-colors focus-ring',
+									'duration-[var(--dur-fast)] hover:bg-foreground/[0.07]',
+									'hover:text-foreground disabled:pointer-events-none',
+									'disabled:opacity-50',
+								)}
 							>
 								<X className="h-4 w-4" />
 							</button>

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api-client'
 import {
@@ -16,11 +17,6 @@ import {
 	type ToolCategory,
 	type CategorizedTool,
 } from '../api/tool-categories'
-
-const textareaClasses = cn(
-	'flex w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
-	'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-)
 
 type Selection = { kind: 'category'; name: string } | { kind: 'uncategorized' }
 
@@ -134,7 +130,7 @@ export function ToolCategoriesCard() {
 			</CardHeader>
 			<CardContent>
 				{error && (
-					<div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+					<div className="mb-4 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
@@ -151,11 +147,13 @@ export function ToolCategoriesCard() {
 									key={category.name}
 									type="button"
 									className={cn(
-										'flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+										'flex w-full cursor-pointer items-center justify-between gap-2',
+										'rounded-md border px-3 py-2 text-left text-sm focus-ring',
+										'transition-colors duration-[var(--dur-fast)]',
 										selection?.kind === 'category' &&
 											selection.name === category.name
-											? 'border-primary bg-muted'
-											: 'hover:bg-muted/50',
+											? 'border-primary/50 bg-foreground/[0.07]'
+											: 'hover:border-ring/40 hover:bg-foreground/[0.04]',
 									)}
 									onClick={() => handleSelectCategory(category.name)}
 								>
@@ -175,10 +173,12 @@ export function ToolCategoriesCard() {
 							<button
 								type="button"
 								className={cn(
-									'flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+									'flex w-full cursor-pointer items-center justify-between gap-2',
+									'rounded-md border px-3 py-2 text-left text-sm focus-ring',
+									'transition-colors duration-[var(--dur-fast)]',
 									selection?.kind === 'uncategorized'
-										? 'border-primary bg-muted'
-										: 'hover:bg-muted/50',
+										? 'border-primary/50 bg-foreground/[0.07]'
+										: 'hover:border-ring/40 hover:bg-foreground/[0.04]',
 								)}
 								onClick={() => setSelection({ kind: 'uncategorized' })}
 							>
@@ -238,14 +238,13 @@ export function ToolCategoriesCard() {
 												{selection.name}
 											</span>
 										</Label>
-										<textarea
+										<Textarea
 											id="category-patterns"
 											rows={8}
 											value={patternText}
 											onChange={(e) => setPatternText(e.target.value)}
 											disabled={saving}
 											placeholder="kubernetes_get_pods&#10;kubernetes_*"
-											className={textareaClasses}
 										/>
 										<p className="text-xs text-muted-foreground">
 											One pattern per line. Use trailing{' '}

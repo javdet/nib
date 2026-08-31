@@ -105,7 +105,6 @@ func TestSetCategoryHandler_SavesNormalizedCategories(t *testing.T) {
 	svc := &ChatService{
 		dialogRepo:              repo,
 		toolCategorySvc:         lister,
-		toolCategoryNamesSnapshot: []string{"logging", "monitoring"},
 	}
 	dialogID := uuid.New()
 	handler := svc.setCategoryHandler(dialogID)
@@ -134,7 +133,6 @@ func TestSetCategoryHandler_RejectsUnknownCategories(t *testing.T) {
 	svc := &ChatService{
 		dialogRepo:              repo,
 		toolCategorySvc:         lister,
-		toolCategoryNamesSnapshot: []string{"logging"},
 	}
 	handler := svc.setCategoryHandler(uuid.New())
 

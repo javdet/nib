@@ -2,16 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { Textarea } from '@/components/ui/textarea'
 import { extractErrorMessage } from '@/lib/api-client'
 import { getDiscussPrompt, updateDiscussPrompt } from '../api/knowledge'
-
-const textareaClasses = cn(
-	'min-h-[240px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2',
-	'font-mono text-sm shadow-sm placeholder:text-muted-foreground',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'whitespace-pre',
-)
 
 export function DiscussPromptCard() {
 	const [content, setContent] = useState('')
@@ -88,7 +81,7 @@ export function DiscussPromptCard() {
 			</CardHeader>
 			<CardContent>
 				{error && (
-					<div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+					<div className="mb-4 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 						{error}
 					</div>
 				)}
@@ -97,12 +90,12 @@ export function DiscussPromptCard() {
 						Loading prompt...
 					</p>
 				) : (
-					<textarea
+					<Textarea
 						value={content}
 						onChange={(e) => setContent(e.target.value)}
 						spellCheck={false}
 						disabled={saving}
-						className={textareaClasses}
+						className="min-h-[240px] whitespace-pre font-mono"
 						placeholder="Write the discuss system prompt in markdown..."
 					/>
 				)}

@@ -13,6 +13,13 @@ import (
 // Every other prompt is fixed by the image it ships in.
 const EditableName = "discuss"
 
+// Auxiliary lists embedded prompts that are not modes. They are appended to a
+// mode's prompt rather than selected in the interface, so they never belong in
+// mode.Modes but must still ship in the image.
+//
+// plan_stage narrows the plan prompt to a single stage for a fan-out subagent.
+var Auxiliary = []string{"plan_stage"}
+
 const mdSuffix = ".md"
 
 // defaultContent maps prompt name -> baked-in markdown. It is built once at

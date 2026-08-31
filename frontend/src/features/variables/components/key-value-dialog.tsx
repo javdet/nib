@@ -9,7 +9,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import type { VariableKind } from '../api/variables'
 
 export interface KeyValueInput {
@@ -60,17 +61,6 @@ const emptyInput: KeyValueInput = {
 	value: '',
 	kind: 'string',
 }
-
-const textareaClasses = cn(
-	'flex w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
-	'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-)
-
-const selectClasses = cn(
-	'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'disabled:cursor-not-allowed disabled:opacity-50',
-)
 
 export function KeyValueDialog({
 	open,
@@ -134,9 +124,8 @@ export function KeyValueDialog({
 					{kind === 'variable' && (
 						<div className="space-y-2">
 							<Label htmlFor={`${kind}-type`}>Type</Label>
-							<select
+							<Select
 								id={`${kind}-type`}
-								className={selectClasses}
 								value={draft.kind ?? 'string'}
 								disabled={isEditing}
 								onChange={(e) =>
@@ -148,14 +137,13 @@ export function KeyValueDialog({
 							>
 								<option value="string">String</option>
 								<option value="list">List</option>
-							</select>
+							</Select>
 						</div>
 					)}
 					<div className="space-y-2">
 						<Label htmlFor={`${kind}-scope`}>Scope</Label>
-						<select
+						<Select
 							id={`${kind}-scope`}
-							className={selectClasses}
 							value={scope}
 							onChange={(e) => {
 								const nextScope = e.target.value
@@ -172,7 +160,7 @@ export function KeyValueDialog({
 									{option.label}
 								</option>
 							))}
-						</select>
+						</Select>
 					</div>
 					{needsScopeName && (
 						<div className="space-y-2">
@@ -217,9 +205,8 @@ export function KeyValueDialog({
 					</div>
 					<div className="space-y-2">
 						<Label htmlFor={`${kind}-value`}>Value</Label>
-						<textarea
+						<Textarea
 							id={`${kind}-value`}
-							className={textareaClasses}
 							rows={isList ? 8 : 4}
 							value={draft.value}
 							placeholder={

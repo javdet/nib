@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/inter';
 @import 'react-day-picker/style.css';
 
 @custom-variant dark (&:is(.dark *));
@@ -40,9 +42,29 @@
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
+	--radius-2xl: calc(var(--radius) + 8px);
+	--font-sans:
+		'Inter Variable', ui-sans-serif, system-ui, -apple-system,
+		'Segoe UI', sans-serif;
+	--font-mono:
+		ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Declared as @utility (not a plain class) so variants like hover: apply. */
+@utility elev-1 {
+	box-shadow: var(--elev-1);
+}
+
+@utility elev-2 {
+	box-shadow: var(--elev-2);
+}
+
+@utility elev-3 {
+	box-shadow: var(--elev-3);
 }
 
 :root {
+	color-scheme: light;
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.141 0.005 285.823);
 	--card: oklch(1 0 0);
@@ -76,9 +98,34 @@
 	--sidebar-accent-foreground: oklch(0.21 0.006 285.885);
 	--sidebar-border: oklch(0.92 0.004 286.032);
 	--sidebar-ring: oklch(0.141 0.005 285.823);
+
+	/* motion */
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+	--dur-fast: 120ms;
+	--dur-med: 180ms;
+	--dur-slow: 260ms;
+
+	/* control geometry */
+	--control-h-sm: 2rem;
+	--control-h: 2.25rem;
+	--control-h-lg: 2.5rem;
+
+	/* elevation */
+	--elev-1:
+		0 1px 2px -1px oklch(0 0 0 / 0.08), 0 1px 3px 0 oklch(0 0 0 / 0.05);
+	--elev-2:
+		0 2px 4px -2px oklch(0 0 0 / 0.1), 0 6px 16px -4px oklch(0 0 0 / 0.08);
+	--elev-3:
+		0 8px 16px -6px oklch(0 0 0 / 0.12),
+		0 20px 44px -12px oklch(0 0 0 / 0.18);
+
+	/* hairline used by separators sitting on glass surfaces */
+	--hairline: oklch(0 0 0 / 0.08);
 }
 
 .dark {
+	color-scheme: dark;
 	--background: oklch(0.141 0.005 285.823);
 	--foreground: oklch(0.985 0.002 247.839);
 	--card: oklch(0.141 0.005 285.823);
@@ -111,6 +158,17 @@
 	--sidebar-accent-foreground: oklch(0.985 0.002 247.839);
 	--sidebar-border: oklch(0.274 0.006 286.033);
 	--sidebar-ring: oklch(0.871 0.006 286.286);
+
+	--elev-1:
+		0 1px 2px -1px oklch(0 0 0 / 0.4), inset 0 1px 0 0 oklch(1 0 0 / 0.04);
+	--elev-2:
+		0 4px 12px -4px oklch(0 0 0 / 0.5), inset 0 1px 0 0 oklch(1 0 0 / 0.06);
+	--elev-3:
+		0 12px 32px -8px oklch(0 0 0 / 0.6),
+		0 2px 8px -2px oklch(0 0 0 / 0.4),
+		inset 0 1px 0 0 oklch(1 0 0 / 0.08);
+
+	--hairline: oklch(1 0 0 / 0.12);
 }
 
 @layer base {
@@ -119,6 +177,9 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
 	}
 }
 
@@ -180,6 +241,66 @@
 			0 8px 32px -8px oklch(0 0 0 / 0.45);
 	}
 
+	/*
+	 * Menu material. Denser than .glass-panel because menu text has to stay
+	 * readable over arbitrary page content underneath it.
+	 */
+	.glass-menu {
+		-webkit-backdrop-filter: blur(24px) saturate(180%);
+		backdrop-filter: blur(24px) saturate(180%);
+		background: oklch(1 0 0 / 0.86);
+		border-color: oklch(1 0 0 / 0.6);
+		box-shadow:
+			inset 0 1px 0 0 oklch(1 0 0 / 0.7),
+			var(--elev-3);
+	}
+
+	.dark .glass-menu {
+		background: oklch(0.19 0.005 285.823 / 0.86);
+		border-color: oklch(1 0 0 / 0.11);
+		box-shadow:
+			inset 0 1px 0 0 oklch(1 0 0 / 0.07),
+			var(--elev-3);
+	}
+
+	.scrim {
+		background: oklch(0 0 0 / 0.45);
+		-webkit-backdrop-filter: blur(4px);
+		backdrop-filter: blur(4px);
+	}
+
+	.dark .scrim {
+		background: oklch(0 0 0 / 0.6);
+	}
+
+	/*
+	 * Single focus treatment for the whole app. Uses outline rather than a
+	 * box-shadow ring so it needs no opaque ring-offset colour, which means the
+	 * same ring reads correctly on the translucent glass surfaces too.
+	 */
+	.focus-ring:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.focus-ring-inset:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: -2px;
+	}
+
+	.focus-ring-within:focus-within {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.hairline {
+		background-color: var(--hairline);
+	}
+
+	.tabular {
+		font-variant-numeric: tabular-nums;
+	}
+
 	.progress-glass {
 		-webkit-backdrop-filter: blur(12px) saturate(160%);
 		backdrop-filter: blur(12px) saturate(160%);
@@ -218,5 +339,16 @@
 		box-shadow:
 			inset 0 1px 0 0 oklch(1 0 0 / 0.15),
 			0 0 10px oklch(0.5 0.16 295 / 0.55);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
 	}
 }

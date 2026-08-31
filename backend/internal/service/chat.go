@@ -21,6 +21,7 @@ import (
 	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/repository"
+	"github.com/javdet/nib/internal/rules"
 	"github.com/javdet/nib/internal/skills"
 	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/javdet/nib/internal/toolcatalog"
@@ -108,24 +109,40 @@ type ChatService struct {
 	secretSvc        *SecretService
 	executorSvc      *executor.Service
 	skillsSvc        *skills.Service
+	rulesSvc         *rules.Service
 	llmBaseURL       string
 	allowToolsDir    string
 	dagsDir          string
 	summariesDir     string
 	actionPlansDir   string
+	planContractsDir string
+	planFanoutDir    string
 	planStateDir     string
 	attachmentsDir   string
 	maxIterations    int
+	fanout           PlanFanoutConfig
 	activity         *ActivityBroker
 
 	mcpDiscoveryMu    sync.RWMutex
 	mcpDiscoveryCache []mcpDiscoveryResult
 	mcpDiscoveryUntil time.Time
 
-	toolCategoryNamesMu       sync.RWMutex
-	toolCategoryNamesCache    []string
-	toolCategoryNamesUntil    time.Time
-	toolCategoryNamesSnapshot []string
+	toolCategoryNamesMu    sync.RWMutex
+	toolCategoryNamesCache []string
+	toolCategoryNamesUntil time.Time
+
+	// planWriteMu serialises the read-modify-write of an action plan file,
+	// keyed by the dialog that owns it. Stage subagents write the same plan
+	// concurrently, and atomicfile only makes each individual write atomic.
+	planWriteMu sync.Map
+
+	// fanoutWriteMu guards the fan-out run record, which stage subagents append
+	// blockers to while the runner updates their status.
+	fanoutWriteMu sync.Map
+
+	// fanoutCancels holds the cancel func of each in-flight fan-out, keyed by the
+	// dialog it plans, so an operator can stop a run that is going nowhere.
+	fanoutCancels sync.Map
 }
 
 func NewChatService(
@@ -144,14 +161,17 @@ func NewChatService(
 	secretSvc *SecretService,
 	executorSvc *executor.Service,
 	skillsSvc *skills.Service,
+	rulesSvc *rules.Service,
 	llmBaseURL string,
 	dataDir string,
 	allowToolsDir string,
 	maxIterations int,
+	fanout PlanFanoutConfig,
 ) *ChatService {
 	if maxIterations <= 0 {
 		maxIterations = defaultMaxIterations
 	}
+	fanout = fanout.withDefaults()
 	return &ChatService{
 		provider:         provider,
 		systemPromptsSvc: systemPromptsSvc,
@@ -168,14 +188,18 @@ func NewChatService(
 		secretSvc:        secretSvc,
 		executorSvc:      executorSvc,
 		skillsSvc:        skillsSvc,
+		rulesSvc:         rulesSvc,
 		llmBaseURL:       strings.TrimSpace(llmBaseURL),
 		allowToolsDir:    mode.ResolveDir(dataDir, allowToolsDir),
 		dagsDir:          filepath.Join(dataDir, "dags"),
 		summariesDir:     filepath.Join(dataDir, "summaries"),
 		actionPlansDir:   filepath.Join(dataDir, "action_plans"),
+		planContractsDir: filepath.Join(dataDir, "plan_contracts"),
+		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),
 		planStateDir:     filepath.Join(dataDir, "plan_state"),
 		attachmentsDir:   filepath.Join(dataDir, "attachments"),
 		maxIterations:    maxIterations,
+		fanout:           fanout,
 		activity:         NewActivityBroker(),
 	}
 }
@@ -196,7 +220,7 @@ func (s *ChatService) Send(ctx context.Context, message, modeName string) (domai
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, uuid.Nil)
+		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(uuid.Nil))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send: %w", err)
 		}
@@ -343,15 +367,14 @@ func (s *ChatService) cachedToolCategoryNames(ctx context.Context) []string {
 	return names
 }
 
-func (s *ChatService) refreshToolCategoryNamesSnapshot(ctx context.Context) {
-	s.toolCategoryNamesSnapshot = s.cachedToolCategoryNames(ctx)
-}
-
-func (s *ChatService) buildToolCatalog(ctx context.Context, allow map[string]struct{}, dialogID uuid.UUID) (*toolCatalog, error) {
+func (s *ChatService) buildToolCatalog(ctx context.Context, allow map[string]struct{}, b toolBinding) (*toolCatalog, error) {
 	catalog := newToolCatalog()
 
-	s.refreshToolCategoryNamesSnapshot(ctx)
-	s.addLocalTools(catalog, allow, dialogID)
+	// Resolved per call rather than cached on the service: concurrent stage
+	// subagents each build their own catalog, so shared mutable state here
+	// would be a data race.
+	b.categoryNames = s.cachedToolCategoryNames(ctx)
+	s.addLocalTools(catalog, allow, b)
 
 	conns, err := s.mcpSvc.ListConnections(ctx)
 	if err != nil {

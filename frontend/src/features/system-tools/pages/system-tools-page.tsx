@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Wrench } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api-client'
 import {
 	listSystemTools,
@@ -50,7 +51,11 @@ function ToolCard({ tool }: { tool: SystemTool }) {
 			<CardContent>
 				<button
 					type="button"
-					className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+					className={cn(
+						'flex cursor-pointer items-center gap-2 rounded-md text-sm',
+						'text-muted-foreground transition-colors focus-ring',
+						'duration-[var(--dur-fast)] hover:text-foreground',
+					)}
 					onClick={() => setSchemaOpen((open) => !open)}
 				>
 					{schemaOpen ? (
@@ -108,7 +113,7 @@ export function SystemToolsPage() {
 			</div>
 
 			{error && (
-				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{error}
 				</div>
 			)}

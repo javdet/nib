@@ -147,7 +147,7 @@ func TestAddLocalTools_includesCreateTableForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{CreateTableToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateTableToolName]; !ok {
 		t.Fatal("expected create_table handler")
@@ -173,7 +173,7 @@ func TestAddLocalTools_excludesCreateTableWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateTableToolName]; ok {
 		t.Fatal("did not expect create_table handler when not in allow list")

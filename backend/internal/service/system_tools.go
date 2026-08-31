@@ -13,6 +13,14 @@ import (
 // are included when building the developer catalog. Handlers are never invoked.
 var systemToolsDialogID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
+// systemToolsBinding also carries a placeholder stage, so tools that exist only
+// for a plan stage subagent still appear in the catalog an operator browses.
+func systemToolsBinding() toolBinding {
+	b := newToolBinding(systemToolsDialogID)
+	b.stage = "placeholder"
+	return b
+}
+
 // SystemToolDef describes a built-in agent tool for the developer catalog.
 type SystemToolDef struct {
 	Name        string          `json:"name"`
@@ -28,7 +36,7 @@ func (s *ChatService) SystemToolDefs() ([]SystemToolDef, error) {
 		mcpRoutes:     make(map[string]toolRoute),
 		localHandlers: make(map[string]localToolHandler),
 	}
-	s.addLocalTools(&catalog, nil, systemToolsDialogID)
+	s.addLocalTools(&catalog, nil, systemToolsBinding())
 
 	modeAllowLists, err := s.loadModeAllowLists()
 	if err != nil {
@@ -68,7 +76,7 @@ func (s *ChatService) SystemToolsForMode(modeName string) ([]SystemToolDef, erro
 		mcpRoutes:     make(map[string]toolRoute),
 		localHandlers: make(map[string]localToolHandler),
 	}
-	s.addLocalTools(&catalog, allow, systemToolsDialogID)
+	s.addLocalTools(&catalog, allow, systemToolsBinding())
 
 	result := make([]SystemToolDef, 0, len(catalog.tools))
 	for _, tool := range catalog.tools {

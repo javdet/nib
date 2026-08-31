@@ -32,7 +32,7 @@ func TestAddLocalTools_includesUpdateKB(t *testing.T) {
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{UpdateKBToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[UpdateKBToolName]; !ok {
 		t.Fatal("expected update_kb handler")
@@ -48,7 +48,7 @@ func TestAddLocalTools_excludesUpdateKBWithoutAllowList(t *testing.T) {
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[UpdateKBToolName]; ok {
 		t.Fatal("did not expect update_kb handler when not in allow list")
@@ -64,7 +64,7 @@ func TestAddLocalTools_excludesUpdateKBWithoutKnowledgeService(t *testing.T) {
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{UpdateKBToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[UpdateKBToolName]; ok {
 		t.Fatal("did not expect update_kb handler without a knowledge service")

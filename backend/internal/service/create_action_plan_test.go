@@ -276,7 +276,7 @@ func TestAddLocalTools_includesCreateActionPlanForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{CreateActionPlanToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateActionPlanToolName]; !ok {
 		t.Fatal("expected create_action_plan handler")
@@ -302,7 +302,7 @@ func TestAddLocalTools_excludesCreateActionPlanWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateActionPlanToolName]; ok {
 		t.Fatal("did not expect create_action_plan handler when not in allow list")

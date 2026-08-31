@@ -111,7 +111,7 @@ func TestAddLocalTools_includesCreateSummaryForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{CreateSummaryToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateSummaryToolName]; !ok {
 		t.Fatal("expected create_summary handler")
@@ -137,7 +137,7 @@ func TestAddLocalTools_excludesCreateSummaryWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateSummaryToolName]; ok {
 		t.Fatal("did not expect create_summary handler when not in allow list")

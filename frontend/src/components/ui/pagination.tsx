@@ -74,7 +74,7 @@ export function Pagination({
 						<Button
 							variant={pageNum === page ? 'default' : 'outline'}
 							size="sm"
-							className="min-w-9"
+							className="min-w-9 tabular"
 							onClick={() => onPageChange(pageNum)}
 							aria-label={`Page ${pageNum}`}
 							aria-current={pageNum === page ? 'page' : undefined}

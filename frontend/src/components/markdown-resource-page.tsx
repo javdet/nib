@@ -63,7 +63,7 @@ export function MarkdownResourcePage({
 			</div>
 
 			{resource.error && (
-				<div className="shrink-0 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="shrink-0 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{resource.error}
 				</div>
 			)}
@@ -93,10 +93,12 @@ export function MarkdownResourcePage({
 												type="button"
 												onClick={() => resource.selectName(item.name)}
 												className={cn(
-													'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+													'flex w-full cursor-pointer items-center justify-between',
+													'gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+													'transition-colors duration-[var(--dur-fast)] focus-ring',
 													selected
-														? 'bg-accent text-accent-foreground'
-														: 'hover:bg-accent/50',
+														? 'bg-foreground/[0.09] text-foreground'
+														: 'hover:bg-foreground/[0.05]',
 												)}
 											>
 												<span className="truncate font-mono">
