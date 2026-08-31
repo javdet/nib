@@ -231,7 +231,12 @@ function ExecutableActionRow({
 						<button
 							type="button"
 							onClick={onEdit}
-							className="flex flex-1 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+							className={cn(
+								'flex flex-1 cursor-pointer items-center justify-center',
+								'text-muted-foreground transition-colors focus-ring-inset',
+								'duration-[var(--dur-fast)] hover:bg-foreground/[0.07]',
+								'hover:text-foreground',
+							)}
 							aria-label="Edit action"
 						>
 							<Pencil className="h-4 w-4" />
@@ -245,7 +250,9 @@ function ExecutableActionRow({
 							type="button"
 							onClick={onComment}
 							className={cn(
-								'flex flex-1 items-center justify-center border-t transition-colors hover:bg-muted',
+								'flex flex-1 cursor-pointer items-center justify-center border-t',
+								'transition-colors duration-[var(--dur-fast)] focus-ring-inset',
+								'hover:bg-foreground/[0.07]',
 								hasComment
 									? 'text-primary hover:text-primary'
 									: 'text-muted-foreground hover:text-foreground',
@@ -267,10 +274,15 @@ function ExecutableActionRow({
 					<button
 						type="button"
 						onClick={onExecute}
-						className="flex w-12 shrink-0 items-center justify-center self-stretch border-l text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+						className={cn(
+							'flex w-12 shrink-0 cursor-pointer items-center justify-center',
+							'self-stretch border-l text-muted-foreground transition-colors',
+							'duration-[var(--dur-fast)] focus-ring-inset',
+							'hover:bg-foreground/[0.07] hover:text-foreground',
+						)}
 						aria-label="Execute action"
 					>
-						<span className="flex h-7 w-7 items-center justify-center rounded-full border">
+						<span className="flex h-7 w-7 items-center justify-center rounded-full border border-current/40">
 							<Play className="ml-0.5 h-3 w-3 fill-current" />
 						</span>
 					</button>

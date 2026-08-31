@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { Select } from '@/components/ui/select'
 import { extractErrorMessage } from '@/lib/api-client'
 import {
 	getExecutorConfig,
@@ -58,12 +60,6 @@ function firstEnabled<T extends string>(
 ): T | undefined {
 	return options.find((opt) => opt.enabled)?.value
 }
-
-const selectClasses = cn(
-	'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'disabled:cursor-not-allowed disabled:opacity-50',
-)
 
 export function ExecutorConfigCard() {
 	const typeId = useId()
@@ -290,7 +286,7 @@ export function ExecutorConfigCard() {
 					</p>
 
 					{error && (
-						<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+						<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 							{error}
 						</div>
 					)}
@@ -301,9 +297,8 @@ export function ExecutorConfigCard() {
 						<div className="grid gap-4 sm:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor={typeId}>Type</Label>
-								<select
+								<Select
 									id={typeId}
-									className={selectClasses}
 									value={type}
 									onChange={(e) => {
 										const next = e.target.value as ExecutorType
@@ -335,14 +330,13 @@ export function ExecutorConfigCard() {
 											{optionLabel(opt, TYPE_LABELS)}
 										</option>
 									))}
-								</select>
+								</Select>
 							</div>
 							{type === 'remote' && (
 								<div className="space-y-2">
 									<Label htmlFor={platformId}>Platform</Label>
-									<select
+									<Select
 										id={platformId}
-										className={selectClasses}
 										value={platform}
 										onChange={(e) =>
 											setPlatform(e.target.value as ExecutorPlatform)
@@ -358,7 +352,7 @@ export function ExecutorConfigCard() {
 												{optionLabel(opt, PLATFORM_LABELS)}
 											</option>
 										))}
-									</select>
+									</Select>
 								</div>
 							)}
 						</div>
@@ -368,9 +362,8 @@ export function ExecutorConfigCard() {
 						<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor={kubernetesAuthModeId}>Auth</Label>
-								<select
+								<Select
 									id={kubernetesAuthModeId}
-									className={selectClasses}
 									value={kubernetesAuthMode}
 									onChange={(e) =>
 										setKubernetesAuthMode(
@@ -388,7 +381,7 @@ export function ExecutorConfigCard() {
 											{optionLabel(opt, KUBERNETES_AUTH_MODE_LABELS)}
 										</option>
 									))}
-								</select>
+								</Select>
 								{showLocalConfig && (
 									<p className="text-xs text-muted-foreground">
 										Uses ~/.kube/config, or the in-cluster service account
@@ -430,9 +423,8 @@ export function ExecutorConfigCard() {
 										<Label htmlFor={kubernetesTokenSecretId}>
 											Kubernetes token
 										</Label>
-										<select
+										<Select
 											id={kubernetesTokenSecretId}
-											className={selectClasses}
 											value={kubernetesTokenSecretName}
 											onChange={(e) =>
 												setKubernetesTokenSecretName(e.target.value)
@@ -448,18 +440,15 @@ export function ExecutorConfigCard() {
 													{secret.name}
 												</option>
 											))}
-										</select>
+										</Select>
 									</div>
 									<div className="space-y-2 sm:col-span-2">
 										<Label htmlFor={kubernetesCACertId}>
 											Kubernetes CA certificate
 										</Label>
-										<textarea
+										<Textarea
 											id={kubernetesCACertId}
-											className={cn(
-												selectClasses,
-												'min-h-24 resize-y font-mono text-xs',
-											)}
+											className="min-h-24 font-mono text-xs"
 											value={kubernetesCACert}
 											onChange={(e) =>
 												setKubernetesCACert(e.target.value)
@@ -469,19 +458,18 @@ export function ExecutorConfigCard() {
 										/>
 									</div>
 									<div className="flex items-center gap-2 sm:col-span-2">
-										<input
+										<Checkbox
 											id={kubernetesInsecureSkipTLSVerifyId}
-											type="checkbox"
 											checked={kubernetesInsecureSkipTLSVerify}
-											onChange={(e) =>
-												setKubernetesInsecureSkipTLSVerify(
-													e.target.checked,
-												)
+											onCheckedChange={(value) =>
+												setKubernetesInsecureSkipTLSVerify(value === true)
 											}
 											disabled={saving}
-											className="h-4 w-4 rounded border-input"
 										/>
-										<Label htmlFor={kubernetesInsecureSkipTLSVerifyId}>
+										<Label
+											htmlFor={kubernetesInsecureSkipTLSVerifyId}
+											className="cursor-pointer"
+										>
 											Skip TLS verification
 										</Label>
 									</div>
@@ -494,9 +482,8 @@ export function ExecutorConfigCard() {
 						<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor={agentId}>Agent</Label>
-								<select
+								<Select
 									id={agentId}
-									className={selectClasses}
 									value={agent}
 									onChange={(e) => {
 										const next = e.target.value as ExecutorAgent
@@ -530,14 +517,13 @@ export function ExecutorConfigCard() {
 											{optionLabel(opt, AGENT_LABELS)}
 										</option>
 									))}
-								</select>
+								</Select>
 							</div>
 							{showClaudeCodeSettings && (
 								<div className="space-y-2">
 									<Label htmlFor={authTypeId}>Auth type</Label>
-									<select
+									<Select
 										id={authTypeId}
-										className={selectClasses}
 										value={authType}
 										onChange={(e) =>
 											setAuthType(
@@ -555,16 +541,15 @@ export function ExecutorConfigCard() {
 												{optionLabel(opt, AUTH_TYPE_LABELS)}
 											</option>
 										))}
-									</select>
+									</Select>
 								</div>
 							)}
 							{showApiKeySettings && (
 								<>
 									<div className="space-y-2">
 										<Label htmlFor={tokenSecretId}>API key</Label>
-										<select
+										<Select
 											id={tokenSecretId}
-											className={selectClasses}
 											value={tokenSecretName}
 											onChange={(e) =>
 												setTokenSecretName(e.target.value)
@@ -580,7 +565,7 @@ export function ExecutorConfigCard() {
 													{secret.name}
 												</option>
 											))}
-										</select>
+										</Select>
 									</div>
 									<div className="space-y-2">
 										<Label htmlFor={baseURLId}>Base URL</Label>
@@ -597,9 +582,8 @@ export function ExecutorConfigCard() {
 							{showOAuthSettings && (
 								<div className="space-y-2">
 									<Label htmlFor={tokenSecretId}>OAuth token</Label>
-									<select
+									<Select
 										id={tokenSecretId}
-										className={selectClasses}
 										value={tokenSecretName}
 										onChange={(e) =>
 											setTokenSecretName(e.target.value)
@@ -612,7 +596,7 @@ export function ExecutorConfigCard() {
 												{secret.name}
 											</option>
 										))}
-									</select>
+									</Select>
 								</div>
 							)}
 						</div>

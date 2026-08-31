@@ -85,7 +85,7 @@ func (s *ChatService) SendInDialog(ctx context.Context, dialogID uuid.UUID, mess
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, dialogID)
+		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: %w", err)
 		}
@@ -93,7 +93,7 @@ func (s *ChatService) SendInDialog(ctx context.Context, dialogID uuid.UUID, mess
 
 	slog.Info("chat send in dialog", "dialog_id", dialogID, "mode", d.Mode)
 
-	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog)
+	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog, loopConfig{})
 	if err != nil {
 		return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: %w", err)
 	}
@@ -154,13 +154,24 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 		return domain.ChatResponse{}, fmt.Errorf("submit tool result: append tool message: %w", err)
 	}
 
+	// A question raised by the plan fan-out is answered by replanning the stages
+	// that raised it, not by resuming this dialog's own turn.
+	resumed, err := s.resumeFanoutFromAnswers(ctx, dialogID, toolCallID, questions, answers)
+	if err != nil {
+		return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
+	}
+	if resumed {
+		slog.Info("plan fanout resumed from answers", "dialog_id", dialogID, "tool_call_id", toolCallID)
+		return domain.ChatResponse{Response: "Replanning the stages affected by your answers."}, nil
+	}
+
 	catalog := newToolCatalog()
 	if mode.IsValid(d.Mode) {
 		allow, err := s.resolveDialogAllowSet(ctx, d)
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("submit tool result: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, dialogID)
+		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
 		}
@@ -168,7 +179,7 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 
 	slog.Info("submit tool result", "dialog_id", dialogID, "tool_call_id", toolCallID)
 
-	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog)
+	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog, loopConfig{})
 	if err != nil {
 		return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
 	}
@@ -217,7 +228,7 @@ func (s *ChatService) RetryLastResponse(ctx context.Context, dialogID uuid.UUID)
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("retry last response: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, dialogID)
+		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("retry last response: %w", err)
 		}
@@ -225,7 +236,7 @@ func (s *ChatService) RetryLastResponse(ctx context.Context, dialogID uuid.UUID)
 
 	slog.Info("retry last response", "dialog_id", dialogID, "mode", d.Mode)
 
-	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog)
+	resp, err := s.runPersistingAgentLoop(ctx, dialogID, d.Mode, catalog, loopConfig{})
 	if err != nil {
 		return domain.ChatResponse{}, fmt.Errorf("retry last response: %w", err)
 	}
@@ -249,6 +260,8 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 		filepath.Join(s.summariesDir, id+".txt"),
 		filepath.Join(s.actionPlansDir, id+".json"),
 		actionPlanChecksPath(s.actionPlansDir, dialogID),
+		actionPlanCommentsPath(s.actionPlansDir, dialogID),
+		actionPlanRunsPath(s.actionPlansDir, dialogID),
 	}
 	for _, path := range files {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -258,7 +271,31 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 	return nil
 }
 
-func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.UUID, modeName string, catalog *toolCatalog) (domain.ChatResponse, error) {
+// loopConfig tunes a single run of the agent loop. The zero value describes an
+// ordinary turn: the dialog owns its own action plan, may write any stage of it,
+// and gets the service-wide iteration budget.
+type loopConfig struct {
+	// planID owns the action plan this turn writes. Differs from the dialog only
+	// for a plan stage subagent, whose plan belongs to the decompose dialog.
+	planID uuid.UUID
+	// stage is the single DAG stage a subagent is responsible for.
+	stage string
+	// maxIterations overrides the service-wide completion round budget.
+	maxIterations int
+}
+
+func (c loopConfig) withDefaults(dialogID uuid.UUID, serviceMax int) loopConfig {
+	if c.planID == uuid.Nil {
+		c.planID = dialogID
+	}
+	if c.maxIterations <= 0 {
+		c.maxIterations = serviceMax
+	}
+	return c
+}
+
+func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.UUID, modeName string, catalog *toolCatalog, cfg loopConfig) (domain.ChatResponse, error) {
+	cfg = cfg.withDefaults(dialogID, s.maxIterations)
 	logCtx := newAgentLogCtx(&dialogID, modeName)
 	actionPlanUpdated := false
 	defer s.activity.Publish(dialogID, domain.AgentActivity{Kind: domain.ActivityTurnEnd})
@@ -279,7 +316,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 	reminders := 0
 	toolFailures := 0
 
-	for round := 0; round < s.maxIterations; round++ {
+	for round := 0; round < cfg.maxIterations; round++ {
 		roundNum := round + 1
 		roundLog := logCtx.withRound(roundNum)
 
@@ -295,7 +332,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 		logCompletionParsed(roundNum, asst.ToolCalls, logCtx)
 
 		if len(asst.ToolCalls) == 0 {
-			if reminders < maxActionPlanReminders && s.needsActionPlanReminder(dialogID, modeName, catalog, actionPlanUpdated) {
+			if reminders < maxActionPlanReminders && s.needsActionPlanReminder(cfg, modeName, catalog, actionPlanUpdated) {
 				reminders++
 				logActionPlanReminder(roundNum, logCtx)
 				// The reply is research narration, not an answer, so it is kept
@@ -326,9 +363,9 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			}, nil
 		}
 
-		if round+1 >= s.maxIterations {
-			logMaxIterationsWithPendingTools(s.maxIterations, roundNum, logCtx)
-			return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exceeded with pending tool_calls", s.maxIterations)
+		if round+1 >= cfg.maxIterations {
+			logMaxIterationsWithPendingTools(cfg.maxIterations, roundNum, logCtx)
+			return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exceeded with pending tool_calls", cfg.maxIterations)
 		}
 
 		logToolBatch(roundNum, asst.ToolCalls, logCtx)
@@ -432,7 +469,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			}, nil
 		}
 	}
-	return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exhausted without final assistant message", s.maxIterations)
+	return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exhausted without final assistant message", cfg.maxIterations)
 }
 
 func (s *ChatService) dialogMessagesToLLM(msgs []domain.DialogMessage, attachments []domain.Attachment) ([]llm.Message, error) {

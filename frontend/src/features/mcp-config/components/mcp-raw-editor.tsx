@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Textarea } from '@/components/ui/textarea'
 import { validateMCPJSON } from '../lib/validate-mcp-json'
 
 interface MCPRawEditorProps {
@@ -14,13 +14,6 @@ interface MCPRawEditorProps {
 	onChange: (content: string) => void
 	onSave: () => void
 }
-
-const textareaClasses = cn(
-	'min-h-[24rem] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2',
-	'font-mono text-sm shadow-sm placeholder:text-muted-foreground',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'whitespace-pre',
-)
 
 export function MCPRawEditor({
 	content,
@@ -87,12 +80,12 @@ export function MCPRawEditor({
 				</p>
 			) : (
 				<>
-					<textarea
+					<Textarea
 						value={content}
 						onChange={(e) => onChange(e.target.value)}
 						spellCheck={false}
 						disabled={saving}
-						className={textareaClasses}
+						className="min-h-[24rem] whitespace-pre font-mono"
 						placeholder='{"mcpServers": {}}'
 					/>
 					{validationError && (

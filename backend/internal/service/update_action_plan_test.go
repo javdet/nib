@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/javdet/nib/internal/domain"
@@ -91,16 +92,15 @@ const updateActionPlanTestDAG = "```mermaid\nflowchart TD\n" +
 	"  jmx[\"Configure Cassandra JMX\"] --> reaper[\"Setup and connect Cassandra Reaper\"]\n" +
 	"  reaper --> verify[\"Verify repairs\"]\n```"
 
-// updateActionPlanFixture wires a plan dialog to a decompose parent holding the
-// three-stage DAG above.
+// updateActionPlanFixture returns the decompose dialog that owns both the
+// three-stage DAG above and the action plan written against it.
 func updateActionPlanFixture(t *testing.T) (*ChatService, uuid.UUID) {
 	t.Helper()
 
 	dagsDir := t.TempDir()
-	parentID := uuid.New()
 	planID := uuid.New()
 
-	if err := os.WriteFile(filepath.Join(dagsDir, parentID.String()+".md"), []byte(updateActionPlanTestDAG), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dagsDir, planID.String()+".md"), []byte(updateActionPlanTestDAG), 0o644); err != nil {
 		t.Fatalf("write dag: %v", err)
 	}
 
@@ -109,8 +109,7 @@ func updateActionPlanFixture(t *testing.T) (*ChatService, uuid.UUID) {
 		actionPlansDir: t.TempDir(),
 		activity:       NewActivityBroker(),
 		dialogRepo: &actionListDialogRepo{dialogs: map[uuid.UUID]domain.Dialog{
-			parentID: {ID: parentID, Mode: "decompose"},
-			planID:   {ID: planID, Mode: "plan", ParentID: &parentID},
+			planID: {ID: planID, Mode: "decompose"},
 		}},
 	}
 	return svc, planID
@@ -169,7 +168,7 @@ func TestUpdateActionPlanHandler_createsPlanFromFirstStage(t *testing.T) {
 	events, unsubscribe := svc.SubscribeActivity(planID)
 	defer unsubscribe()
 
-	out, err := svc.updateActionPlanHandler(planID)(ctx, map[string]any{
+	out, err := svc.updateActionPlanHandler(planID, "")(ctx, map[string]any{
 		// Lower case and loose spacing: the DAG spelling is what gets stored.
 		"stage":   "configure  cassandra jmx",
 		"content": stageContent("Enable the JMX exporter"),
@@ -209,7 +208,7 @@ func TestUpdateActionPlanHandler_insertsStagesInDAGOrder(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc, planID := updateActionPlanFixture(t)
-	handler := svc.updateActionPlanHandler(planID)
+	handler := svc.updateActionPlanHandler(planID, "")
 
 	// Written last-to-first: the DAG, not the call order, fixes the position.
 	for _, name := range []string{"Verify repairs", "Configure Cassandra JMX", "Setup and connect Cassandra Reaper"} {
@@ -234,7 +233,7 @@ func TestUpdateActionPlanHandler_replacesStageAndKeepsOtherStages(t *testing.T) 
 	t.Parallel()
 	ctx := context.Background()
 	svc, planID := updateActionPlanFixture(t)
-	handler := svc.updateActionPlanHandler(planID)
+	handler := svc.updateActionPlanHandler(planID, "")
 
 	for _, name := range []string{"Configure Cassandra JMX", "Setup and connect Cassandra Reaper"} {
 		if _, err := handler(ctx, map[string]any{"stage": name, "content": stageContent("first pass")}); err != nil {
@@ -270,7 +269,7 @@ func TestUpdateActionPlanHandler_remapsCheckedKeys(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	svc, planID := updateActionPlanFixture(t)
-	handler := svc.updateActionPlanHandler(planID)
+	handler := svc.updateActionPlanHandler(planID, "")
 
 	if _, err := handler(ctx, map[string]any{
 		"stage":   "Setup and connect Cassandra Reaper",
@@ -365,7 +364,7 @@ func TestUpdateActionPlanHandler_rejectsBadInput(t *testing.T) {
 			t.Parallel()
 			svc, planID := updateActionPlanFixture(t)
 
-			out, err := svc.updateActionPlanHandler(planID)(ctx, tt.args)
+			out, err := svc.updateActionPlanHandler(planID, "")(ctx, tt.args)
 			if err != nil {
 				t.Fatalf("err = %v", err)
 			}
@@ -379,31 +378,82 @@ func TestUpdateActionPlanHandler_rejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestUpdateActionPlanHandler_refusesOutsidePlanMode(t *testing.T) {
+// A fan-out subagent is bound to a single stage. The stages run concurrently
+// against one plan file, so writing a sibling's stage has to be refused.
+func TestUpdateActionPlanHandler_refusesAStageOutsideItsBinding(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
+	svc, planID := updateActionPlanFixture(t)
 
-	planID := uuid.New()
-	execID := uuid.New()
-	svc := &ChatService{
-		dagsDir:        t.TempDir(),
-		actionPlansDir: t.TempDir(),
-		activity:       NewActivityBroker(),
-		dialogRepo: &actionListDialogRepo{dialogs: map[uuid.UUID]domain.Dialog{
-			planID: {ID: planID, Mode: "plan"},
-			execID: {ID: execID, Mode: "execute", ParentID: &planID},
-		}},
-	}
+	handler := svc.updateActionPlanHandler(planID, "Configure Cassandra JMX")
 
-	out, err := svc.updateActionPlanHandler(execID)(ctx, map[string]any{
-		"stage":   "Configure Cassandra JMX",
+	out, err := handler(ctx, map[string]any{
+		"stage":   "Verify repairs",
 		"content": stageContent("x"),
 	})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(out, "only available in plan mode") {
+	if !strings.Contains(out, `may not write stage "Verify repairs"`) {
 		t.Fatalf("out = %q", out)
+	}
+	if _, found, err := svc.ReadActionPlan(planID); err != nil || found {
+		t.Fatalf("ReadActionPlan found = %v, err = %v, want no plan written", found, err)
+	}
+
+	// Its own stage still goes through, loose spelling included.
+	out, err = handler(ctx, map[string]any{
+		"stage":   "configure  cassandra jmx",
+		"content": stageContent("Enable the JMX exporter"),
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out, `Stage "Configure Cassandra JMX" saved`) {
+		t.Fatalf("out = %q", out)
+	}
+}
+
+// TestUpdateActionPlanHandler_concurrentStagesAllLand is the regression test for
+// the plan fan-out: several stage subagents write the same plan file at once.
+// The handler read-modify-writes that file, so without serialisation the last
+// writer wins and stages silently disappear. Meaningful under -race.
+func TestUpdateActionPlanHandler_concurrentStagesAllLand(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc, planID := updateActionPlanFixture(t)
+
+	// Deliberately not in DAG order: the stored order must come from the DAG,
+	// not from whichever subagent happened to finish first.
+	stages := []string{"Verify repairs", "Configure Cassandra JMX", "Setup and connect Cassandra Reaper"}
+
+	var wg sync.WaitGroup
+	for _, stage := range stages {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.updateActionPlanHandler(planID, stage)(ctx, map[string]any{
+				"stage":   stage,
+				"content": stageContent("work for " + stage),
+			}); err != nil {
+				t.Errorf("%s: %v", stage, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	stored := readStoredStages(t, svc, planID)
+	if len(stored) != len(stages) {
+		t.Fatalf("stored %d stages, want %d", len(stored), len(stages))
+	}
+	want := []string{"Configure Cassandra JMX", "Setup and connect Cassandra Reaper", "Verify repairs"}
+	for i, w := range want {
+		if got := argString(stored[i]["title"]); got != w {
+			t.Fatalf("stage %d title = %q, want %q", i, got, w)
+		}
+		if got, ok := stored[i]["number"].(float64); !ok || int(got) != i+1 {
+			t.Fatalf("stage %d number = %#v, want %d", i, stored[i]["number"], i+1)
+		}
 	}
 }
 
@@ -411,19 +461,17 @@ func TestUpdateActionPlanHandler_refusesWithoutDAG(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	parentID := uuid.New()
 	planID := uuid.New()
 	svc := &ChatService{
 		dagsDir:        t.TempDir(),
 		actionPlansDir: t.TempDir(),
 		activity:       NewActivityBroker(),
 		dialogRepo: &actionListDialogRepo{dialogs: map[uuid.UUID]domain.Dialog{
-			parentID: {ID: parentID, Mode: "decompose"},
-			planID:   {ID: planID, Mode: "plan", ParentID: &parentID},
+			planID: {ID: planID, Mode: "decompose"},
 		}},
 	}
 
-	out, err := svc.updateActionPlanHandler(planID)(ctx, map[string]any{
+	out, err := svc.updateActionPlanHandler(planID, "")(ctx, map[string]any{
 		"stage":   "Configure Cassandra JMX",
 		"content": stageContent("x"),
 	})
@@ -444,7 +492,7 @@ func TestAddLocalTools_includesUpdateActionPlanForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{UpdateActionPlanToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[UpdateActionPlanToolName]; !ok {
 		t.Fatal("expected update_action_plan handler")
@@ -461,19 +509,20 @@ func TestAddLocalTools_includesUpdateActionPlanForDialog(t *testing.T) {
 	}
 }
 
-func TestAddLocalTools_excludesUpdateActionPlanWithoutDialogRepo(t *testing.T) {
+func TestAddLocalTools_excludesUpdateActionPlanWithoutPlanOwner(t *testing.T) {
 	t.Parallel()
-	svc := &ChatService{}
+	svc := &ChatService{dialogRepo: &actionListDialogRepo{}}
 	catalog := toolCatalog{
 		mcpRoutes:     make(map[string]toolRoute),
 		localHandlers: make(map[string]localToolHandler),
 	}
 	allow := map[string]struct{}{UpdateActionPlanToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	// A binding with no plan owner has no action plan to write into.
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.Nil))
 
 	if _, ok := catalog.localHandlers[UpdateActionPlanToolName]; ok {
-		t.Fatal("did not expect update_action_plan handler without dialog repo")
+		t.Fatal("did not expect update_action_plan handler without a plan owner")
 	}
 }
 
@@ -486,7 +535,7 @@ func TestAddLocalTools_excludesUpdateActionPlanWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[UpdateActionPlanToolName]; ok {
 		t.Fatal("did not expect update_action_plan handler when not in allow list")

@@ -33,7 +33,7 @@ func TestRunPersistingAgentLoopPublishesToolActivity(t *testing.T) {
 			{Content: "done"},
 		},
 	}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["echo"] = func(_ context.Context, _ map[string]any) (string, error) {
@@ -43,7 +43,7 @@ func TestRunPersistingAgentLoopPublishesToolActivity(t *testing.T) {
 	events, unsub := svc.SubscribeActivity(dialogID)
 	defer unsub()
 
-	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "discuss", catalog)
+	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "discuss", catalog, loopConfig{})
 	if err != nil {
 		t.Fatalf("runPersistingAgentLoop: %v", err)
 	}

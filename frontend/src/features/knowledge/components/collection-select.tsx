@@ -118,8 +118,11 @@ export function CollectionSelect({
 					type="button"
 					id="kb-collection"
 					className={cn(
-						'flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors',
-						'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+						'flex h-[var(--control-h)] w-full cursor-pointer items-center',
+						'justify-between rounded-md border border-input bg-background/40',
+						'px-3 py-1 text-base elev-1 focus-ring',
+						'transition-[background-color,border-color,box-shadow]',
+						'duration-[var(--dur-fast)] hover:border-ring/40',
 						'disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
 					)}
 				>

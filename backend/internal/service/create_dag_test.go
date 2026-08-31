@@ -132,7 +132,7 @@ func TestAddLocalTools_includesCreateDAGForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{CreateDAGToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateDAGToolName]; !ok {
 		t.Fatal("expected create_dag handler")
@@ -158,7 +158,7 @@ func TestAddLocalTools_excludesCreateDAGWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateDAGToolName]; ok {
 		t.Fatal("did not expect create_dag handler when not in allow list")

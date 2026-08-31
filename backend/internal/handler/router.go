@@ -221,6 +221,11 @@ func NewRouter(
 				r.Put("/action-plan/comments", dialogs.SetActionPlanComments())
 				r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
 				r.Post("/action-plan/executor-chat", dialogs.ExecutorChat())
+				// The fan-out answers 202 and runs on past this request, so it
+				// deliberately does not take the agentRun write deadline.
+				r.Post("/plan-fanout", dialogs.StartPlanFanout())
+				r.Get("/plan-fanout", dialogs.PlanFanout())
+				r.Delete("/plan-fanout", dialogs.CancelPlanFanout())
 				r.Delete("/", dialogs.Delete())
 				r.With(agentRun).Post("/tool-results", dialogs.SubmitToolResult())
 

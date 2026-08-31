@@ -84,7 +84,7 @@ export function KnowledgePage() {
 			{error && (
 				<div
 					ref={errorRef}
-					className="scroll-mt-24 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+					className="scroll-mt-24 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive"
 				>
 					{error}
 				</div>

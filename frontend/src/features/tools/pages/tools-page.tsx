@@ -178,7 +178,7 @@ export function ToolsPage() {
 			</div>
 
 			{error && (
-				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{error}
 				</div>
 			)}

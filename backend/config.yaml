@@ -53,6 +53,14 @@ agent:
   # Each round = one POST to the chat API; tool calls re-trigger the LLM
   # until the assistant returns no tool_calls or this cap is reached.
   maxIterations: 30
+  # Plan fan-out: one subagent per DAG stage, planning in parallel.
+  # How many stage subagents may run at once.
+  planFanoutConcurrency: 4
+  # Completion round budget for a single stage subagent. Lower than
+  # maxIterations because it researches one stage rather than a whole plan.
+  stageMaxIterations: 15
+  # Deadline for a whole fan-out run. It outlives the request that starts it.
+  planFanoutTimeoutMinutes: 45
 
 knowledge_base:
   uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable

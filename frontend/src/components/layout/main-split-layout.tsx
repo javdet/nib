@@ -79,9 +79,10 @@ export function MainSplitLayout({ children }: { children: ReactNode }) {
 					}
 				}}
 				className={cn(
-					'group relative w-1.5 shrink-0 cursor-col-resize bg-border/60',
-					'hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-					dragging && 'bg-border',
+					'group relative w-1.5 shrink-0 cursor-col-resize bg-border/50',
+					'transition-colors duration-[var(--dur-fast)] focus-ring-inset',
+					'hover:bg-ring/50',
+					dragging && 'bg-ring/60',
 				)}
 			>
 				<span className="sr-only">Resize panels</span>

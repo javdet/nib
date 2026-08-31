@@ -68,7 +68,7 @@ export function IncidentDetail() {
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to list
 				</Button>
-				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{error ?? 'Incident not found'}
 				</div>
 			</div>

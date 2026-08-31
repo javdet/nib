@@ -68,12 +68,25 @@ export interface DialogChatResponse {
 	actionPlanUpdated?: boolean
 }
 
-export type AgentActivityKind = 'tools_start' | 'tools_end' | 'turn_end' | 'agent_result' | 'action_plan_updated'
+export type AgentActivityKind =
+	| 'tools_start'
+	| 'tools_end'
+	| 'turn_end'
+	| 'agent_result'
+	| 'action_plan_updated'
+	| 'plan_stage_started'
+	| 'plan_stage_done'
+	| 'plan_stage_failed'
+	| 'plan_fanout_done'
 
 export interface AgentActivity {
 	kind: AgentActivityKind
 	round?: number
 	count?: number
+	/** Plan stage a fan-out event belongs to. */
+	stage?: string
+	/** Outcome of a stage or of a whole fan-out run. */
+	status?: string
 }
 
 export function openDialogActivity(
@@ -478,4 +491,70 @@ export function updatePlanSchedule(
 		`/dialogs/${encodeURIComponent(id)}/plan-state/schedule`,
 		{ scheduledAt },
 	)
+}
+
+export type FanoutStageStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export type FanoutRunStatus =
+	| 'running'
+	| 'awaiting_input'
+	| 'done'
+	| 'failed'
+
+export interface FanoutStage {
+	title: string
+	wave: number
+	status: FanoutStageStatus
+	/** The subagent's own dialog, so its research can be read back. */
+	dialogId?: string
+	error?: string
+}
+
+export interface PlanBlocker {
+	stage: string
+	question: string
+	options?: string[]
+	assumption?: string
+	answer?: string
+}
+
+export interface FanoutRun {
+	runId: string
+	status: FanoutRunStatus
+	startedAt: number
+	finishedAt?: number
+	stages: FanoutStage[]
+	blockers?: PlanBlocker[]
+	pendingAskId?: string
+	pendingStages?: string[]
+	error?: string
+}
+
+/**
+ * Plans every DAG stage with one subagent each. Answers 202 straight away: the
+ * run continues in the background and reports over the dialog's SSE stream.
+ */
+export function startPlanFanout(
+	id: string,
+	stages?: string[],
+): Promise<FanoutRun> {
+	return api.post<FanoutRun>(
+		`/dialogs/${encodeURIComponent(id)}/plan-fanout`,
+		{ stages: stages ?? [] },
+	)
+}
+
+/** Reads the current run so a reloaded page can re-attach to one still going. */
+export function getPlanFanout(id: string): Promise<FanoutRun | null> {
+	return api
+		.get<FanoutRun | null>(`/dialogs/${encodeURIComponent(id)}/plan-fanout`)
+		.catch((err) => {
+			if (err instanceof ApiError && err.status === 404) return null
+			throw err
+		})
+}
+
+/** Stops a running fan-out. Stages already written stay on the plan. */
+export function cancelPlanFanout(id: string): Promise<void> {
+	return api.delete<void>(`/dialogs/${encodeURIComponent(id)}/plan-fanout`)
 }

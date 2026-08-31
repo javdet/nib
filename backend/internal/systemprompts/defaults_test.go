@@ -35,6 +35,7 @@ func TestEmbeddedDefaultsHaveNoExtras(t *testing.T) {
 	t.Parallel()
 
 	want := append([]string(nil), mode.Modes...)
+	want = append(want, Auxiliary...)
 	sort.Strings(want)
 
 	if got := DefaultNames(); !reflect.DeepEqual(got, want) {

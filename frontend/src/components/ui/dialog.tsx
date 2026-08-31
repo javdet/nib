@@ -17,7 +17,9 @@ const DialogOverlay = React.forwardRef<
 		<DialogPrimitive.Overlay
 			ref={ref}
 			className={cn(
-				'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+				'scrim fixed inset-0 z-50 duration-[var(--dur-med)]',
+				'data-[state=open]:animate-in data-[state=closed]:animate-out',
+				'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
 				className,
 			)}
 			{...props}
@@ -35,13 +37,31 @@ const DialogContent = React.forwardRef<
 			<DialogPrimitive.Content
 				ref={ref}
 				className={cn(
-					'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
+					'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg gap-4',
+					'translate-x-[-50%] translate-y-[-50%] rounded-xl border',
+					'border-border/60 bg-background p-6 elev-3',
+					'duration-[var(--dur-med)] ease-[var(--ease-out)]',
+					'data-[state=open]:animate-in data-[state=closed]:animate-out',
+					'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+					'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+					'data-[state=closed]:slide-out-to-left-1/2',
+					'data-[state=closed]:slide-out-to-top-[48%]',
+					'data-[state=open]:slide-in-from-left-1/2',
+					'data-[state=open]:slide-in-from-top-[48%]',
 					className,
 				)}
 				{...props}
 			>
 				{children}
-				<DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+				<DialogPrimitive.Close
+						className={cn(
+							'absolute right-3 top-3 flex size-8 cursor-pointer',
+							'items-center justify-center rounded-md focus-ring',
+							'text-muted-foreground transition-colors',
+							'duration-[var(--dur-fast)] hover:bg-foreground/[0.07]',
+							'hover:text-foreground disabled:pointer-events-none',
+						)}
+					>
 					<X className="h-4 w-4" />
 					<span className="sr-only">Close</span>
 				</DialogPrimitive.Close>
@@ -53,7 +73,11 @@ const DialogContent = React.forwardRef<
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
 	return (
 		<div
-			className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)}
+			className={cn(
+				// pr-6 keeps long titles clear of the close button
+				'flex flex-col space-y-1.5 pr-6 text-center sm:text-left',
+				className,
+			)}
 			{...props}
 		/>
 	)

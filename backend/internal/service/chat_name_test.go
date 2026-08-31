@@ -346,7 +346,7 @@ func TestAddLocalTools_includesChatNameForDialog(t *testing.T) {
 		localHandlers: make(map[string]localToolHandler),
 	}
 
-	svc.addLocalTools(&catalog, nil, uuid.New())
+	svc.addLocalTools(&catalog, nil, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[ChatNameToolName]; !ok {
 		t.Fatal("expected chat_name handler")
@@ -371,7 +371,7 @@ func TestAddLocalTools_excludesChatNameWithoutDialog(t *testing.T) {
 		localHandlers: make(map[string]localToolHandler),
 	}
 
-	svc.addLocalTools(&catalog, nil, uuid.Nil)
+	svc.addLocalTools(&catalog, nil, newToolBinding(uuid.Nil))
 
 	if _, ok := catalog.localHandlers[ChatNameToolName]; ok {
 		t.Fatal("did not expect chat_name handler without dialog")

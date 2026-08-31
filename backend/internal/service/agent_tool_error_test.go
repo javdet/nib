@@ -132,14 +132,14 @@ func TestRunPersistingAgentLoop_recoversFromToolFailure(t *testing.T) {
 		},
 	}
 
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {
 		return "", fmt.Errorf("404: Page not found")
 	}
 
-	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "decompose", catalog)
+	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "decompose", catalog, loopConfig{})
 	if err != nil {
 		t.Fatalf("runPersistingAgentLoop: %v", err)
 	}
@@ -200,14 +200,14 @@ func TestRunPersistingAgentLoop_tooManyToolFailures(t *testing.T) {
 	}
 
 	provider := &retryLLMProvider{responses: responses}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 20)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 20, PlanFanoutConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {
 		return "", errors.New("tool broke")
 	}
 
-	_, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "decompose", catalog)
+	_, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "decompose", catalog, loopConfig{})
 	if !errors.Is(err, ErrTooManyToolFailures) {
 		t.Fatalf("err = %v, want ErrTooManyToolFailures", err)
 	}
@@ -251,7 +251,7 @@ func TestRunPersistingAgentLoop_fatalOnCancelledContext(t *testing.T) {
 			}},
 		}},
 	}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10)
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {
@@ -261,7 +261,7 @@ func TestRunPersistingAgentLoop_fatalOnCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := svc.runPersistingAgentLoop(ctx, dialogID, "decompose", catalog)
+	_, err := svc.runPersistingAgentLoop(ctx, dialogID, "decompose", catalog, loopConfig{})
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
 	}

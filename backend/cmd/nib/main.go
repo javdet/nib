@@ -111,6 +111,9 @@ func run() error {
 	if err := runMigrations(ctx, pool, migrationsPath); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
+	if err := migratePlanOwnership(ctx, pool, cfg.DataDir); err != nil {
+		return fmt.Errorf("migrate plan ownership: %w", err)
+	}
 
 	projectRepo := static.NewProjectRepo(holder, cfgManager)
 	envRepo := static.NewEnvironmentRepo(holder, cfgManager)
@@ -145,7 +148,7 @@ func run() error {
 
 	// Prompts are compiled into the binary: an image built without one must fail to
 	// boot rather than silently degrade every chat turn in that mode.
-	if err := systemprompts.ValidateEmbeddedDefaults(mode.Modes); err != nil {
+	if err := systemprompts.ValidateEmbeddedDefaults(append(append([]string(nil), mode.Modes...), systemprompts.Auxiliary...)); err != nil {
 		return fmt.Errorf("system prompts: %w", err)
 	}
 	// Same contract for the knowledge base template: every project falls back to
@@ -268,10 +271,16 @@ func run() error {
 		secretSvc,
 		executorSvc,
 		skillSvc,
+		rulesSvc,
 		cfg.LLM.BaseURL,
 		cfg.DataDir,
 		cfg.IncludedTools.Dir,
 		cfg.Agent.MaxIterations,
+		service.PlanFanoutConfig{
+			Concurrency:        cfg.Agent.PlanFanoutConcurrency,
+			StageMaxIterations: cfg.Agent.StageMaxIterations,
+			TimeoutMinutes:     cfg.Agent.PlanFanoutTimeoutMinutes,
+		},
 	)
 	// Both mcp.json edits and secret rotations change what a resolved MCP server
 	// looks like, so either has to drop the cached routes and reindex.

@@ -111,7 +111,7 @@ const markdownComponents: Components = {
 				checked={checked}
 				disabled={disabled ?? true}
 				readOnly
-				className="mr-1 align-middle"
+				className="mr-1.5 size-3.5 align-middle accent-[var(--primary)]"
 			/>
 		)
 	},

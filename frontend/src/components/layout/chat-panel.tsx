@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	Tooltip,
 	TooltipContent,
@@ -758,7 +759,11 @@ export function ChatPanel() {
 							<button
 								type="button"
 								onClick={onRemove}
-								className="rounded p-0.5 hover:bg-muted"
+								className={cn(
+									'flex size-5 cursor-pointer items-center justify-center',
+									'rounded transition-colors duration-[var(--dur-fast)]',
+									'focus-ring hover:bg-foreground/[0.1]',
+								)}
 								aria-label={`Remove ${attachment.filename}`}
 							>
 								<X className="h-3 w-3" />
@@ -918,7 +923,7 @@ export function ChatPanel() {
 			{error && (
 				<div
 					role="alert"
-					className="flex shrink-0 items-start gap-2 border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-xs leading-relaxed text-destructive"
+					className="flex shrink-0 items-start gap-2 border-t border-destructive/35 bg-destructive/12 px-4 py-2 text-xs leading-relaxed text-destructive"
 				>
 					<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
 					<span className="min-w-0 whitespace-normal break-words">{error}</span>
@@ -942,18 +947,14 @@ export function ChatPanel() {
 						accept="image/*,text/*,.md,.txt,.csv,.json,.log,.yaml,.yml"
 						onChange={(e) => void handleFilesSelected(e)}
 					/>
-					<textarea
+					<Textarea
 						value={draft}
 						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={handleKeyDown}
 						placeholder="Message…"
 						rows={2}
 						disabled={inputDisabled}
-						className={cn(
-							'flex min-h-[72px] min-w-0 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm',
-							'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-							'disabled:cursor-not-allowed disabled:opacity-50',
-						)}
+						className="min-h-[72px] min-w-0 resize-none"
 					/>
 					<div className="flex shrink-0 flex-col gap-2 self-end">
 						<IconButton

@@ -7,27 +7,33 @@ export const STATUS_STYLES: Record<
 > = {
 	draft: {
 		label: 'DRAFT',
-		className: 'bg-[#d1d5db] text-gray-900',
+		className:
+			'border-zinc-500/30 bg-zinc-500/15 text-zinc-700 dark:text-zinc-300',
 	},
 	scheduled: {
 		label: 'SCHEDULED',
-		className: 'bg-[#f5d78e] text-gray-900',
+		className:
+			'border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300',
 	},
 	in_progress: {
 		label: 'IN PROGRESS',
-		className: 'bg-[#93c5fd] text-gray-900',
+		className:
+			'border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300',
 	},
 	done: {
 		label: 'FINISHED',
-		className: 'bg-[#bef264] text-gray-900',
+		className:
+			'border-lime-500/30 bg-lime-500/15 text-lime-700 dark:text-lime-300',
 	},
 	reopened: {
 		label: 'REOPENED',
-		className: 'bg-[#fdba74] text-gray-900',
+		className:
+			'border-orange-500/30 bg-orange-500/15 text-orange-700 dark:text-orange-300',
 	},
 	rolled_back: {
 		label: 'ROLLED BACK',
-		className: 'bg-[#fca5a5] text-gray-900',
+		className:
+			'border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300',
 	},
 }
 
@@ -46,7 +52,8 @@ export function PlanStatusBadge({ status, compact = false }: PlanStatusBadgeProp
 	const pill = (
 		<span
 			className={cn(
-				'inline-flex shrink-0 items-center rounded-full font-bold uppercase tracking-wide',
+				'inline-flex shrink-0 items-center rounded-full border',
+				'font-semibold uppercase tracking-wider',
 				compact
 					? 'px-2 py-0.5 text-[10px]'
 					: 'px-4 py-1.5 text-xs',

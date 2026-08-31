@@ -103,7 +103,7 @@ func TestAddLocalTools_includesListVariablesWhenAllowed(t *testing.T) {
 	}
 	allow := map[string]struct{}{ListVariablesToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[ListVariablesToolName]; !ok {
 		t.Fatal("expected list_variables handler")
@@ -130,7 +130,7 @@ func TestAddLocalTools_excludesListVariablesWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[ListVariablesToolName]; ok {
 		t.Fatal("did not expect list_variables handler when not in allow list")
@@ -147,7 +147,7 @@ func TestAddLocalTools_excludesListVariablesWithoutVariableRepo(t *testing.T) {
 	}
 	allow := map[string]struct{}{ListVariablesToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[ListVariablesToolName]; ok {
 		t.Fatal("did not expect list_variables handler without variableRepo")

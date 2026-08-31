@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Eye, FileUp, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
 	type KnowledgeCollection,
@@ -107,11 +108,11 @@ export function UploadDocumentCard({
 				)}
 
 				<div className="space-y-3">
-					<input
+					<Input
 						ref={inputRef}
 						type="file"
 						accept=".md,.txt,.markdown,text/plain,text/markdown"
-						className="w-full min-w-0 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+						className="min-w-0 cursor-pointer py-1.5"
 						onChange={handleFileChange}
 						disabled={uploading}
 					/>

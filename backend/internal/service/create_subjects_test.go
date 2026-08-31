@@ -101,7 +101,7 @@ func TestAddLocalTools_includesCreateSubjectsForDialog(t *testing.T) {
 	}
 	allow := map[string]struct{}{CreateSubjectsToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateSubjectsToolName]; !ok {
 		t.Fatal("expected create_subjects handler")
@@ -127,7 +127,7 @@ func TestAddLocalTools_excludesCreateSubjectsWithoutAllowList(t *testing.T) {
 	}
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[CreateSubjectsToolName]; ok {
 		t.Fatal("did not expect create_subjects handler when not in allow list")

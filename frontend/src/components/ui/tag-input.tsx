@@ -81,8 +81,10 @@ export function TagInput({
 	return (
 		<div
 			className={cn(
-				'flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-sm shadow-sm',
-				'focus-within:outline-none focus-within:ring-1 focus-within:ring-ring',
+				'flex min-h-[var(--control-h)] w-full flex-wrap items-center gap-1.5',
+				'cursor-text rounded-md border border-input bg-background/40 px-2 py-1.5',
+				'text-sm elev-1 transition-[border-color,box-shadow]',
+				'duration-[var(--dur-fast)] hover:border-ring/40 focus-ring-within',
 				disabled && 'cursor-not-allowed opacity-50',
 				className,
 			)}
@@ -98,7 +100,11 @@ export function TagInput({
 					{!disabled && (
 						<button
 							type="button"
-							className="rounded-sm opacity-70 hover:opacity-100"
+							className={cn(
+								'-mr-0.5 flex size-4 cursor-pointer items-center justify-center',
+								'rounded-sm text-current opacity-60 transition-opacity',
+								'duration-[var(--dur-fast)] hover:opacity-100 focus-ring',
+							)}
 							onClick={(event) => {
 								event.stopPropagation()
 								removeTag(tag)
@@ -120,7 +126,11 @@ export function TagInput({
 				disabled={disabled || value.length >= MAX_TAGS}
 				placeholder={value.length === 0 ? placeholder : ''}
 				aria-label={ariaLabel}
-				className="min-w-[8ch] flex-1 border-0 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+				className={cn(
+					'min-w-[8ch] flex-1 border-0 bg-transparent px-1 py-0.5 text-sm',
+					'outline-none placeholder:text-muted-foreground/70',
+					'disabled:cursor-not-allowed',
+				)}
 			/>
 		</div>
 	)

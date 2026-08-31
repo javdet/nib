@@ -18,7 +18,7 @@ func TestAddLocalTools_includesGetKBDocument(t *testing.T) {
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{GetKBDocumentToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetKBDocumentToolName]; !ok {
 		t.Fatal("expected get_kb_document handler")
@@ -34,7 +34,7 @@ func TestAddLocalTools_excludesGetKBDocumentWithoutAllowList(t *testing.T) {
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{"other_tool": {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetKBDocumentToolName]; ok {
 		t.Fatal("did not expect get_kb_document handler when not in allow list")
@@ -50,7 +50,7 @@ func TestAddLocalTools_excludesGetKBDocumentWithoutKnowledgeService(t *testing.T
 	catalog := newUpdateKBTestCatalog()
 	allow := map[string]struct{}{GetKBDocumentToolName: {}}
 
-	svc.addLocalTools(&catalog, allow, uuid.New())
+	svc.addLocalTools(&catalog, allow, newToolBinding(uuid.New()))
 
 	if _, ok := catalog.localHandlers[GetKBDocumentToolName]; ok {
 		t.Fatal("did not expect get_kb_document handler without a knowledge service")

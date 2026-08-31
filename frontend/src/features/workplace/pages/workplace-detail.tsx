@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
 	Dialog,
 	DialogContent,
@@ -18,19 +19,18 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
 import {
-	createDialog,
 	executeActionPlanAction,
 	ensureActionPlanExecutorChat,
 	getDialog,
 	getDialogActionPlan,
 	getDialogDag,
-	getDialogRules,
 	getDialogSummary,
 	getPlanState,
-	listDialogChildren,
+	getPlanFanout,
+	startPlanFanout,
+	cancelPlanFanout,
 	openDialogActivity,
 	updateActionPlan,
 	updateActionPlanChecks,
@@ -45,6 +45,7 @@ import {
 	type ActionStep,
 	type ActionPlanScope,
 	type Dialog as DialogItem,
+	type FanoutRun,
 	type PlanStatus,
 } from '@/features/dialogs/api/dialogs'
 import { useDialog } from '@/features/dialogs/dialog-context'
@@ -58,20 +59,6 @@ import {
 	buildPlanMarkdown,
 	planMarkdownFileName,
 } from '../lib/plan-markdown'
-
-const summaryTextareaClasses = cn(
-	'min-h-[120px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2',
-	'text-sm shadow-sm placeholder:text-muted-foreground',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'whitespace-pre-wrap',
-)
-
-const commandTextareaClasses = cn(
-	'min-h-[80px] w-full resize-y overflow-x-auto rounded-md border border-input bg-transparent px-3 py-2',
-	'font-mono text-xs shadow-sm placeholder:text-muted-foreground',
-	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-	'whitespace-pre',
-)
 
 // commandActionTypes are the step types executed by copying commands into a
 // terminal, so their command field is offered for editing.
@@ -146,7 +133,7 @@ export function WorkplaceDetail() {
 	const [dialog, setDialog] = useState<DialogItem | null>(null)
 	const [summaryContent, setSummaryContent] = useState<string | null>(null)
 	const [dagContent, setDagContent] = useState<string | null>(null)
-	const [planChild, setPlanChild] = useState<DialogItem | null>(null)
+	const [fanoutRun, setFanoutRun] = useState<FanoutRun | null>(null)
 	const [actionPlan, setActionPlan] = useState<ActionPlan | null>(null)
 	const [actionPlanChecked, setActionPlanChecked] = useState<string[]>([])
 	const [actionPlanComments, setActionPlanComments] = useState<
@@ -189,21 +176,19 @@ export function WorkplaceDetail() {
 		setLoading(true)
 		setError(null)
 		try {
-			const [dialogData, summary, dag, children, planState] = await Promise.all([
-				getDialog(dialogId),
-				getDialogSummary(dialogId),
-				getDialogDag(dialogId),
-				listDialogChildren(dialogId),
-				getPlanState(dialogId),
-			])
-			const child = children.find((item) => item.mode === 'plan') ?? null
-			const actionPlanData = child
-				? await getDialogActionPlan(child.id)
-				: null
+			const [dialogData, summary, dag, planState, actionPlanData, run] =
+				await Promise.all([
+					getDialog(dialogId),
+					getDialogSummary(dialogId),
+					getDialogDag(dialogId),
+					getPlanState(dialogId),
+					getDialogActionPlan(dialogId),
+					getPlanFanout(dialogId),
+				])
 			setDialog(dialogData)
 			setSummaryContent(summary)
 			setDagContent(dag)
-			setPlanChild(child)
+			setFanoutRun(run)
 			setActionPlan(actionPlanData?.plan ?? null)
 			setActionPlanChecked(actionPlanData?.checked ?? [])
 			setActionPlanComments(actionPlanData?.comments ?? {})
@@ -213,7 +198,7 @@ export function WorkplaceDetail() {
 			setDialog(null)
 			setSummaryContent(null)
 			setDagContent(null)
-			setPlanChild(null)
+			setFanoutRun(null)
 			setActionPlan(null)
 			setActionPlanChecked([])
 			setActionPlanComments({})
@@ -238,27 +223,35 @@ export function WorkplaceDetail() {
 	}, [id, loadDetail, dialogsVersion])
 
 	useEffect(() => {
-		if (!planChild) return
+		if (!id) return
 
-		const close = openDialogActivity(planChild.id, (ev) => {
+		// Stages land one at a time, so the plan is re-read on every stage event
+		// rather than only when the whole run finishes.
+		const close = openDialogActivity(id, (ev) => {
 			if (ev.kind === 'action_plan_updated') {
 				setLiveActionPlanVersion((v) => v + 1)
+				return
+			}
+			if (
+				ev.kind === 'plan_stage_started' ||
+				ev.kind === 'plan_stage_done' ||
+				ev.kind === 'plan_stage_failed' ||
+				ev.kind === 'plan_fanout_done'
+			) {
+				void getPlanFanout(id).then(setFanoutRun).catch(() => {})
 			}
 		})
 
 		return close
-	}, [planChild])
+	}, [id])
 
 	useEffect(() => {
-		if (
-			!planChild ||
-			(actionPlanVersion === 0 && liveActionPlanVersion === 0)
-		) {
+		if (!id || (actionPlanVersion === 0 && liveActionPlanVersion === 0)) {
 			return
 		}
 
 		let cancelled = false
-		void getDialogActionPlan(planChild.id)
+		void getDialogActionPlan(id)
 			.then((actionPlanData) => {
 				if (cancelled) return
 				setActionPlan(actionPlanData?.plan ?? null)
@@ -277,7 +270,7 @@ export function WorkplaceDetail() {
 		return () => {
 			cancelled = true
 		}
-	}, [planChild, actionPlanVersion, liveActionPlanVersion])
+	}, [id, actionPlanVersion, liveActionPlanVersion])
 
 	useEffect(() => {
 		if (!isEditingTitle) return
@@ -489,17 +482,9 @@ export function WorkplaceDetail() {
 		actionPlanComments,
 	])
 
-	const handleOpenPlanDialog = useCallback(
-		(planDialog: DialogItem) => {
-			selectMode(planDialog.mode)
-			setActiveDialogId(planDialog.id)
-		},
-		[selectMode, setActiveDialogId],
-	)
-
 	const handleActionPlanToggle = useCallback(
 		(key: string, nextChecked: boolean) => {
-			if (!planChild) return
+			if (!id) return
 
 			const prevChecked = actionPlanChecked
 			const prevStatus = planStatus
@@ -511,7 +496,7 @@ export function WorkplaceDetail() {
 
 			// Status is derived from full plan progress on the server; taking it
 			// from the response keeps a single source of truth.
-			void updateActionPlanChecks(planChild.id, next)
+			void updateActionPlanChecks(id, next)
 				.then((res) => setPlanStatus(res.planStatus))
 				.catch((err) => {
 					setActionPlanChecked(prevChecked)
@@ -523,7 +508,7 @@ export function WorkplaceDetail() {
 					)
 				})
 		},
-		[planChild, actionPlanChecked, planStatus],
+		[id, actionPlanChecked, planStatus],
 	)
 
 	const handleOpenComment = useCallback(
@@ -540,7 +525,7 @@ export function WorkplaceDetail() {
 	}, [])
 
 	const handleSaveComment = useCallback(async () => {
-		if (!planChild || commentDialogKey === null || savingComment) return
+		if (!id || commentDialogKey === null || savingComment) return
 
 		const trimmed = commentDraft.trim()
 		const next = { ...actionPlanComments }
@@ -553,7 +538,7 @@ export function WorkplaceDetail() {
 		setSavingComment(true)
 		setError(null)
 		try {
-			const saved = await updateActionPlanComments(planChild.id, next)
+			const saved = await updateActionPlanComments(id, next)
 			setActionPlanComments(saved)
 			handleCloseComment()
 		} catch (err) {
@@ -566,7 +551,7 @@ export function WorkplaceDetail() {
 			setSavingComment(false)
 		}
 	}, [
-		planChild,
+		id,
 		commentDialogKey,
 		commentDraft,
 		actionPlanComments,
@@ -593,7 +578,7 @@ export function WorkplaceDetail() {
 	}, [])
 
 	const handleSaveAction = useCallback(async () => {
-		if (!planChild || !actionPlan || editActionKey === null || savingAction) return
+		if (!id || !actionPlan || editActionKey === null || savingAction) return
 
 		const trimmed = editActionDraft.trim()
 		if (!trimmed) {
@@ -629,7 +614,7 @@ export function WorkplaceDetail() {
 		setSavingAction(true)
 		setError(null)
 		try {
-			const saved = await updateActionPlan(planChild.id, nextPlan)
+			const saved = await updateActionPlan(id, nextPlan)
 			setActionPlan(saved.plan)
 			setPlanStatus(saved.planStatus)
 			handleCloseEditAction()
@@ -643,7 +628,7 @@ export function WorkplaceDetail() {
 			setSavingAction(false)
 		}
 	}, [
-		planChild,
+		id,
 		actionPlan,
 		editActionKey,
 		editActionDraft,
@@ -679,13 +664,13 @@ export function WorkplaceDetail() {
 			from: number,
 			to: number,
 		) => {
-			if (!planChild || reordering) return
+			if (!id || reordering) return
 
 			setReordering(true)
 			setError(null)
 			try {
 				const result = await reorderActionPlanItems(
-					planChild.id,
+					id,
 					scope,
 					stage,
 					from,
@@ -707,12 +692,12 @@ export function WorkplaceDetail() {
 				setReordering(false)
 			}
 		},
-		[planChild, reordering],
+		[id, reordering],
 	)
 
 	const handleExecuteAction = useCallback(
 		async (step: ActionStep, key: string) => {
-			if (!planChild) return
+			if (!id) return
 
 			try {
 				// A code action goes straight to the coding agent: the backend
@@ -720,7 +705,7 @@ export function WorkplaceDetail() {
 				// container. No message is sent to the LLM.
 				if (step.type === 'code') {
 					const { dialog } = await executeActionPlanAction(
-						planChild.id,
+						id,
 						key,
 					)
 					selectMode('execute')
@@ -730,7 +715,7 @@ export function WorkplaceDetail() {
 				}
 
 				const { dialog, created } = await ensureActionPlanExecutorChat(
-					planChild.id,
+					id,
 				)
 				selectMode('execute')
 
@@ -763,7 +748,7 @@ export function WorkplaceDetail() {
 			}
 		},
 		[
-			planChild,
+			id,
 			summaryContent,
 			actionPlanComments,
 			selectMode,
@@ -807,62 +792,44 @@ export function WorkplaceDetail() {
 		[id, savingSchedule, planScheduledAt, planStatus],
 	)
 
+	const handleOpenStageDialog = useCallback(
+		(stageDialogId: string) => {
+			selectMode('plan')
+			setActiveDialogId(stageDialogId)
+		},
+		[selectMode, setActiveDialogId],
+	)
+
+	// Every DAG stage is planned by its own subagent, in parallel. The call
+	// returns as soon as the run is recorded; stages then appear one at a time.
 	const handleProcessPlan = useCallback(async () => {
 		if (!id) return
 
-		if (planChild) {
-			handleOpenPlanDialog(planChild)
-			return
-		}
-
 		setProcessingPlan(true)
+		setError(null)
 		try {
-			const [created, matchedRules] = await Promise.all([
-				createDialog({
-					mode: 'plan',
-					parentId: id,
-				}),
-				getDialogRules(id),
-			])
-			setPlanChild(created)
-			selectMode('plan')
-
-			const parts: string[] = []
-			if (summaryContent) parts.push(`## Summary\n\n${summaryContent}`)
-			if (dagContent) parts.push(`## DAG\n\n${dagContent}`)
-			if (matchedRules.length > 0) {
-				const rulesSection = matchedRules
-					.map((rule) => `### ${rule.name}\n\n${rule.content}`)
-					.join('\n\n')
-				parts.push(`## Rules\n\n${rulesSection}`)
-			}
-			const firstMessage = parts.join('\n\n')
-			if (firstMessage) {
-				enqueuePendingMessage({ dialogId: created.id, text: firstMessage })
-			}
-
-			setActiveDialogId(created.id)
+			setFanoutRun(await startPlanFanout(id))
 			bumpDialogsVersion()
 		} catch (err) {
 			setError(
-				err instanceof Error
-					? err.message
-					: 'Failed to create plan dialog',
+				err instanceof Error ? err.message : 'Failed to start planning',
 			)
 		} finally {
 			setProcessingPlan(false)
 		}
-	}, [
-		id,
-		planChild,
-		summaryContent,
-		dagContent,
-		handleOpenPlanDialog,
-		setActiveDialogId,
-		enqueuePendingMessage,
-		selectMode,
-		bumpDialogsVersion,
-	])
+	}, [id, bumpDialogsVersion])
+
+	const handleCancelFanout = useCallback(async () => {
+		if (!id) return
+		try {
+			await cancelPlanFanout(id)
+			setFanoutRun(await getPlanFanout(id))
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : 'Failed to stop planning',
+			)
+		}
+	}, [id])
 
 	if (!id) {
 		return (
@@ -887,14 +854,15 @@ export function WorkplaceDetail() {
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to list
 				</Button>
-				<div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{error ?? 'Plan not found'}
 				</div>
 			</div>
 		)
 	}
 
-	const canProcessPlan = Boolean(planChild || summaryContent || dagContent)
+	const canProcessPlan = Boolean(dagContent)
+	const fanoutRunning = fanoutRun?.status === 'running'
 	const isDecomposed = Boolean(summaryContent && dagContent)
 
 	return (
@@ -1054,7 +1022,7 @@ export function WorkplaceDetail() {
 					<CardContent>
 						{isEditingSummary ? (
 							<div className="space-y-3">
-								<textarea
+								<Textarea
 									ref={summaryTextareaRef}
 									value={summaryDraft}
 									onChange={(e) => setSummaryDraft(e.target.value)}
@@ -1072,7 +1040,7 @@ export function WorkplaceDetail() {
 										}
 									}}
 									disabled={savingSummary}
-									className={summaryTextareaClasses}
+									className="min-h-[120px] whitespace-pre-wrap"
 									aria-label="Summary"
 								/>
 								<div className="flex gap-2">
@@ -1167,29 +1135,92 @@ export function WorkplaceDetail() {
 				</CardHeader>
 				{actionListExpanded && (
 					<CardContent className="space-y-4">
-					<Button
-						type="button"
-						onClick={() => void handleProcessPlan()}
-						disabled={processingPlan || !canProcessPlan}
-					>
-						{processingPlan
-							? 'Creating plan...'
-							: planChild
-								? 'Open chat'
-								: 'Process Plan'}
-					</Button>
+					<div className="flex items-center gap-2">
+						<Button
+							type="button"
+							onClick={() => void handleProcessPlan()}
+							disabled={processingPlan || fanoutRunning || !canProcessPlan}
+						>
+							{fanoutRunning
+								? 'Planning stages...'
+								: processingPlan
+									? 'Starting...'
+									: actionPlan
+										? 'Replan all stages'
+										: 'Process Plan'}
+						</Button>
+						{fanoutRunning && (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => void handleCancelFanout()}
+							>
+								Stop
+							</Button>
+						)}
+					</div>
 
-					{!planChild && !canProcessPlan && (
+					{!canProcessPlan && (
 						<p className="text-sm text-muted-foreground">
-							Complete decomposition first — a summary or DAG is required
-							before processing the plan.
+							Complete decomposition first — a DAG is required before
+							processing the plan.
 						</p>
 					)}
 
-					{!planChild && canProcessPlan && (
-						<p className="text-sm text-muted-foreground">
-							No actions yet.
-						</p>
+					{fanoutRun && fanoutRun.stages.length > 0 && (
+						<div className="space-y-1 rounded-md border p-3">
+							<p className="text-sm font-medium">
+								Stages{' '}
+								<span className="text-muted-foreground">
+									(
+									{
+										fanoutRun.stages.filter((st) => st.status === 'done')
+											.length
+									}
+									/{fanoutRun.stages.length})
+								</span>
+							</p>
+							{fanoutRun.stages.map((stage) => (
+								<div
+									key={stage.title}
+									className="flex items-center justify-between gap-2 text-sm"
+								>
+									<span className="truncate">{stage.title}</span>
+									<span className="flex shrink-0 items-center gap-2">
+										<span
+											className={
+												stage.status === 'failed'
+													? 'text-destructive'
+													: stage.status === 'done'
+														? 'text-muted-foreground'
+														: ''
+											}
+											title={stage.error}
+										>
+											{stage.status}
+										</span>
+										{stage.dialogId && (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() =>
+													handleOpenStageDialog(stage.dialogId as string)
+												}
+											>
+												Open
+											</Button>
+										)}
+									</span>
+								</div>
+							))}
+							{fanoutRun.status === 'awaiting_input' && (
+								<p className="pt-2 text-sm text-muted-foreground">
+									Some stages rest on assumptions. Answer the questions in
+									the chat and those stages are replanned.
+								</p>
+							)}
+						</div>
 					)}
 
 					{actionPlan ? (
@@ -1206,9 +1237,9 @@ export function WorkplaceDetail() {
 							}
 							reordering={reordering}
 						/>
-					) : planChild ? (
+					) : fanoutRun ? (
 						<p className="text-sm text-muted-foreground">
-							Action plan not generated yet.
+							No stages stored yet.
 						</p>
 					) : null}
 					</CardContent>
@@ -1225,7 +1256,7 @@ export function WorkplaceDetail() {
 					<DialogHeader>
 						<DialogTitle>Action comment</DialogTitle>
 					</DialogHeader>
-					<textarea
+					<Textarea
 						value={commentDraft}
 						onChange={(e) => setCommentDraft(e.target.value)}
 						onKeyDown={(e) => {
@@ -1239,7 +1270,7 @@ export function WorkplaceDetail() {
 							}
 						}}
 						disabled={savingComment}
-						className={summaryTextareaClasses}
+						className="min-h-[120px] whitespace-pre-wrap"
 						aria-label="Action comment"
 						placeholder="Add a note for this action..."
 					/>
@@ -1273,12 +1304,12 @@ export function WorkplaceDetail() {
 					<DialogHeader>
 						<DialogTitle>Edit action</DialogTitle>
 					</DialogHeader>
-					<textarea
+					<Textarea
 						value={editActionDraft}
 						onChange={(e) => setEditActionDraft(e.target.value)}
 						onKeyDown={handleEditActionKeyDown}
 						disabled={savingAction}
-						className={summaryTextareaClasses}
+						className="min-h-[120px] whitespace-pre-wrap"
 						aria-label="Action description"
 						placeholder="Describe this action..."
 					/>
@@ -1287,12 +1318,12 @@ export function WorkplaceDetail() {
 							<p className="text-xs font-medium text-muted-foreground">
 								Command
 							</p>
-							<textarea
+							<Textarea
 								value={editCommandDraft}
 								onChange={(e) => setEditCommandDraft(e.target.value)}
 								onKeyDown={handleEditActionKeyDown}
 								disabled={savingAction}
-								className={commandTextareaClasses}
+								className="min-h-[80px] overflow-x-auto whitespace-pre font-mono text-xs"
 								aria-label="Action command"
 								placeholder="kubectl -n prod rollout status deployment/api"
 								spellCheck={false}

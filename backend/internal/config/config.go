@@ -66,6 +66,14 @@ const (
 // AgentConfig controls agent-loop behaviour (parsed from YAML; wiring is future work).
 type AgentConfig struct {
 	MaxIterations int `yaml:"maxIterations"`
+	// PlanFanoutConcurrency caps how many stage subagents plan at once.
+	PlanFanoutConcurrency int `yaml:"planFanoutConcurrency"`
+	// StageMaxIterations is the completion round budget of a single stage
+	// subagent, which researches one stage rather than a whole plan.
+	StageMaxIterations int `yaml:"stageMaxIterations"`
+	// PlanFanoutTimeoutMinutes bounds a whole fan-out run. It outlives the HTTP
+	// request that starts it, so it needs a deadline of its own.
+	PlanFanoutTimeoutMinutes int `yaml:"planFanoutTimeoutMinutes"`
 }
 
 // LogConfig controls optional mirroring of stderr to a file.

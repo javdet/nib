@@ -132,7 +132,11 @@ export function ChatHistoryMenu() {
 				<DropdownMenuTrigger asChild>
 					<button
 						type="button"
-						className="flex min-w-0 flex-1 items-center gap-2 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+						className={cn(
+							'flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-3',
+							'text-left transition-colors duration-[var(--dur-fast)]',
+							'focus-ring-inset hover:bg-foreground/[0.05]',
+						)}
 					>
 						<MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
 						<span className="shrink-0 text-sm font-medium">Chat</span>
@@ -197,8 +201,10 @@ export function ChatHistoryMenu() {
 								type="button"
 								onClick={() => handleSelect(dialog)}
 								className={cn(
-									'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent',
-									isActive && 'bg-accent/60',
+									'flex w-full cursor-pointer items-center gap-2 rounded-md px-3',
+									'py-2 text-left text-sm transition-colors focus-ring-inset',
+									'duration-[var(--dur-fast)] hover:bg-foreground/[0.07]',
+									isActive && 'bg-foreground/[0.09]',
 									isNested && 'pl-6',
 								)}
 							>
