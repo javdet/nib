@@ -64,7 +64,7 @@ func (s *ConfigStore) initialize() error {
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("stat executor config file: %w", err)
 		}
-		return s.writeConfigLocked(Config{Type: TypeLocal, Image: ""})
+		return s.writeConfigLocked(Config{Type: TypeDisabled, Image: ""})
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func (s *ConfigStore) Set(cfg Config) error {
 // ValidateConfig checks that cfg has a supported type and platform combination.
 func ValidateConfig(cfg Config) error {
 	switch cfg.Type {
-	case TypeLocal:
+	case TypeDisabled, TypeLocal:
 	case TypeRemote:
 		if !KnownPlatform(cfg.Platform) {
 			return ErrInvalidPlatform
@@ -360,7 +360,7 @@ func parseConfig(content string) (Config, error) {
 // "kubernetes" was a top-level executor type.
 func migrateConfig(cfg Config) Config {
 	if cfg.Type == "" {
-		cfg.Type = TypeLocal
+		cfg.Type = TypeDisabled
 	}
 	if cfg.Type == "kubernetes" {
 		cfg.Type = TypeRemote

@@ -64,6 +64,9 @@ func (s *Service) RunAction(ctx context.Context, req ActionRunRequest) (ActionRu
 	if err != nil {
 		return ActionRunResult{}, err
 	}
+	if cfg.Type == TypeDisabled {
+		return ActionRunResult{}, ErrExecutorDisabled
+	}
 	if err := validateActionRunRequest(req, cfg); err != nil {
 		return ActionRunResult{}, err
 	}
@@ -77,6 +80,8 @@ func (s *Service) RunAction(ctx context.Context, req ActionRunRequest) (ActionRu
 	}
 
 	switch cfg.Type {
+	case TypeDisabled:
+		return ActionRunResult{}, ErrExecutorDisabled
 	case TypeLocal:
 		return s.runActionLocal(ctx, cfg, req)
 	case TypeRemote:

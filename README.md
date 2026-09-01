@@ -108,6 +108,14 @@ docker compose -f docker-compose.dev.yml up
 
 See `.env.example` for all supported variables.
 
+### Executor type
+
+Settings → Executor → **Type** selects how agent containers are launched:
+
+- **Disabled** (default) — the executor is off. No other executor settings are shown, and **Execute action** is greyed out on `code` steps.
+- **Local (Docker socket)** — containers run on the backend host Docker daemon.
+- **Remote** — containers run on a remote platform (currently Kubernetes).
+
 ### Remote Kubernetes executor
 
 When executor type is **Remote** and platform is **Kubernetes**, pressing **Execute action** on a `code` step creates a Kubernetes Job from `backend/internal/executor/templates/job.yaml.tmpl` (override with `{DATA_DIR}/job.yaml.tmpl` if needed).

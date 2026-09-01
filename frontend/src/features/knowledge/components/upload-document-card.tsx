@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Eye, FileUp, Upload } from 'lucide-react'
+import { Eye, FileUp, Loader2, Sparkles, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import {
 	type KnowledgeCollection,
 	isValidKnowledgeCollectionName,
 } from '../api/knowledge'
+import { parseRepositoryList } from '../lib/build-kb-request'
 import { CollectionSelect } from './collection-select'
 import { ViewDocumentDialog } from './view-document-dialog'
 
@@ -17,6 +18,10 @@ interface UploadDocumentCardProps {
 	onCollectionChange: (name: string) => void
 	uploading: boolean
 	onUpload: (file: File) => void
+	repositories: string
+	onRepositoriesChange: (value: string) => void
+	generating: boolean
+	onGenerate: () => void
 }
 
 export function UploadDocumentCard({
@@ -25,6 +30,10 @@ export function UploadDocumentCard({
 	onCollectionChange,
 	uploading,
 	onUpload,
+	repositories,
+	onRepositoriesChange,
+	generating,
+	onGenerate,
 }: UploadDocumentCardProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
 	const [selectedName, setSelectedName] = useState<string | null>(null)
@@ -37,6 +46,10 @@ export function UploadDocumentCard({
 	const isNewCollection =
 		trimmedCollection.length > 0 && selectedCollection === undefined
 	const isCollectionValid = isValidKnowledgeCollectionName(collection)
+
+	// Both paths write the whole collection, so neither may run while the other does.
+	const busy = uploading || generating
+	const hasRepositories = parseRepositoryList(repositories).length > 0
 
 	function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
 		const file = e.target.files?.[0]
@@ -63,12 +76,12 @@ export function UploadDocumentCard({
 						collections={collections}
 						value={collection}
 						onChange={onCollectionChange}
-						disabled={uploading}
+						disabled={busy}
 					/>
 				</div>
 
 				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
-					Uploading replaces all chunks in the{' '}
+					Uploading or generating replaces all chunks in the{' '}
 					<strong>{displayCollection}</strong> collection. Only one document is
 					kept at a time.
 				</div>
@@ -114,7 +127,7 @@ export function UploadDocumentCard({
 						accept=".md,.txt,.markdown,text/plain,text/markdown"
 						className="min-w-0 cursor-pointer py-1.5"
 						onChange={handleFileChange}
-						disabled={uploading}
+						disabled={busy}
 					/>
 					<div className="flex justify-end gap-2">
 						<Button
@@ -127,9 +140,7 @@ export function UploadDocumentCard({
 						</Button>
 						<Button
 							onClick={handleUpload}
-							disabled={
-								uploading || !selectedName || !isCollectionValid
-							}
+							disabled={busy || !selectedName || !isCollectionValid}
 						>
 							{uploading ? (
 								<>
@@ -151,6 +162,43 @@ export function UploadDocumentCard({
 						Ready: {selectedName}
 					</p>
 				)}
+
+				<div className="space-y-3 border-t pt-4">
+					<div className="space-y-2">
+						<Label htmlFor="kb-repositories">Repositories</Label>
+						<Input
+							id="kb-repositories"
+							value={repositories}
+							onChange={(e) => onRepositoriesChange(e.target.value)}
+							placeholder="playneta/kiss2-infra, https://github.com/playneta/helm-charts"
+							disabled={busy}
+							autoComplete="off"
+						/>
+						<p className="text-xs text-muted-foreground">
+							Comma-separated, as <code>owner/repo</code> or a full URL. The
+							agent reads these and writes the document to{' '}
+							<strong>{displayCollection}</strong>.
+						</p>
+					</div>
+					<div className="flex justify-end">
+						<Button
+							onClick={onGenerate}
+							disabled={busy || !hasRepositories || !isCollectionValid}
+						>
+							{generating ? (
+								<>
+									<Loader2 className="h-4 w-4 animate-spin" />
+									Starting…
+								</>
+							) : (
+								<>
+									<Sparkles className="h-4 w-4" />
+									Generate knowledge base
+								</>
+							)}
+						</Button>
+					</div>
+				</div>
 
 				<ViewDocumentDialog
 					collection={displayCollection}

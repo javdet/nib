@@ -57,6 +57,16 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 		return domain.Dialog{}, executor.ActionRunResult{}, fmt.Errorf("execute code action: secret service is not configured")
 	}
 
+	// Bail out before the execute dialog is created: a disabled executor never
+	// launches a container, so leaving a chat behind would be pure noise.
+	execCfg, err := s.executorSvc.ConfigStore().Get()
+	if err != nil {
+		return domain.Dialog{}, executor.ActionRunResult{}, fmt.Errorf("execute code action: read executor config: %w", err)
+	}
+	if execCfg.Type == executor.TypeDisabled {
+		return domain.Dialog{}, executor.ActionRunResult{}, executor.ErrExecutorDisabled
+	}
+
 	step, err := s.readActionPlanStep(planDialogID, key)
 	if err != nil {
 		return domain.Dialog{}, executor.ActionRunResult{}, err

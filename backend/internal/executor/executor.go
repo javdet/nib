@@ -40,6 +40,8 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	}
 
 	switch cfg.Type {
+	case TypeDisabled:
+		return RunResult{}, ErrExecutorDisabled
 	case TypeLocal:
 		return s.runLocal(ctx, cfg, req)
 	case TypeRemote:

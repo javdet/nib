@@ -16,8 +16,8 @@ func TestConfigStoreGetSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if cfg.Type != TypeLocal {
-		t.Fatalf("default type = %q, want %q", cfg.Type, TypeLocal)
+	if cfg.Type != TypeDisabled {
+		t.Fatalf("default type = %q, want %q", cfg.Type, TypeDisabled)
 	}
 	if cfg.WebhookBaseURL != "http://localhost:8080" {
 		t.Fatalf("default webhookBaseURL = %q, want http://localhost:8080", cfg.WebhookBaseURL)

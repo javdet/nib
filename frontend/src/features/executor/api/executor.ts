@@ -1,6 +1,6 @@
 import { api } from '@/lib/api-client'
 
-export type ExecutorType = 'local' | 'remote'
+export type ExecutorType = 'disabled' | 'local' | 'remote'
 export type ExecutorPlatform = 'docker' | 'kubernetes' | 'kubefoundry'
 export type ExecutorKubernetesAuthMode = 'local_config' | 'token'
 export type ExecutorAgent = 'claude-code' | 'codex'
