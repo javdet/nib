@@ -55,7 +55,7 @@ const markdownComponents: Components = {
 		}
 		return (
 			<code
-				className="break-all rounded bg-background/60 px-1 py-0.5 font-mono text-[0.85em]"
+				className="break-all rounded bg-background/60 px-1 py-0.5 font-mono text-[0.85em] text-code"
 				{...props}
 			>
 				{children}
