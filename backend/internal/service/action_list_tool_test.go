@@ -182,22 +182,22 @@ func TestGetActionListHandler_viaParentDialog(t *testing.T) {
 	if len(resp.Stages[0].Actions) != 2 {
 		t.Fatalf("actions = %d, want 2", len(resp.Stages[0].Actions))
 	}
-	if resp.Stages[0].Actions[0].Key != "s0.step0" || !resp.Stages[0].Actions[0].Executed {
+	if resp.Stages[0].Actions[0].Number != "1.1" || !resp.Stages[0].Actions[0].Executed {
 		t.Fatalf("first action = %#v", resp.Stages[0].Actions[0])
 	}
-	if resp.Stages[0].Actions[1].Key != "s0.step1" || resp.Stages[0].Actions[1].Executed {
+	if resp.Stages[0].Actions[1].Number != "1.2" || resp.Stages[0].Actions[1].Executed {
 		t.Fatalf("second action = %#v", resp.Stages[0].Actions[1])
 	}
 	if len(resp.Stages[0].Checks) != 1 {
 		t.Fatalf("checks = %d, want 1", len(resp.Stages[0].Checks))
 	}
-	if resp.Stages[0].Checks[0].Key != "s0.check0" || resp.Stages[0].Checks[0].Executed {
+	if resp.Stages[0].Checks[0].Number != "1.C1" || resp.Stages[0].Checks[0].Executed {
 		t.Fatalf("check = %#v", resp.Stages[0].Checks[0])
 	}
 	if len(resp.Rollback) != 1 {
 		t.Fatalf("rollback = %d, want 1", len(resp.Rollback))
 	}
-	if resp.Rollback[0].Key != "rollback.0" || !resp.Rollback[0].Executed {
+	if resp.Rollback[0].Number != "R1" || !resp.Rollback[0].Executed {
 		t.Fatalf("rollback = %#v", resp.Rollback[0])
 	}
 }
@@ -292,6 +292,18 @@ func TestBuildActionListResponse(t *testing.T) {
 	}
 	if resp.Stages[0].Checks[0].Executed {
 		t.Fatalf("check should not be executed: %#v", resp.Stages[0].Checks[0])
+	}
+	if resp.Stages[0].Number != 1 {
+		t.Fatalf("stage number = %d, want 1", resp.Stages[0].Number)
+	}
+	if got := resp.Stages[0].Actions[1].Number; got != "1.2" {
+		t.Fatalf("second action number = %q, want 1.2", got)
+	}
+	if got := resp.Stages[0].Checks[0].Number; got != "1.C1" {
+		t.Fatalf("check number = %q, want 1.C1", got)
+	}
+	if got := resp.Rollback[1].Number; got != "R2" {
+		t.Fatalf("second rollback number = %q, want R2", got)
 	}
 	if resp.Rollback[0].Executed {
 		t.Fatalf("rollback should not be executed: %#v", resp.Rollback[0])

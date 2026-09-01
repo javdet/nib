@@ -170,7 +170,7 @@ export function UploadDocumentCard({
 							id="kb-repositories"
 							value={repositories}
 							onChange={(e) => onRepositoriesChange(e.target.value)}
-							placeholder="acme/shop2-infra, https://github.com/acme/helm-charts"
+							placeholder="myorg/infra, https://github.com/myorg/helm-charts"
 							disabled={busy}
 							autoComplete="off"
 						/>

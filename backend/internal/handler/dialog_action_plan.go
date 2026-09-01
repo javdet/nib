@@ -111,7 +111,10 @@ func (h *DialogHandler) UpdateActionPlan() http.HandlerFunc {
 			return
 		}
 
-		if err := h.chatSvc.WriteActionPlan(id, req.Plan); err != nil {
+		// The write stamps the derived item numbers, so the response echoes what
+		// was stored rather than the payload that came in.
+		stored, err := h.chatSvc.WriteActionPlan(id, req.Plan)
+		if err != nil {
 			handleServiceError(w, err)
 			return
 		}
@@ -131,7 +134,7 @@ func (h *DialogHandler) UpdateActionPlan() http.HandlerFunc {
 		}
 
 		var planObj any
-		if err := json.Unmarshal(req.Plan, &planObj); err != nil {
+		if err := json.Unmarshal(stored, &planObj); err != nil {
 			handleServiceError(w, err)
 			return
 		}

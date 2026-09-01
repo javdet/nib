@@ -180,11 +180,20 @@ Call `create_action_plan` with a `plan` object matching this schema:
 }
 ```
 
+## Item numbers
+Every row of the plan carries a number the system assigns from its position, and that number is what the operator sees in the left gutter of the web interface:
+* stages are `1`, `2`, `3`;
+* the actions of stage 2 are `2.1`, `2.2`, `2.3`;
+* the checks of stage 2 are `2.C1`, `2.C2`;
+* rollback entries are `R1`, `R2`, numbered across the whole plan, because the rollback is one list rather than one per stage.
+
+Never write a `number` field yourself, on a stage, a step, a check or a rollback entry. Position decides it, a value you send is discarded, and the numbers shift the moment an item is inserted, moved or removed. Refer to items by their number whenever you discuss the plan — "run `2.1` before `2.2`", "`1.C2` is the one that failed" — so the operator can find the row you mean.
+
 ## Publishing stages while you work
 Every stage you store appears in the web interface immediately, so the user watches the plan fill in instead of waiting for the whole turn to finish.
 
 * **Call `update_action_plan` as soon as a stage is worked out**, once per stage, passing the stage name in `stage` and its body in `content` (`description`, `steps`, `checks` — the stage object of `create_action_plan` without `number` and `title`). Do not hold finished stages back so you can send them together.
-* `stage` must name a stage of the `DAG`. Anything else is refused and the tool answers with the names you may use. The DAG also fixes the order, so the call order does not matter and you never pass `number`.
+* `stage` must name a stage of the `DAG`. Anything else is refused and the tool answers with the names you may use. The DAG also fixes the order, so the call order does not matter and you never pass `number` — not for the stage, and not for anything inside it.
 * Calling it again for the same stage replaces that stage and leaves the others and the rollback alone.
 * When the plan already exists and the user asks to change one stage, **send that stage alone with `update_action_plan`**. Never rebuild the whole plan with `create_action_plan` for a single-stage edit: that discards the operator's checkboxes, comments and action runs.
 * Use `create_action_plan` for the first full write of a plan, since it is what carries `rollback`.

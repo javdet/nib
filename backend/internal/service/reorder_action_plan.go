@@ -282,7 +282,10 @@ func (s *ChatService) ReorderActionPlanItems(
 		return nil, nil, nil, fmt.Errorf("marshal action plan: %w", err)
 	}
 
-	if err := s.WriteActionPlan(dialogID, planData); err != nil {
+	// The write renumbers the moved items, so the stored document — not the one
+	// assembled above — is what the caller returns to the client.
+	planData, err = s.WriteActionPlan(dialogID, planData)
+	if err != nil {
 		return nil, nil, nil, err
 	}
 

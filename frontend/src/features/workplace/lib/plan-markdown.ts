@@ -6,6 +6,10 @@ import type {
 	PlanStatus,
 } from '@/features/dialogs/api/dialogs'
 import { getPlanStatusLabel } from '../components/plan-status-badge'
+import {
+	actionPlanItemNumber,
+	actionPlanStageNumber,
+} from './action-plan-number'
 
 export interface PlanExportInput {
 	title: string
@@ -112,21 +116,25 @@ function appendStepDetails(
 function renderStep(
 	lines: string[],
 	key: string,
+	number: string,
 	step: ActionStep,
 	checked: Set<string>,
 	comments: Record<string, string>,
 ): void {
-	lines.push(`${checkboxPrefix(checked, key)} Action`)
+	lines.push(`${checkboxPrefix(checked, key)} **${number}** Action`)
 	appendStepDetails(lines, step, comments[key])
 }
 
 function renderCheck(
 	lines: string[],
 	key: string,
+	number: string,
 	check: ActionCheck,
 	checked: Set<string>,
 ): void {
-	lines.push(`${checkboxPrefix(checked, key)} ${check.check.split('\n')[0]}`)
+	lines.push(
+		`${checkboxPrefix(checked, key)} **${number}** ${check.check.split('\n')[0]}`,
+	)
 	const checkLines = check.check.trim().split('\n')
 	if (checkLines.length > 1) {
 		for (const line of checkLines.slice(1)) {
@@ -146,8 +154,7 @@ function renderActionList(
 	comments: Record<string, string>,
 ): void {
 	for (const [stageIdx, stage] of plan.stages.entries()) {
-		const stageNumber = stage.number || stageIdx + 1
-		lines.push(`### Stage ${stageNumber}. ${stage.title}`)
+		lines.push(`### Stage ${actionPlanStageNumber(stageIdx)}. ${stage.title}`)
 
 		const description = stage.description?.trim()
 		if (description) {
@@ -159,7 +166,8 @@ function renderActionList(
 			lines.push('')
 			for (const [stepIdx, step] of stage.steps.entries()) {
 				const key = `s${stageIdx}.step${stepIdx}`
-				renderStep(lines, key, step, checked, comments)
+				const number = actionPlanItemNumber('step', stageIdx, stepIdx)
+				renderStep(lines, key, number, step, checked, comments)
 				lines.push('')
 			}
 		}
@@ -169,7 +177,8 @@ function renderActionList(
 			lines.push('')
 			for (const [checkIdx, check] of stage.checks.entries()) {
 				const key = `s${stageIdx}.check${checkIdx}`
-				renderCheck(lines, key, check, checked)
+				const number = actionPlanItemNumber('check', stageIdx, checkIdx)
+				renderCheck(lines, key, number, check, checked)
 				lines.push('')
 			}
 		}
@@ -180,7 +189,8 @@ function renderActionList(
 		lines.push('')
 		for (const [idx, step] of plan.rollback.entries()) {
 			const key = `rollback.${idx}`
-			renderStep(lines, key, step, checked, comments)
+			const number = actionPlanItemNumber('rollback', 0, idx)
+			renderStep(lines, key, number, step, checked, comments)
 			lines.push('')
 		}
 	}
