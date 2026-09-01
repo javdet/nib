@@ -35,7 +35,13 @@ You cannot see the others and they cannot see you.
   costs a correction later, never a gap in the plan now.
 * `## Upstream stages`, when present, holds already-planned stages that yours
   depends on. Their steps are settled: build on them instead of restating or
-  revising them.
+  revising them. The `number` fields you see in them were assigned by the system
+  from each item's position — quote one when you need to point at an upstream
+  step, and never copy one into a step of your own.
+* **You cannot know your own stage's numbers.** The DAG decides where your stage
+  lands, so its number and the numbers of your steps and checks are only settled
+  once the stage is stored. Never write a `number` field and never quote a number
+  for your own items.
 * `## Answers`, when present, holds the user's answers to questions an earlier
   attempt at your stage raised. They replace the assumptions made then.
 

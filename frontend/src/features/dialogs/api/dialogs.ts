@@ -118,6 +118,10 @@ export type PlanStatus =
 	| 'rolled_back'
 
 export interface ActionStep {
+	// number is the operator-facing label the backend derives from the item's
+	// position ("1.2", "R1"). The UI derives its own from position instead, so
+	// plans stored before numbering existed still render numbered.
+	number?: string
 	type: string
 	action: string
 	command?: string
@@ -128,6 +132,7 @@ export interface ActionStep {
 }
 
 export interface ActionCheck {
+	number?: string
 	check: string
 	expectation: string
 }

@@ -214,12 +214,7 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 
 		relPath := filepath.Join("action_plans", dialogID.String()+".json")
 
-		if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-			return "", fmt.Errorf("create action_plans directory: %w", err)
-		}
-
-		dest := filepath.Join(s.actionPlansDir, dialogID.String()+".json")
-		if err := writeActionPlanFile(dest, data); err != nil {
+		if _, err := s.WriteActionPlan(dialogID, data); err != nil {
 			return "", err
 		}
 
@@ -269,14 +264,38 @@ func (s *ChatService) ReadActionPlan(dialogID uuid.UUID) (json.RawMessage, bool,
 	return json.RawMessage(b), true, nil
 }
 
-// WriteActionPlan overwrites the stored action plan JSON for a dialog.
-func (s *ChatService) WriteActionPlan(dialogID uuid.UUID, plan json.RawMessage) error {
+// WriteActionPlan overwrites the stored action plan JSON for a dialog and
+// returns the bytes it wrote. Every write goes through here, so stamping the
+// derived item numbers on the way past makes "numbers follow position" an
+// invariant of the file rather than a rule each caller has to remember. The
+// normalized bytes are returned because callers that echo the plan back to the
+// client must send the numbered document, not their input.
+func (s *ChatService) WriteActionPlan(dialogID uuid.UUID, plan json.RawMessage) (json.RawMessage, error) {
 	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
+		return nil, fmt.Errorf("create action_plans directory: %w", err)
+	}
+
+	// A document that is not a JSON object cannot be numbered, but refusing it
+	// here would turn a malformed operator PUT into a write failure, so it is
+	// stored as it came in.
+	if numbered, err := renumberActionPlanJSON(plan); err == nil {
+		plan = numbered
 	}
 
 	path := filepath.Join(s.actionPlansDir, dialogID.String()+".json")
-	return writeActionPlanFile(path, plan)
+	if err := writeActionPlanFile(path, plan); err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+func renumberActionPlanJSON(plan json.RawMessage) (json.RawMessage, error) {
+	var doc map[string]any
+	if err := json.Unmarshal(plan, &doc); err != nil {
+		return nil, err
+	}
+	renumberActionPlan(doc)
+	return json.Marshal(doc)
 }
 
 // ReadActionPlanChecks returns persisted checkbox keys for a dialog.

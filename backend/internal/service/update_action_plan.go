@@ -185,7 +185,7 @@ func (s *ChatService) writeActionPlanStage(
 	if err != nil {
 		return 0, 0, fmt.Errorf("marshal action plan: %w", err)
 	}
-	if err := s.WriteActionPlan(dialogID, planData); err != nil {
+	if _, err := s.WriteActionPlan(dialogID, planData); err != nil {
 		return 0, 0, err
 	}
 

@@ -17,8 +17,8 @@ describe('parseRepositoryList', () => {
 		['a/one, , a/two', ['a/one', 'a/two']],
 		['a/one, a/one', ['a/one']],
 		[
-			'playneta/kiss2-infra, https://github.com/playneta/helm-charts',
-			['playneta/kiss2-infra', 'https://github.com/playneta/helm-charts'],
+			'myorg/infra, https://github.com/myorg/helm-charts',
+			['myorg/infra', 'https://github.com/myorg/helm-charts'],
 		],
 	])('%s -> %j', (raw, expected) => {
 		expect(parseRepositoryList(raw)).toEqual(expected)
@@ -34,9 +34,9 @@ describe('parseRepositoryList', () => {
 })
 
 describe('buildKnowledgeBaseRequest', () => {
-	const request = buildKnowledgeBaseRequest('kiss', [
-		'playneta/kiss2-infra',
-		'https://github.com/playneta/helm-charts',
+	const request = buildKnowledgeBaseRequest('myproject', [
+		'myorg/infra',
+		'https://github.com/myorg/helm-charts',
 	])
 
 	it('names the skill so the invocation does not depend on description matching', () => {
@@ -45,9 +45,9 @@ describe('buildKnowledgeBaseRequest', () => {
 	})
 
 	it('passes both parameters the skill requires', () => {
-		expect(request).toContain('project: kiss')
+		expect(request).toContain('project: myproject')
 		expect(request).toContain(
-			'repositories: playneta/kiss2-infra, https://github.com/playneta/helm-charts',
+			'repositories: myorg/infra, https://github.com/myorg/helm-charts',
 		)
 	})
 

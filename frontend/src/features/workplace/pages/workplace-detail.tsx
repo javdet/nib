@@ -63,6 +63,7 @@ import {
 	buildPlanMarkdown,
 	planMarkdownFileName,
 } from '../lib/plan-markdown'
+import { actionPlanNumberForKey } from '../lib/action-plan-number'
 
 // commandActionTypes are the step types executed by copying commands into a
 // terminal, so their command field is offered for editing.
@@ -743,6 +744,11 @@ export function WorkplaceDetail() {
 				const parts: string[] = []
 				if (created && summaryContent) {
 					parts.push(`## Summary\n\n${summaryContent}`)
+				}
+				// The number lets the executor name the row back to the operator.
+				const number = actionPlanNumberForKey(key)
+				if (number) {
+					parts.push(`## Action Number\n\n${number}`)
 				}
 				parts.push(`## Action Type\n\n${step.type}`)
 				parts.push(`## Action\n\n${step.action}`)

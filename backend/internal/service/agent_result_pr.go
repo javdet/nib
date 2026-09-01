@@ -56,7 +56,7 @@ func (s *ChatService) attachActionPullRequest(ctx context.Context, exec domain.D
 	if err != nil {
 		return fmt.Errorf("attach action pull request: marshal plan: %w", err)
 	}
-	if err := s.WriteActionPlan(planID, planData); err != nil {
+	if _, err := s.WriteActionPlan(planID, planData); err != nil {
 		return fmt.Errorf("attach action pull request: write plan: %w", err)
 	}
 

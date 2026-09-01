@@ -168,7 +168,7 @@ kbMcp:
 
   image:
     repository: javdet/nib-kb
-    tag: "0.7.5"
+    tag: "0.7.6"
     pullPolicy: IfNotPresent
 
   service:

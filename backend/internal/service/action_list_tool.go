@@ -18,7 +18,8 @@ func GetActionListToolDef() llm.ToolDef {
 	return llm.ToolDef{
 		Name: GetActionListToolName,
 		Description: "Return the action plan bound to the current conversation. " +
-			"Includes stages with actions, verification checks, and rollback steps, each with type and executed status.",
+			"Includes stages with actions, verification checks, and rollback steps, each with type and executed status. " +
+			"Each action and check carries the `number` the operator sees next to it in the web interface.",
 		Parameters: getActionListParameters,
 	}
 }
@@ -36,7 +37,7 @@ type actionListStage struct {
 }
 
 type actionListAction struct {
-	Key      string `json:"key"`
+	Number   string `json:"number"`
 	Type     string `json:"type"`
 	Action   string `json:"action"`
 	Command  string `json:"command,omitempty"`
@@ -46,7 +47,7 @@ type actionListAction struct {
 }
 
 type actionListCheck struct {
-	Key         string `json:"key"`
+	Number      string `json:"number"`
 	Check       string `json:"check"`
 	Expectation string `json:"expectation"`
 	Executed    bool   `json:"executed"`
@@ -66,6 +67,9 @@ type storedActionStage struct {
 }
 
 type storedActionStep struct {
+	// Number is the operator-facing label of the step ("1.2", "R1"), derived
+	// from its position on every write and never trusted from input.
+	Number string `json:"number,omitempty"`
 	Type   string `json:"type"`
 	Action string `json:"action"`
 	// Command holds the verbatim commands of a shell or curl step, kept apart
@@ -77,6 +81,7 @@ type storedActionStep struct {
 }
 
 type storedActionCheck struct {
+	Number      string `json:"number,omitempty"`
 	Check       string `json:"check"`
 	Expectation string `json:"expectation"`
 }
@@ -141,7 +146,9 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 
 	for stageIdx, stage := range plan.Stages {
 		stageResp := actionListStage{
-			Number:  stage.Number,
+			// The stage number is derived here too, so a legacy plan carrying a
+			// stale stored value cannot desync from its own item numbers.
+			Number:  actionPlanStageNumber(stageIdx),
 			Title:   stage.Title,
 			Actions: make([]actionListAction, 0, len(stage.Steps)),
 			Checks:  make([]actionListCheck, 0, len(stage.Checks)),
@@ -150,7 +157,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 			key := actionPlanItemKey(stageIdx, ActionPlanScopeSteps, stepIdx)
 			_, executed := checked[key]
 			stageResp.Actions = append(stageResp.Actions, actionListAction{
-				Key:      key,
+				Number:   actionPlanItemNumber(stageIdx, ActionPlanScopeSteps, stepIdx),
 				Type:     step.Type,
 				Action:   step.Action,
 				Command:  step.Command,
@@ -163,7 +170,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 			key := actionPlanItemKey(stageIdx, ActionPlanScopeChecks, checkIdx)
 			_, executed := checked[key]
 			stageResp.Checks = append(stageResp.Checks, actionListCheck{
-				Key:         key,
+				Number:      actionPlanItemNumber(stageIdx, ActionPlanScopeChecks, checkIdx),
 				Check:       check.Check,
 				Expectation: check.Expectation,
 				Executed:    executed,
@@ -175,7 +182,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 		key := fmt.Sprintf("rollback.%d", idx)
 		_, executed := checked[key]
 		resp.Rollback = append(resp.Rollback, actionListAction{
-			Key:      key,
+			Number:   actionPlanRollbackNumber(idx),
 			Type:     step.Type,
 			Action:   step.Action,
 			Command:  step.Command,

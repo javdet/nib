@@ -19,6 +19,11 @@ import { MarkdownMessage } from '@/components/markdown-message'
 import { cn } from '@/lib/utils'
 import type { ActionPlan, ActionStep } from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
+import { actionTypeIcon } from '../lib/action-type-icon'
+import {
+	actionPlanItemNumber,
+	actionPlanStageNumber,
+} from '../lib/action-plan-number'
 
 const EXECUTOR_DISABLED_REASON =
 	'Executor is disabled — set its type in executor settings to run code actions'
@@ -80,8 +85,26 @@ function DragHandle({
 	)
 }
 
+// ItemNumber is the left gutter label ("1.2", "1.C1", "R1"). It repeats the drag
+// handle's stretched-column shape so every row keeps the same grid of gutters.
+function ItemNumber({ id, number }: { id: string; number: string }) {
+	return (
+		<div
+			id={`${id}-number`}
+			className={cn(
+				'flex w-10 shrink-0 select-none items-center justify-center',
+				'self-stretch border-r font-mono text-xs tabular-nums',
+				'text-muted-foreground',
+			)}
+		>
+			{number}
+		</div>
+	)
+}
+
 interface CheckableRowProps {
 	id: string
+	number: string
 	checked: boolean
 	onToggle: (key: string, nextChecked: boolean) => void
 	dragDisabled?: boolean
@@ -92,6 +115,7 @@ interface CheckableRowProps {
 
 function CheckableRow({
 	id,
+	number,
 	checked,
 	onToggle,
 	dragDisabled,
@@ -106,6 +130,7 @@ function CheckableRow({
 				checked && 'border-green-500/40 bg-green-500/10',
 			)}
 		>
+			<ItemNumber id={id} number={number} />
 			<DragHandle
 				disabled={dragDisabled}
 				onGripPointerDown={onGripPointerDown}
@@ -115,7 +140,7 @@ function CheckableRow({
 				<Checkbox
 					checked={checked}
 					onCheckedChange={(value) => onToggle(id, value === true)}
-					aria-labelledby={`${id}-label`}
+					aria-labelledby={`${id}-number ${id}-label`}
 					className="mt-0.5 cursor-pointer"
 				/>
 				<div id={`${id}-label`} className="min-w-0 flex-1">
@@ -133,9 +158,24 @@ function ActionLabels({ step }: { step: ActionStep }) {
 
 	if (!type && !showRepository) return null
 
+	const TypeIcon = type ? actionTypeIcon(type) : null
+
 	return (
 		<div className="mb-1 flex flex-wrap items-center gap-1.5">
-			{type ? <Badge variant="secondary">type: {type}</Badge> : null}
+			{type && TypeIcon ? (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span
+							tabIndex={0}
+							className="inline-flex text-muted-foreground"
+							aria-label={type}
+						>
+							<TypeIcon className="h-4 w-4" aria-hidden />
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>{type}</TooltipContent>
+				</Tooltip>
+			) : null}
 			{showRepository ? (
 				<Badge variant="outline">repository: {repository}</Badge>
 			) : null}
@@ -185,6 +225,7 @@ function ActionBody({ step }: { step: ActionStep }) {
 
 interface ExecutableActionRowProps {
 	id: string
+	number: string
 	checked: boolean
 	comment: string
 	onToggle: (key: string, nextChecked: boolean) => void
@@ -201,6 +242,7 @@ interface ExecutableActionRowProps {
 
 function ExecutableActionRow({
 	id,
+	number,
 	checked,
 	comment,
 	onToggle,
@@ -223,6 +265,7 @@ function ExecutableActionRow({
 				checked && 'border-green-500/40 bg-green-500/10',
 			)}
 		>
+			<ItemNumber id={id} number={number} />
 			<DragHandle
 				disabled={dragDisabled}
 				onGripPointerDown={onGripPointerDown}
@@ -232,7 +275,7 @@ function ExecutableActionRow({
 				<Checkbox
 					checked={checked}
 					onCheckedChange={(value) => onToggle(id, value === true)}
-					aria-labelledby={`${id}-label`}
+					aria-labelledby={`${id}-number ${id}-label`}
 					className="mt-0.5 cursor-pointer"
 				/>
 				<div id={`${id}-label`} className="min-w-0 flex-1">
@@ -501,7 +544,9 @@ export function ActionPlanView({
 			{plan.stages.map((stage, stageIdx) => (
 				<section key={`stage-${stageIdx}`} className="space-y-3">
 					<div>
-						<h3 className="text-sm font-semibold">{stage.title}</h3>
+						<h3 className="text-sm font-semibold">
+							{actionPlanStageNumber(stageIdx)}. {stage.title}
+						</h3>
 						{stage.description ? (
 							<p className="mt-1 text-xs text-muted-foreground">
 								{stage.description}
@@ -535,6 +580,11 @@ export function ActionPlanView({
 									>
 										<ExecutableActionRow
 											id={key}
+											number={actionPlanItemNumber(
+												'step',
+												stageIdx,
+												stepIdx,
+											)}
 											checked={checkedSet.has(key)}
 											comment={comments[key] ?? ''}
 											onToggle={onToggle}
@@ -587,6 +637,11 @@ export function ActionPlanView({
 										>
 											<CheckableRow
 												id={key}
+												number={actionPlanItemNumber(
+													'check',
+													stageIdx,
+													checkIdx,
+												)}
 												checked={checkedSet.has(key)}
 												onToggle={onToggle}
 												dragDisabled={dragDisabled}
@@ -619,6 +674,7 @@ export function ActionPlanView({
 								<li key={key}>
 									<ExecutableActionRow
 										id={key}
+										number={actionPlanItemNumber('rollback', 0, idx)}
 										checked={checkedSet.has(key)}
 										comment={comments[key] ?? ''}
 										onToggle={onToggle}
