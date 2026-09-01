@@ -155,6 +155,7 @@ export function WorkplaceDetail() {
 	const [summaryExpanded, setSummaryExpanded] = useState(true)
 	const [dagExpanded, setDagExpanded] = useState(true)
 	const [actionListExpanded, setActionListExpanded] = useState(true)
+	const [stagesExpanded, setStagesExpanded] = useState(true)
 	const [processingPlan, setProcessingPlan] = useState(false)
 	const [isEditingTitle, setIsEditingTitle] = useState(false)
 	const [titleDraft, setTitleDraft] = useState('')
@@ -1169,7 +1170,24 @@ export function WorkplaceDetail() {
 
 					{fanoutRun && fanoutRun.stages.length > 0 && (
 						<div className="space-y-1 rounded-md border p-3">
-							<p className="text-sm font-medium">
+							<div
+								role="button"
+								tabIndex={0}
+								aria-expanded={stagesExpanded}
+								className="flex cursor-pointer items-center gap-2 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								onClick={() => setStagesExpanded((prev) => !prev)}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault()
+										setStagesExpanded((prev) => !prev)
+									}
+								}}
+							>
+								{stagesExpanded ? (
+									<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+								) : (
+									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+								)}
 								Stages{' '}
 								<span className="text-muted-foreground">
 									(
@@ -1179,46 +1197,50 @@ export function WorkplaceDetail() {
 									}
 									/{fanoutRun.stages.length})
 								</span>
-							</p>
-							{fanoutRun.stages.map((stage) => (
-								<div
-									key={stage.title}
-									className="flex items-center justify-between gap-2 text-sm"
-								>
-									<span className="truncate">{stage.title}</span>
-									<span className="flex shrink-0 items-center gap-2">
-										<span
-											className={
-												stage.status === 'failed'
-													? 'text-destructive'
-													: stage.status === 'done'
-														? 'text-muted-foreground'
-														: ''
-											}
-											title={stage.error}
+							</div>
+							{stagesExpanded && (
+								<>
+									{fanoutRun.stages.map((stage) => (
+										<div
+											key={stage.title}
+											className="flex items-center justify-between gap-2 text-sm"
 										>
-											{stage.status}
-										</span>
-										{stage.dialogId && (
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												onClick={() =>
-													handleOpenStageDialog(stage.dialogId as string)
-												}
-											>
-												Open
-											</Button>
-										)}
-									</span>
-								</div>
-							))}
-							{fanoutRun.status === 'awaiting_input' && (
-								<p className="pt-2 text-sm text-muted-foreground">
-									Some stages rest on assumptions. Answer the questions in
-									the chat and those stages are replanned.
-								</p>
+											<span className="truncate">{stage.title}</span>
+											<span className="flex shrink-0 items-center gap-2">
+												<span
+													className={
+														stage.status === 'failed'
+															? 'text-destructive'
+															: stage.status === 'done'
+																? 'text-lime-700 dark:text-lime-300'
+																: ''
+													}
+													title={stage.error}
+												>
+													{stage.status}
+												</span>
+												{stage.dialogId && (
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onClick={() =>
+															handleOpenStageDialog(stage.dialogId as string)
+														}
+													>
+														Open
+													</Button>
+												)}
+											</span>
+										</div>
+									))}
+									{fanoutRun.status === 'awaiting_input' && (
+										<p className="pt-2 text-sm text-muted-foreground">
+											Some stages rest on assumptions. Answer the questions in
+											the chat and those stages are replanned.
+										</p>
+									)}
+								</>
 							)}
 						</div>
 					)}
