@@ -4,8 +4,10 @@ package executor
 type Type string
 
 const (
-	TypeLocal  Type = "local"
-	TypeRemote Type = "remote"
+	// TypeDisabled turns the executor off: no agent container is ever launched.
+	TypeDisabled Type = "disabled"
+	TypeLocal    Type = "local"
+	TypeRemote   Type = "remote"
 )
 
 // Platform identifies the remote platform used when Type is TypeRemote.
@@ -73,6 +75,7 @@ type AuthTypeOption struct {
 
 // TypeOptions lists executor types exposed in the UI, with their availability.
 var TypeOptions = []TypeOption{
+	{Value: TypeDisabled, Enabled: true},
 	{Value: TypeLocal, Enabled: true},
 	{Value: TypeRemote, Enabled: true},
 }

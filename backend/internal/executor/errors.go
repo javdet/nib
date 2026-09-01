@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrInvalidType                    = errors.New("invalid executor type")
+	ErrExecutorDisabled               = errors.New("executor is disabled; choose an executor type in executor settings")
 	ErrInvalidPlatform                = errors.New("invalid executor platform")
 	ErrPlatformUnavailable            = errors.New("executor platform is not available yet")
 	ErrInvalidKubernetesAuthMode      = errors.New("invalid kubernetes auth mode")

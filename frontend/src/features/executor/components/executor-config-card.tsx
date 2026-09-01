@@ -22,6 +22,7 @@ import {
 import { listSecrets, type Secret } from '@/features/secrets/api/secrets'
 
 const TYPE_LABELS: Record<ExecutorType, string> = {
+	disabled: 'Disabled',
 	local: 'Local (Docker socket)',
 	remote: 'Remote',
 }
@@ -92,7 +93,7 @@ export function ExecutorConfigCard() {
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [saved, setSaved] = useState<ExecutorConfig | null>(null)
-	const [type, setType] = useState<ExecutorType>('local')
+	const [type, setType] = useState<ExecutorType>('disabled')
 	const [platform, setPlatform] = useState<ExecutorPlatform | ''>('')
 	const [kubernetesAuthMode, setKubernetesAuthMode] = useState<
 		ExecutorKubernetesAuthMode | ''
@@ -121,6 +122,8 @@ export function ExecutorConfigCard() {
 	const [llmModel, setLlmModel] = useState('')
 	const [secrets, setSecrets] = useState<Secret[]>([])
 
+	// "disabled" turns the executor off entirely, so it is the only setting shown.
+	const isDisabled = type === 'disabled'
 	const showKubernetes = type === 'remote' && platform === 'kubernetes'
 	const showLocalConfig =
 		showKubernetes && kubernetesAuthMode === 'local_config'
@@ -331,6 +334,12 @@ export function ExecutorConfigCard() {
 										</option>
 									))}
 								</Select>
+								{isDisabled && (
+									<p className="text-xs text-muted-foreground">
+										No agent containers are launched and code actions
+										cannot be executed.
+									</p>
+								)}
 							</div>
 							{type === 'remote' && (
 								<div className="space-y-2">
@@ -478,7 +487,7 @@ export function ExecutorConfigCard() {
 						</div>
 					)}
 
-					{!loading && saved && (
+					{!loading && saved && !isDisabled && (
 						<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor={agentId}>Agent</Label>
@@ -602,7 +611,7 @@ export function ExecutorConfigCard() {
 						</div>
 					)}
 
-					{!loading && saved && showDetails && (
+					{!loading && saved && !isDisabled && showDetails && (
 						<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor={imageId}>Image</Label>

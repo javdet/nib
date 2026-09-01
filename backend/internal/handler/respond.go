@@ -67,7 +67,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		// The MCP server, not this backend, is what failed, and the message is
 		// already redacted — pass it through so the UI can show the cause.
 		writeError(w, http.StatusBadGateway, err.Error())
-	case errors.Is(err, executor.ErrInvalidType),
+	case errors.Is(err, executor.ErrExecutorDisabled),
+		errors.Is(err, executor.ErrInvalidType),
 		errors.Is(err, executor.ErrInvalidPlatform),
 		errors.Is(err, executor.ErrPlatformUnavailable),
 		errors.Is(err, executor.ErrInvalidKubernetesAuthMode),

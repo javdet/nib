@@ -51,6 +51,10 @@ import {
 import { useDialog } from '@/features/dialogs/dialog-context'
 import { dialogDisplayTitle } from '@/features/dialogs/lib/dialog-title'
 import { useMode } from '@/features/modes/mode-context'
+import {
+	getExecutorConfig,
+	type ExecutorType,
+} from '@/features/executor/api/executor'
 import { ActionPlanView } from '../components/action-plan-view'
 import { DagView } from '../components/dag-view'
 import { PlanMetaTable } from '../components/plan-meta-table'
@@ -166,6 +170,7 @@ export function WorkplaceDetail() {
 	const [savingSubjects, setSavingSubjects] = useState(false)
 	const [savingCategories, setSavingCategories] = useState(false)
 	const [liveActionPlanVersion, setLiveActionPlanVersion] = useState(0)
+	const [executorType, setExecutorType] = useState<ExecutorType | null>(null)
 	const [simplifiedView, setSimplifiedView] = useState(
 		() => localStorage.getItem('plan-simplified-view') !== 'false',
 	)
@@ -217,6 +222,21 @@ export function WorkplaceDetail() {
 		if (!id) return
 		setActiveDialogId(id)
 	}, [id, setActiveDialogId])
+
+	// The executor type decides whether code actions can run at all; a failed
+	// read leaves it null so the Execute button keeps its default behaviour.
+	useEffect(() => {
+		let cancelled = false
+		void getExecutorConfig()
+			.then((cfg) => {
+				if (!cancelled) setExecutorType(cfg.type)
+			})
+			.catch(() => {})
+
+		return () => {
+			cancelled = true
+		}
+	}, [])
 
 	useEffect(() => {
 		if (!id) return
@@ -1258,6 +1278,7 @@ export function WorkplaceDetail() {
 								void handleReorder(scope, stage, from, to)
 							}
 							reordering={reordering}
+							executorDisabled={executorType === 'disabled'}
 						/>
 					) : fanoutRun ? (
 						<p className="text-sm text-muted-foreground">

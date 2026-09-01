@@ -20,6 +20,9 @@ import { cn } from '@/lib/utils'
 import type { ActionPlan, ActionStep } from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
 
+const EXECUTOR_DISABLED_REASON =
+	'Executor is disabled — set its type in executor settings to run code actions'
+
 interface ActionPlanViewProps {
 	plan: ActionPlan
 	checked: string[]
@@ -30,6 +33,13 @@ interface ActionPlanViewProps {
 	onExecute: (step: ActionStep, key: string) => void
 	onReorder: (scope: ActionPlanScope, stage: number, from: number, to: number) => void
 	reordering?: boolean
+	// executorDisabled mirrors the "disabled" executor type: code actions have
+	// nowhere to run, so their Execute button is turned off.
+	executorDisabled?: boolean
+}
+
+function isCodeStep(step: ActionStep): boolean {
+	return step.type?.trim().toLowerCase() === 'code'
 }
 
 interface DragState {
@@ -181,6 +191,8 @@ interface ExecutableActionRowProps {
 	onComment: () => void
 	onEdit: () => void
 	onExecute: () => void
+	executeDisabled?: boolean
+	executeDisabledReason?: string
 	dragDisabled?: boolean
 	onGripPointerDown: () => void
 	onGripPointerUp: () => void
@@ -195,6 +207,8 @@ function ExecutableActionRow({
 	onComment,
 	onEdit,
 	onExecute,
+	executeDisabled = false,
+	executeDisabledReason,
 	dragDisabled,
 	onGripPointerDown,
 	onGripPointerUp,
@@ -270,24 +284,34 @@ function ExecutableActionRow({
 				</Tooltip>
 			</div>
 			<Tooltip>
+				{/* The button is wrapped so the tooltip still explains why it is off:
+				    a natively disabled button swallows its own pointer events. */}
 				<TooltipTrigger asChild>
-					<button
-						type="button"
-						onClick={onExecute}
-						className={cn(
-							'flex w-12 shrink-0 cursor-pointer items-center justify-center',
-							'self-stretch border-l text-muted-foreground transition-colors',
-							'duration-[var(--dur-fast)] focus-ring-inset',
-							'hover:bg-foreground/[0.07] hover:text-foreground',
-						)}
-						aria-label="Execute action"
-					>
-						<span className="flex h-7 w-7 items-center justify-center rounded-full border border-current/40">
-							<Play className="ml-0.5 h-3 w-3 fill-current" />
-						</span>
-					</button>
+					<span className="flex w-12 shrink-0 self-stretch border-l">
+						<button
+							type="button"
+							onClick={onExecute}
+							disabled={executeDisabled}
+							className={cn(
+								'flex flex-1 items-center justify-center transition-colors',
+								'duration-[var(--dur-fast)] focus-ring-inset',
+								executeDisabled
+									? 'cursor-not-allowed text-muted-foreground/40'
+									: 'cursor-pointer text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground',
+							)}
+							aria-label="Execute action"
+						>
+							<span className="flex h-7 w-7 items-center justify-center rounded-full border border-current/40">
+								<Play className="ml-0.5 h-3 w-3 fill-current" />
+							</span>
+						</button>
+					</span>
 				</TooltipTrigger>
-				<TooltipContent>Execute action</TooltipContent>
+				<TooltipContent>
+					{executeDisabled && executeDisabledReason
+						? executeDisabledReason
+						: 'Execute action'}
+				</TooltipContent>
 			</Tooltip>
 		</div>
 	)
@@ -358,6 +382,7 @@ export function ActionPlanView({
 	onExecute,
 	onReorder,
 	reordering = false,
+	executorDisabled = false,
 }: ActionPlanViewProps) {
 	const checkedSet = new Set(checked)
 	const gripEnabledRef = useRef(false)
@@ -516,6 +541,10 @@ export function ActionPlanView({
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
 											onExecute={() => onExecute(step, key)}
+											executeDisabled={
+												executorDisabled && isCodeStep(step)
+											}
+											executeDisabledReason={EXECUTOR_DISABLED_REASON}
 											dragDisabled={dragDisabled}
 											onGripPointerDown={handleGripPointerDown}
 											onGripPointerUp={handleGripPointerUp}
@@ -596,6 +625,10 @@ export function ActionPlanView({
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
 										onExecute={() => onExecute(step, key)}
+										executeDisabled={
+											executorDisabled && isCodeStep(step)
+										}
+										executeDisabledReason={EXECUTOR_DISABLED_REASON}
 										dragDisabled
 										onGripPointerDown={() => {}}
 										onGripPointerUp={() => {}}
