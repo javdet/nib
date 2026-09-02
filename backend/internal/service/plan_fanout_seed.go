@@ -13,15 +13,15 @@ import (
 	"github.com/javdet/nib/internal/rules"
 )
 
-// buildStageSeed composes the first user message of a stage subagent: the shared
-// context every stage gets, the stage it owns, and -- when the contract said this
-// stage could not be planned without them -- the upstream stages already written.
-func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID, title string) (string, error) {
+// sharedSeedSections composes the context every fan-out subagent gets, whichever
+// part of the plan it owns, and hands back the contract so the caller can render
+// the slice of it that is its own.
+func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.UUID) ([]string, PlanContract, error) {
 	var parts []string
 
 	summary, found, err := s.ReadSummary(decomposeID)
 	if err != nil {
-		return "", fmt.Errorf("read summary: %w", err)
+		return nil, PlanContract{}, fmt.Errorf("read summary: %w", err)
 	}
 	if found && strings.TrimSpace(summary) != "" {
 		parts = append(parts, "## Summary\n\n"+strings.TrimSpace(summary))
@@ -29,7 +29,7 @@ func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID,
 
 	dag, found, err := s.ReadDAG(decomposeID)
 	if err != nil {
-		return "", fmt.Errorf("read dag: %w", err)
+		return nil, PlanContract{}, fmt.Errorf("read dag: %w", err)
 	}
 	if found {
 		parts = append(parts, "## DAG\n\n"+strings.TrimSpace(dag))
@@ -37,20 +37,29 @@ func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID,
 
 	rulesSection, err := s.matchedRulesSection(ctx, decomposeID)
 	if err != nil {
-		return "", err
+		return nil, PlanContract{}, err
 	}
 	if rulesSection != "" {
 		parts = append(parts, "## Rules\n\n"+rulesSection)
 	}
 
-	contract, hasContract, err := s.ReadPlanContract(decomposeID)
+	contract, _, err := s.ReadPlanContract(decomposeID)
 	if err != nil {
-		slog.Warn("stage seed: read contract", "dialog_id", decomposeID, "error", err)
+		slog.Warn("fanout seed: read contract", "dialog_id", decomposeID, "error", err)
 	}
-	if hasContract {
-		if section := stageContractSection(contract, title); section != "" {
-			parts = append(parts, section)
-		}
+	return parts, contract, nil
+}
+
+// buildStageSeed composes the first user message of a stage subagent: the shared
+// context every stage gets, the stage it owns, and -- when the contract said this
+// stage could not be planned without them -- the upstream stages already written.
+func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID, title string) (string, error) {
+	parts, contract, err := s.sharedSeedSections(ctx, decomposeID)
+	if err != nil {
+		return "", err
+	}
+	if section := stageContractSection(contract, title); section != "" {
+		parts = append(parts, section)
 	}
 
 	parts = append(parts, "## Your stage\n\n"+title)
@@ -103,16 +112,31 @@ func (s *ChatService) matchedRulesSection(ctx context.Context, decomposeID uuid.
 // obligations. The full list matters even for keys this stage does not consume:
 // it is what stops the stage inventing a second name for something already named.
 func stageContractSection(contract PlanContract, title string) string {
+	var own any
+	for name, stage := range contract.Stages {
+		if normalizeStageTitle(name) == normalizeStageTitle(title) {
+			own = stage
+			break
+		}
+	}
+	return contractSection(contract, own)
+}
+
+// sharedContractSection is the contract without a stage of one's own, which is
+// what the rollback agent gets: it owns no stage, but every name the stages agreed
+// on is a name its entries have to spell the same way.
+func sharedContractSection(contract PlanContract) string {
+	return contractSection(contract, nil)
+}
+
+func contractSection(contract PlanContract, own any) string {
 	if len(contract.Shared) == 0 && len(contract.Stages) == 0 {
 		return ""
 	}
 
 	payload := map[string]any{"shared": contract.Shared}
-	for name, stage := range contract.Stages {
-		if normalizeStageTitle(name) == normalizeStageTitle(title) {
-			payload["yourStage"] = stage
-			break
-		}
+	if own != nil {
+		payload["yourStage"] = own
 	}
 
 	data, err := json.MarshalIndent(payload, "", "  ")
@@ -183,19 +207,24 @@ func (s *ChatService) upstreamStagesSection(decomposeID uuid.UUID, contract Plan
 }
 
 // stageAnswersSection replays the user's answers to questions an earlier attempt
-// at this stage raised, so the replanned stage replaces its assumptions.
+// at this stage raised, so the replanned stage replaces its assumptions. A
+// blocker that carries a kind belongs to another agent, whose title this stage
+// may legitimately share.
 func (s *ChatService) stageAnswersSection(decomposeID uuid.UUID, title string) string {
 	run, found, err := s.ReadFanoutRun(decomposeID)
 	if err != nil || !found {
 		return ""
 	}
+	return answersSection(run.Blockers, func(b PlanBlocker) bool {
+		return b.Kind == FanoutStageKindStage && normalizeStageTitle(b.Stage) == normalizeStageTitle(title)
+	})
+}
 
+// answersSection renders the answered blockers a predicate selects.
+func answersSection(blockers []PlanBlocker, mine func(PlanBlocker) bool) string {
 	var lines []string
-	for _, b := range run.Blockers {
-		if normalizeStageTitle(b.Stage) != normalizeStageTitle(title) {
-			continue
-		}
-		if strings.TrimSpace(b.Answer) == "" {
+	for _, b := range blockers {
+		if !mine(b) || strings.TrimSpace(b.Answer) == "" {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("- %s\n  - Answer: %s\n  - Supersedes your earlier assumption: %s",

@@ -8,6 +8,11 @@ You cannot see the others and they cannot see you.
   not plan, describe or store any other stage, even if your research turns up work
   that belongs to one. If a neighbouring stage looks wrong or missing, say so in
   your final message rather than fixing it yourself.
+* **The rollback is not yours either.** One more agent works it out from every
+  stage once they are all written, so it can undo the plan in reverse and merge
+  each repository's revert into one entry. Ignore the instruction above to write
+  it; you do not have `update_rollback_plan`. Make your steps say plainly what
+  they change, and that agent has what it needs to undo them.
 * **End your turn by calling `update_action_plan`** with your stage name and its
   `description`, `steps` and `checks`. That call is the point of your turn: a turn
   that ends without it produces nothing at all. Ignore the instruction above to

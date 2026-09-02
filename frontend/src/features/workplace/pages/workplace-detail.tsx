@@ -19,6 +19,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { MarkdownMessage } from '@/components/markdown-message'
 import { downloadTextFile } from '@/lib/download'
 import {
 	executeActionPlanAction,
@@ -1091,7 +1092,9 @@ export function WorkplaceDetail() {
 								</div>
 							</div>
 						) : summaryContent ? (
-							<p className="text-sm whitespace-pre-wrap">{summaryContent}</p>
+							<div className="text-sm">
+								<MarkdownMessage content={summaryContent} />
+							</div>
 						) : (
 							<p className="text-sm text-muted-foreground">
 								No summary yet for this conversation.
@@ -1230,7 +1233,7 @@ export function WorkplaceDetail() {
 								<>
 									{fanoutRun.stages.map((stage) => (
 										<div
-											key={stage.title}
+											key={`${stage.kind ?? 'stage'}:${stage.title}`}
 											className="flex items-center justify-between gap-2 text-sm"
 										>
 											<span className="truncate">{stage.title}</span>

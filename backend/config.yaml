@@ -60,7 +60,7 @@ agent:
   # maxIterations because it researches one stage rather than a whole plan.
   stageMaxIterations: 15
   # Deadline for a whole fan-out run. It outlives the request that starts it.
-  planFanoutTimeoutMinutes: 45
+  planFanoutTimeoutMinutes: 60
 
 knowledge_base:
   uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable

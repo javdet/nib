@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "rollback": {
+      "type": "array",
+      "description": "The complete rollback list for the plan, in the order the entries must be performed. Replaces the stored rollback, so send every entry. One code entry per repository.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["code", "web", "curl", "shell", "other"],
+            "description": "Management surface used by the rollback entry."
+          },
+          "action": {
+            "type": "string",
+            "description": "Markdown describing the revert: one summary sentence, a blank line, then a bullet list."
+          },
+          "command": {
+            "type": "string",
+            "description": "Ready-to-run commands for shell and curl entries, one per line. Omit for code, web and other entries."
+          },
+          "repository": {
+            "type": "string",
+            "description": "Repository reverted by a code entry."
+          },
+          "pr_title": {
+            "type": "string",
+            "description": "Pull request title for a code rollback entry."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Optional note for the operator running the rollback."
+          }
+        },
+        "required": ["type", "action"]
+      }
+    }
+  },
+  "required": ["rollback"]
+}
