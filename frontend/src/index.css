@@ -3,6 +3,32 @@
 @import '@fontsource-variable/inter';
 @import 'react-day-picker/style.css';
 
+/*
+ * Neucha (OFL-1.1) — the hand-printed lettering the DAG board is written in.
+ * Self-hosted from public/fonts rather than @fontsource so the frozen
+ * bun.lock stays untouched and the app keeps working with no network.
+ */
+@font-face {
+	font-family: 'Neucha';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url('/fonts/neucha-latin-400-normal.woff2') format('woff2');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+		U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+		U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+	font-family: 'Neucha';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url('/fonts/neucha-cyrillic-400-normal.woff2') format('woff2');
+	unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -124,6 +150,35 @@
 
 	/* hairline used by separators sitting on glass surfaces */
 	--hairline: oklch(0 0 0 / 0.08);
+
+	/*
+	 * DAG board. The ink colours are hex on purpose: they are handed to
+	 * mermaid, whose colour maths (khroma) cannot parse oklch().
+	 */
+	--dag-font-family: 'Neucha', 'Bradley Hand', 'Segoe Print', cursive;
+	--dag-font-size: 22px;
+	--dag-ink: #2b3242;
+	--dag-line: #58627a;
+	--dag-pen-1: #6d4dfb;
+	--dag-pen-2: #2f6ef0;
+	--dag-pen-3: #0f9d94;
+	--dag-pen-4: #d8801b;
+	--dag-pen-5: #dd2f77;
+	--dag-node-fill: #ffffff;
+	--dag-node-fill-opacity: 0.14;
+	--dag-cluster-stroke: #7c8296;
+	--dag-label-bg: oklch(1 0 0 / 0.66);
+	--dag-ink-shadow: oklch(0.3 0.05 285 / 0.28);
+
+	/* the sheet of glass the diagram is drawn on */
+	--dag-glass-top: oklch(1 0 0 / 0.62);
+	--dag-glass-bottom: oklch(0.97 0.01 280 / 0.34);
+	--dag-glass-border: oklch(1 0 0 / 0.6);
+	--dag-glass-sheen: oklch(1 0 0 / 0.7);
+	--dag-glass-streak: oklch(1 0 0 / 0.5);
+	--dag-glass-shadow: oklch(0.3 0.05 285 / 0.18);
+	--dag-glow-1: oklch(0.62 0.16 295 / 0.26);
+	--dag-glow-2: oklch(0.66 0.13 215 / 0.22);
 }
 
 .dark {
@@ -172,6 +227,28 @@
 		inset 0 1px 0 0 oklch(1 0 0 / 0.08);
 
 	--hairline: oklch(1 0 0 / 0.12);
+
+	--dag-ink: #e9edf9;
+	--dag-line: #9fabc7;
+	--dag-pen-1: #b39bff;
+	--dag-pen-2: #74a8ff;
+	--dag-pen-3: #3fd9cc;
+	--dag-pen-4: #fbbf4b;
+	--dag-pen-5: #ff85a8;
+	--dag-node-fill: #ffffff;
+	--dag-node-fill-opacity: 0.07;
+	--dag-cluster-stroke: #7e88a3;
+	--dag-label-bg: oklch(0.22 0.01 285 / 0.72);
+	--dag-ink-shadow: oklch(0 0 0 / 0.55);
+
+	--dag-glass-top: oklch(1 0 0 / 0.1);
+	--dag-glass-bottom: oklch(1 0 0 / 0.03);
+	--dag-glass-border: oklch(1 0 0 / 0.14);
+	--dag-glass-sheen: oklch(1 0 0 / 0.14);
+	--dag-glass-streak: oklch(1 0 0 / 0.07);
+	--dag-glass-shadow: oklch(0 0 0 / 0.5);
+	--dag-glow-1: oklch(0.5 0.18 295 / 0.3);
+	--dag-glow-2: oklch(0.45 0.14 215 / 0.24);
 }
 
 @layer base {
@@ -342,6 +419,234 @@
 		box-shadow:
 			inset 0 1px 0 0 oklch(1 0 0 / 0.15),
 			0 0 10px oklch(0.5 0.16 295 / 0.55);
+	}
+
+	/*
+	 * DAG board — a sheet of glass the plan is drawn on with markers.
+	 *
+	 * The chrome (glass, ruling, reflection) is scoped to .dag-board, but the
+	 * ink is styled through svg[id^='dag-'] instead: mermaid measures every
+	 * label in a throwaway container outside this element, and a font it
+	 * cannot see there yields nodes sized for the wrong typeface. Those rules
+	 * also need !important, since mermaid injects its own #id-prefixed styles
+	 * into the SVG and an id selector outranks any class of ours.
+	 */
+	.dag-board {
+		position: relative;
+		isolation: isolate;
+		overflow: hidden;
+		border: 1px solid var(--dag-glass-border);
+		border-radius: var(--radius-2xl);
+		background:
+			radial-gradient(
+				ellipse 70% 60% at 10% -15%,
+				var(--dag-glow-1),
+				transparent 62%
+			),
+			radial-gradient(
+				ellipse 65% 60% at 105% 115%,
+				var(--dag-glow-2),
+				transparent 58%
+			),
+			linear-gradient(
+				152deg,
+				var(--dag-glass-top),
+				var(--dag-glass-bottom)
+			);
+		-webkit-backdrop-filter: blur(22px) saturate(180%);
+		backdrop-filter: blur(22px) saturate(180%);
+		box-shadow:
+			inset 0 1px 0 0 var(--dag-glass-sheen),
+			0 18px 44px -26px var(--dag-glass-shadow);
+	}
+
+	/* Specular streak — what makes the sheet read as glass and not paper. */
+	.dag-board::after {
+		content: '';
+		position: absolute;
+		inset: -30% -15%;
+		z-index: 3;
+		background: linear-gradient(
+			104deg,
+			transparent 30%,
+			var(--dag-glass-streak) 44%,
+			transparent 56%
+		);
+		opacity: 0.35;
+		pointer-events: none;
+	}
+
+	.dag-board > * {
+		position: relative;
+		z-index: 1;
+	}
+
+	svg[id^='dag-'] {
+		max-width: 100%;
+		overflow: visible;
+		background: transparent !important;
+		/* ink resting on the glass rather than inside it */
+		filter: drop-shadow(0 1px 1px var(--dag-ink-shadow));
+	}
+
+	/*
+	 * rough.js sketches a fill as hatching, which reads as scribble on a
+	 * board this size — the fill passes are dropped and the outline is filled
+	 * instead, so the glass keeps showing through the shape. dag-render.ts
+	 * tags the two, since the markup itself does not tell them apart.
+	 */
+	svg[id^='dag-'] .dag-ink-fill {
+		display: none;
+	}
+
+	svg[id^='dag-'] .dag-ink-stroke {
+		fill: var(--dag-pen, var(--dag-line)) !important;
+		fill-opacity: var(--dag-node-fill-opacity);
+		stroke: var(--dag-pen, var(--dag-line)) !important;
+		stroke-width: 2 !important;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* A subgraph is lassoed rather than boxed in. */
+	svg[id^='dag-'] .clusters .dag-ink-stroke {
+		fill: var(--dag-cluster-stroke) !important;
+		fill-opacity: calc(var(--dag-node-fill-opacity) * 0.35);
+		stroke: var(--dag-cluster-stroke) !important;
+		stroke-width: 1.6 !important;
+		stroke-dasharray: 8 9 !important;
+	}
+
+	svg[id^='dag-'] .edgePaths path,
+	svg[id^='dag-'] path.flowchart-link {
+		stroke: var(--dag-line) !important;
+		stroke-width: 2 !important;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	svg[id^='dag-'] marker path,
+	svg[id^='dag-'] marker polygon,
+	svg[id^='dag-'] marker circle {
+		fill: var(--dag-line) !important;
+		stroke: var(--dag-line) !important;
+	}
+
+	svg[id^='dag-'] .nodeLabel,
+	svg[id^='dag-'] .edgeLabel,
+	svg[id^='dag-'] .cluster-label,
+	svg[id^='dag-'] text,
+	svg[id^='dag-'] span,
+	svg[id^='dag-'] p {
+		font-family: var(--dag-font-family) !important;
+		font-size: var(--dag-font-size) !important;
+		font-weight: 700 !important;
+		line-height: 1.25 !important;
+		letter-spacing: 0.01em;
+		color: var(--dag-ink) !important;
+		fill: var(--dag-ink) !important;
+		background: transparent !important;
+	}
+
+	/* Mermaid sizes each box around the label, and a <p>'s default margins
+	 * would leave every node twice as tall as its handwriting. */
+	svg[id^='dag-'] .nodeLabel p,
+	svg[id^='dag-'] .edgeLabel p,
+	svg[id^='dag-'] .cluster-label p {
+		margin: 0 !important;
+	}
+
+	/* Node text is written with the same marker that drew its box. */
+	svg[id^='dag-'] .nodes .nodeLabel,
+	svg[id^='dag-'] .nodes .nodeLabel p,
+	svg[id^='dag-'] .nodes text {
+		color: color-mix(
+			in oklab,
+			var(--dag-pen, var(--dag-ink)) 45%,
+			var(--dag-ink)
+		) !important;
+		fill: color-mix(
+			in oklab,
+			var(--dag-pen, var(--dag-ink)) 45%,
+			var(--dag-ink)
+		) !important;
+	}
+
+	/*
+	 * Edge captions get a frosted chip so the line never runs through them.
+	 * Mermaid's own backing — a rect in one code path, a div in the other —
+	 * is cleared so only the chip shows.
+	 */
+	svg[id^='dag-'] .edgeLabel rect.labelBkg {
+		fill: transparent !important;
+	}
+
+	svg[id^='dag-'] .edgeLabel div.labelBkg {
+		background: transparent !important;
+	}
+
+	svg[id^='dag-'] .edgeLabel foreignObject p {
+		padding: 0.1em 0.55em;
+		border-radius: 999px;
+		background: var(--dag-label-bg) !important;
+		box-shadow: 0 1px 6px -3px var(--dag-ink-shadow);
+	}
+
+	/*
+	 * Ink appearing rank by rank, the way it would be drawn on a real board.
+	 * Nodes fade only — a CSS transform would override the transform
+	 * attribute mermaid positions them with.
+	 */
+	@keyframes dag-ink-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	/* The arrowhead rides along with its line rather than waiting at the end
+	 * of a link that has not been drawn yet. */
+	@keyframes dag-draw-in {
+		from {
+			opacity: 0.15;
+			stroke-dashoffset: 1;
+		}
+		to {
+			opacity: 1;
+			stroke-dashoffset: 0;
+		}
+	}
+
+	svg[id^='dag-'] .nodes > g,
+	svg[id^='dag-'] .clusters > g,
+	svg[id^='dag-'] .edgeLabel {
+		animation: dag-ink-in 380ms var(--ease-out) both;
+		/* Capped: a twenty-node plan should still finish drawing promptly. */
+		animation-delay: calc(min(var(--dag-i, 0), 9) * 70ms + 100ms);
+	}
+
+	svg[id^='dag-'] .edgePaths path {
+		stroke-dasharray: 1;
+		animation: dag-draw-in 520ms var(--ease-standard) both;
+		animation-delay: calc(min(var(--dag-i, 0), 9) * 70ms);
+	}
+
+	svg[id^='dag-'] .dag-pen-1 {
+		--dag-pen: var(--dag-pen-1);
+	}
+	svg[id^='dag-'] .dag-pen-2 {
+		--dag-pen: var(--dag-pen-2);
+	}
+	svg[id^='dag-'] .dag-pen-3 {
+		--dag-pen: var(--dag-pen-3);
+	}
+	svg[id^='dag-'] .dag-pen-4 {
+		--dag-pen: var(--dag-pen-4);
+	}
+	svg[id^='dag-'] .dag-pen-5 {
+		--dag-pen: var(--dag-pen-5);
 	}
 }
 

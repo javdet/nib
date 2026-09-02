@@ -1,4 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import {
+	buildDagConfig,
+	decorateDagSvg,
+	loadDagFont,
+	readDagPalette,
+} from '../lib/dag-render'
 
 function extractMermaidSource(content: string): string {
 	let body = content.trim()
@@ -30,19 +36,28 @@ export function DagView({ content }: DagViewProps) {
 
 		let cancelled = false
 		renderSeq.current += 1
+		// The id prefix is what the board styles hook onto, including during
+		// mermaid's own off-screen measurement pass.
 		const diagramId = `dag-${renderId}-${renderSeq.current}`
 
 		async function render() {
 			try {
-				const mermaid = (await import('mermaid')).default
-				mermaid.initialize({
-					startOnLoad: false,
-					theme: 'neutral',
-					securityLevel: 'strict',
-				})
+				const [mermaid] = await Promise.all([
+					import('mermaid').then((module) => module.default),
+					loadDagFont(),
+				])
+				if (cancelled) return
+
+				const palette = readDagPalette(document.documentElement)
+				mermaid.initialize(buildDagConfig(palette))
 				const { svg } = await mermaid.render(diagramId, source)
 				if (cancelled || !containerRef.current) return
+
 				containerRef.current.innerHTML = svg
+				const rendered = containerRef.current.querySelector('svg')
+				if (rendered) {
+					decorateDagSvg(rendered)
+				}
 				setRenderError(null)
 			} catch (err) {
 				if (cancelled) return
@@ -64,13 +79,16 @@ export function DagView({ content }: DagViewProps) {
 	return (
 		<>
 			{renderError ? (
-				<div className="mb-3 rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
 					{renderError}
 				</div>
 			) : null}
+			{/* Hidden rather than unmounted on error: the next render needs the
+			    container to still be there to draw into. */}
 			<div
 				ref={containerRef}
-				className="overflow-x-auto text-center [&_svg]:mx-auto [&_svg]:inline-block"
+				className="overflow-x-auto py-2 text-center [&_svg]:mx-auto [&_svg]:inline-block"
+				hidden={renderError !== null}
 			/>
 		</>
 	)

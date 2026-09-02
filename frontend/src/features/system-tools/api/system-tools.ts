@@ -9,5 +9,10 @@ export interface SystemTool {
 }
 
 export function listSystemTools(): Promise<SystemTool[]> {
-	return api.get<SystemTool[]>('/system/tools')
+	return api.get<SystemTool[]>('/system/tools').then((tools) =>
+		(tools ?? []).map((tool) => ({
+			...tool,
+			modes: tool.modes ?? [],
+		})),
+	)
 }
