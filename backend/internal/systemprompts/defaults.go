@@ -18,7 +18,9 @@ const EditableName = "discuss"
 // mode.Modes but must still ship in the image.
 //
 // plan_stage narrows the plan prompt to a single stage for a fan-out subagent.
-var Auxiliary = []string{"plan_stage"}
+// rollback_stage narrows it to the plan's one rollback list, for the agent that
+// runs once every stage has been written.
+var Auxiliary = []string{"plan_stage", "rollback_stage"}
 
 const mdSuffix = ".md"
 

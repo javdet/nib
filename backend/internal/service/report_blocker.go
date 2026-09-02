@@ -32,26 +32,29 @@ var reportBlockerParameters = json.RawMessage(`{
   "required": ["question", "assumption"]
 }`)
 
-// ReportBlockerToolDef returns the LLM tool definition a stage subagent uses in
+// ReportBlockerToolDef returns the LLM tool definition a fan-out subagent uses in
 // place of ask_question.
 //
-// Stages are planned in parallel, so suspending one to ask the user would leave
-// its siblings running against an answer that has not arrived. Instead the
-// question is recorded, the subagent states an assumption and finishes its stage,
-// and the runner puts every stage's questions to the user in one round at the end.
+// A plan is worked out by several agents at once -- one per stage, then one for
+// the rollback -- so suspending any of them to ask the user would leave the
+// others running against an answer that has not arrived. Instead the question is
+// recorded, the subagent states an assumption and finishes the part it owns, and
+// the runner puts every question to the user in one round at the end.
 func ReportBlockerToolDef() llm.ToolDef {
 	return llm.ToolDef{
 		Name: ReportBlockerToolName,
 		Description: "Record a question for the user without interrupting your work. " +
-			"You are planning one stage of a plan alongside other agents, so you cannot ask the user directly. " +
-			"State the question, two or three options, and the assumption you are proceeding under, then finish and store your stage as usual. " +
-			"All stages' questions are put to the user together once the plan is drafted.",
+			"You are working out one part of a plan alongside other agents, so you cannot ask the user directly. " +
+			"State the question, two or three options, and the assumption you are proceeding under, then finish and store your part as usual. " +
+			"Every agent's questions are put to the user together once the plan is drafted.",
 		Parameters: reportBlockerParameters,
 	}
 }
 
-// reportBlockerHandler returns a handler that appends to the fan-out run of planID.
-func (s *ChatService) reportBlockerHandler(planID uuid.UUID, stage string) localToolHandler {
+// reportBlockerHandler returns a handler that appends to the fan-out run of
+// planID. kind says which agent is reporting, which decides both where the answer
+// comes back to and which tool the agent is reminded to finish with.
+func (s *ChatService) reportBlockerHandler(planID uuid.UUID, stage string, kind FanoutStageKind) localToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
 		question := strings.TrimSpace(argString(args["question"]))
 		if question == "" {
@@ -75,12 +78,13 @@ func (s *ChatService) reportBlockerHandler(planID uuid.UUID, stage string) local
 			// The same subagent may retry a round; one question per stage is
 			// enough, so an identical one is not recorded twice.
 			for _, b := range run.Blockers {
-				if b.Stage == stage && strings.EqualFold(b.Question, question) {
+				if b.Kind == kind && b.Stage == stage && strings.EqualFold(b.Question, question) {
 					return
 				}
 			}
 			run.Blockers = append(run.Blockers, PlanBlocker{
 				Stage:      stage,
+				Kind:       kind,
 				Question:   question,
 				Options:    options,
 				Assumption: assumption,
@@ -89,7 +93,11 @@ func (s *ChatService) reportBlockerHandler(planID uuid.UUID, stage string) local
 			return "", fmt.Errorf("record blocker: %w", err)
 		}
 
-		return "Question recorded for the user. Continue planning under your stated assumption and store the stage with " +
-			UpdateActionPlanToolName + " before your turn ends.", nil
+		what, store := "the stage", UpdateActionPlanToolName
+		if kind == FanoutStageKindRollback {
+			what, store = "the rollback", UpdateRollbackPlanToolName
+		}
+		return "Question recorded for the user. Continue planning under your stated assumption and store " +
+			what + " with " + store + " before your turn ends.", nil
 	}
 }

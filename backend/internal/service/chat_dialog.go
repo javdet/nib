@@ -280,6 +280,9 @@ type loopConfig struct {
 	planID uuid.UUID
 	// stage is the single DAG stage a subagent is responsible for.
 	stage string
+	// kind says which part of the plan a fan-out subagent owns. Empty for an
+	// ordinary turn and for a stage subagent.
+	kind FanoutStageKind
 	// maxIterations overrides the service-wide completion round budget.
 	maxIterations int
 }
@@ -346,7 +349,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				}
 				messages = append(messages, llm.Message{
 					Role:    "user",
-					Content: actionPlanReminder,
+					Content: actionPlanReminderFor(cfg),
 				})
 				continue
 			}
@@ -426,7 +429,8 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				toolFailures++
 			} else {
 				logCallToolResult(tc.ID, out, roundLog)
-				if tc.Name == CreateActionPlanToolName || tc.Name == UpdateActionPlanToolName {
+				switch tc.Name {
+				case CreateActionPlanToolName, UpdateActionPlanToolName, UpdateRollbackPlanToolName:
 					actionPlanUpdated = true
 				}
 			}

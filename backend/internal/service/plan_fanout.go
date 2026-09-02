@@ -16,7 +16,9 @@ import (
 const (
 	defaultPlanFanoutConcurrency = 4
 	defaultStageMaxIterations    = 15
-	defaultPlanFanoutTimeout     = 45 * time.Minute
+	// defaultPlanFanoutTimeout bounds the whole run: every wave of stages, and
+	// then the rollback agent that runs alone after them.
+	defaultPlanFanoutTimeout = 60 * time.Minute
 	// maxBlockerQuestionsPerRound follows the two-questions-at-a-time rule the
 	// plan and decompose prompts already state. Leftover blockers keep their
 	// place in the run and come back in the next round.
@@ -26,12 +28,75 @@ const (
 	stagePlanMode = "plan"
 	// stagePromptName is the prompt appended to plan.md for a stage subagent.
 	stagePromptName = "plan_stage"
+	// rollbackPromptName is the prompt appended to plan.md for the agent that
+	// writes the plan's rollback list once the stages are written.
+	rollbackPromptName = "rollback_stage"
 )
 
 var (
 	ErrFanoutInProgress = errors.New("a plan fan-out is already running for this dialog")
 	ErrNoDAGStages      = errors.New("this dialog has no DAG stages to plan")
 )
+
+// FanoutTargets says which parts of the plan a run covers. Every field is
+// explicit, so "replan these two stages and the rollback" and "plan the rollback
+// alone" are both sayable and neither is the accident of an empty slice.
+type FanoutTargets struct {
+	// Stages lists the DAG stages to plan. It is read only when AllStages is
+	// unset, and an empty list then means no stage runs at all -- which is how
+	// the rollback is redone by itself.
+	Stages []string
+	// AllStages plans every stage of the DAG, whatever Stages holds.
+	AllStages bool
+	// Rollback runs the rollback agent after the last wave. Set on every
+	// ordinary run, and on a replan round too, because the rollback is a
+	// function of the stages: a stage rewritten under a new assumption leaves an
+	// undo that no longer matches the plan.
+	Rollback bool
+}
+
+// AllFanoutTargets is the whole plan: every stage of the DAG, then the rollback.
+func AllFanoutTargets() FanoutTargets {
+	return FanoutTargets{AllStages: true, Rollback: true}
+}
+
+// work resolves the waves a run plans and whether it ends with the rollback. It
+// reports ErrNoDAGStages for a target set that turns out to hold no work: an
+// empty one, or one whose named stages are not in the DAG.
+func (t FanoutTargets) work(waves [][]string) ([][]string, bool, error) {
+	if !t.AllStages {
+		waves = filterWaves(waves, t.Stages)
+	}
+	if len(waves) == 0 && !t.Rollback {
+		return nil, false, ErrNoDAGStages
+	}
+	return waves, t.Rollback, nil
+}
+
+// fanoutStages lays the run's work out in order: the stages wave by wave, then
+// the rollback on its own, since it undoes the plan as a whole and can only be
+// worked out once every stage is written.
+func fanoutStages(waves [][]string, rollback bool) []FanoutStage {
+	var stages []FanoutStage
+	for waveIdx, wave := range waves {
+		for _, title := range wave {
+			stages = append(stages, FanoutStage{
+				Title:  title,
+				Wave:   waveIdx,
+				Status: FanoutStagePending,
+			})
+		}
+	}
+	if rollback {
+		stages = append(stages, FanoutStage{
+			Title:  rollbackStageTitle,
+			Wave:   len(waves),
+			Kind:   FanoutStageKindRollback,
+			Status: FanoutStagePending,
+		})
+	}
+	return stages
+}
 
 // PlanFanoutConfig tunes the stage fan-out. The zero value is the shipped default.
 type PlanFanoutConfig struct {
@@ -57,13 +122,14 @@ func (c PlanFanoutConfig) timeout() time.Duration {
 	return time.Duration(c.TimeoutMinutes) * time.Minute
 }
 
-// StartPlanFanout plans every stage of a decompose dialog's DAG with one subagent
-// per stage and returns as soon as the run is recorded. The work continues in the
+// StartPlanFanout plans a decompose dialog's DAG with one subagent per stage,
+// then hands the finished stages to one more agent that works out the rollback,
+// and returns as soon as the run is recorded. The work continues in the
 // background and reports progress over the dialog's SSE stream.
 //
-// only, when non-empty, restricts the run to those stages. That is how the stages
-// whose blockers the user just answered are replanned without disturbing the rest.
-func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID, only []string) (FanoutRun, error) {
+// targets says what the run covers; AllFanoutTargets() is the whole plan. A
+// target set holding no work is refused with ErrNoDAGStages.
+func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID, targets FanoutTargets) (FanoutRun, error) {
 	if s.dialogRepo == nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: dialog repository is not configured")
 	}
@@ -96,9 +162,9 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID
 	if err != nil {
 		slog.Warn("plan fanout: wave order", "dialog_id", decomposeID, "error", err)
 	}
-	waves = filterWaves(waves, only)
-	if len(waves) == 0 {
-		return FanoutRun{}, ErrNoDAGStages
+	waves, rollback, err := targets.work(waves)
+	if err != nil {
+		return FanoutRun{}, err
 	}
 
 	run := FanoutRun{
@@ -111,15 +177,7 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID
 	if previous, found, _ := s.ReadFanoutRun(decomposeID); found {
 		run.Blockers = answeredBlockers(previous.Blockers)
 	}
-	for waveIdx, wave := range waves {
-		for _, title := range wave {
-			run.Stages = append(run.Stages, FanoutStage{
-				Title:  title,
-				Wave:   waveIdx,
-				Status: FanoutStagePending,
-			})
-		}
-	}
+	run.Stages = fanoutStages(waves, rollback)
 	if err := s.writeFanoutRun(decomposeID, run); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
@@ -131,20 +189,19 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID
 	go func() {
 		defer cancel()
 		defer s.fanoutCancels.Delete(decomposeID)
-		s.runPlanFanout(runCtx, decomposeID, waves)
+		s.runPlanFanout(runCtx, decomposeID, waves, rollback)
 	}()
 
 	slog.Info("plan fanout started",
-		"dialog_id", decomposeID, "run_id", run.RunID, "waves", len(waves), "stages", len(run.Stages))
+		"dialog_id", decomposeID, "run_id", run.RunID,
+		"waves", len(waves), "stages", len(run.Stages), "rollback", rollback)
 	return run, nil
 }
 
 // filterWaves keeps only the named stages, dropping waves left empty. An empty
-// filter keeps everything.
+// filter keeps nothing: callers that mean every stage set AllStages and do not
+// come here at all.
 func filterWaves(waves [][]string, only []string) [][]string {
-	if len(only) == 0 {
-		return waves
-	}
 	keep := make(map[string]struct{}, len(only))
 	for _, name := range only {
 		keep[normalizeStageTitle(name)] = struct{}{}
@@ -178,7 +235,7 @@ func answeredBlockers(blockers []PlanBlocker) []PlanBlocker {
 // runPlanFanout plans one wave at a time. Stages inside a wave run together; a
 // stage that fails is recorded and its siblings carry on, since a half-written
 // plan is worth more than none.
-func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, waves [][]string) {
+func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, waves [][]string, rollback bool) {
 	for waveIdx, wave := range waves {
 		if ctx.Err() != nil {
 			break
@@ -200,6 +257,12 @@ func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, 
 			}(title)
 		}
 		wg.Wait()
+	}
+
+	// The rollback is derived from the stages, so it is written last and alone,
+	// once every wave has landed.
+	if rollback {
+		s.runRollbackAgent(ctx, decomposeID)
 	}
 
 	// A cancelled or timed-out context cannot append the closing question, so the
@@ -256,7 +319,7 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 		return
 	}
 
-	sysPrompt, err := s.stageSystemPrompt(ctx)
+	sysPrompt, err := s.fanoutSystemPrompt(ctx, stagePromptName)
 	if err != nil {
 		fail(err)
 		return
@@ -317,9 +380,10 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 	})
 }
 
-// stageSystemPrompt is the plan prompt plus the stage subagent contract that
-// narrows it to one stage and swaps ask_question for report_blocker.
-func (s *ChatService) stageSystemPrompt(ctx context.Context) (string, error) {
+// fanoutSystemPrompt is the plan prompt plus the subagent overlay named by
+// promptName, which narrows it to one part of the plan and swaps ask_question for
+// report_blocker.
+func (s *ChatService) fanoutSystemPrompt(ctx context.Context, promptName string) (string, error) {
 	base, err := s.resolveSystemPrompt(ctx, stagePlanMode)
 	if err != nil {
 		return "", err
@@ -327,21 +391,37 @@ func (s *ChatService) stageSystemPrompt(ctx context.Context) (string, error) {
 	if s.systemPromptsSvc == nil {
 		return base, nil
 	}
-	stage, err := s.systemPromptsSvc.Get(stagePromptName)
+	overlay, err := s.systemPromptsSvc.Get(promptName)
 	if err != nil {
-		return "", fmt.Errorf("resolve %s prompt: %w", stagePromptName, err)
+		return "", fmt.Errorf("resolve %s prompt: %w", promptName, err)
 	}
-	rendered, err := RenderTemplateVariables(ctx, stage.Content, s.variableRepo, s.selection)
+	rendered, err := RenderTemplateVariables(ctx, overlay.Content, s.variableRepo, s.selection)
 	if err != nil {
 		return "", err
 	}
 	return base + "\n\n" + rendered, nil
 }
 
-// stageAllowSet is the plan allow set narrowed for a subagent: it cannot rewrite
-// the whole plan and it cannot suspend to ask the user, so create_action_plan and
-// ask_question come out and report_blocker goes in.
+// stageAllowSet is the plan allow set narrowed for a stage subagent: it cannot
+// rewrite the whole plan, it owns no rollback, and it cannot suspend to ask the
+// user, so create_action_plan, update_rollback_plan and ask_question come out and
+// report_blocker goes in.
 func (s *ChatService) stageAllowSet(ctx context.Context, decomposeID uuid.UUID) (map[string]struct{}, error) {
+	allow, err := s.planFanoutAllowSet(ctx, decomposeID)
+	if err != nil {
+		return nil, err
+	}
+
+	delete(allow, UpdateRollbackPlanToolName)
+	allow[UpdateActionPlanToolName] = struct{}{}
+	return allow, nil
+}
+
+// planFanoutAllowSet is what every fan-out subagent starts from: the plan allow
+// set plus the dialog's tool categories, minus the two tools no subagent may have.
+// create_action_plan rewrites the whole plan and would destroy a sibling's work;
+// ask_question suspends the turn and would strand the agents running beside it.
+func (s *ChatService) planFanoutAllowSet(ctx context.Context, decomposeID uuid.UUID) (map[string]struct{}, error) {
 	allow, err := s.resolveAllowSet(stagePlanMode)
 	if err != nil {
 		return nil, err
@@ -367,6 +447,5 @@ func (s *ChatService) stageAllowSet(ctx context.Context, decomposeID uuid.UUID) 
 	delete(allow, CreateActionPlanToolName)
 	delete(allow, AskQuestionToolName)
 	allow[ReportBlockerToolName] = struct{}{}
-	allow[UpdateActionPlanToolName] = struct{}{}
 	return allow, nil
 }

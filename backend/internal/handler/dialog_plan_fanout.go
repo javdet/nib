@@ -10,6 +10,22 @@ import (
 type startPlanFanoutPayload struct {
 	// Stages, when set, restricts the run to those DAG stages. Empty plans all.
 	Stages []string `json:"stages"`
+	// Rollback runs the agent that writes the plan's rollback list. Unset means
+	// "as usual": with the stages, and on its own when only stages were named.
+	Rollback *bool `json:"rollback"`
+}
+
+func (p startPlanFanoutPayload) targets() service.FanoutTargets {
+	targets := service.AllFanoutTargets()
+	if len(p.Stages) > 0 {
+		// Named stages are a replan; the rollback still follows whatever they
+		// end up saying, unless the caller says otherwise.
+		targets = service.FanoutTargets{Stages: p.Stages, Rollback: true}
+	}
+	if p.Rollback != nil {
+		targets.Rollback = *p.Rollback
+	}
+	return targets
 }
 
 // StartPlanFanout kicks off a plan fan-out and answers 202 immediately: the run
@@ -26,7 +42,7 @@ func (h *DialogHandler) StartPlanFanout() http.HandlerFunc {
 			return
 		}
 
-		run, err := h.chatSvc.StartPlanFanout(r.Context(), id, req.Stages)
+		run, err := h.chatSvc.StartPlanFanout(r.Context(), id, req.targets())
 		switch {
 		case errors.Is(err, service.ErrFanoutInProgress):
 			writeError(w, http.StatusConflict, err.Error())

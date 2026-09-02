@@ -17,7 +17,10 @@ import (
 type blockerQuestion struct {
 	Question string
 	Options  []string
-	Stages   []string
+	// Stages names the DAG stages that raised the question, and is empty when
+	// only the rollback agent did: it owns no stage, so answering it replans
+	// none.
+	Stages []string
 }
 
 // groupBlockers folds identical questions raised by different stages into one, so
@@ -36,16 +39,21 @@ func groupBlockers(blockers []PlanBlocker) []blockerQuestion {
 			continue
 		}
 		if i, ok := index[key]; ok {
-			out[i].Stages = append(out[i].Stages, b.Stage)
 			out[i].Options = mergeOptions(out[i].Options, b.Options)
+			if b.Kind == FanoutStageKindStage {
+				out[i].Stages = append(out[i].Stages, b.Stage)
+			}
 			continue
 		}
 		index[key] = len(out)
-		out = append(out, blockerQuestion{
+		q := blockerQuestion{
 			Question: b.Question,
 			Options:  append([]string(nil), b.Options...),
-			Stages:   []string{b.Stage},
-		})
+		}
+		if b.Kind == FanoutStageKindStage {
+			q.Stages = []string{b.Stage}
+		}
+		out = append(out, q)
 	}
 	return out
 }
@@ -110,6 +118,9 @@ func (s *ChatService) finishPlanFanout(ctx context.Context, decomposeID uuid.UUI
 		r.FinishedAt = time.Now().Unix()
 		r.PendingAskID = callID
 		r.PendingStages = stages
+		// Always: the run the answers start redoes the rollback whether or not
+		// the rollback agent was the one that asked.
+		r.PendingRollback = true
 	}); err != nil {
 		slog.Error("plan fanout: record pending question", "dialog_id", decomposeID, "error", err)
 	}
@@ -200,7 +211,14 @@ func fanoutQuestionPreamble(run FanoutRun, asked []blockerQuestion, total int) s
 	for _, q := range asked {
 		stages = append(stages, q.Stages...)
 	}
-	fmt.Fprintf(&b, "Answering the questions below replans %s.", strings.Join(dedupeStages(stages), ", "))
+	// The rollback is derived from the stages, so it is redone whether or not it
+	// was the agent that asked.
+	if replans := dedupeStages(stages); len(replans) > 0 {
+		fmt.Fprintf(&b, "Answering the questions below replans %s, and redoes the rollback with them.",
+			strings.Join(replans, ", "))
+	} else {
+		b.WriteString("Answering the questions below redoes the rollback.")
+	}
 	if total > len(asked) {
 		fmt.Fprintf(&b, " %d further question(s) follow once these are settled.", total-len(asked))
 	}
@@ -251,12 +269,18 @@ func (s *ChatService) resumeFanoutFromAnswers(
 			}
 		}
 		r.PendingAskID = ""
+		r.PendingRollback = false
 	})
 	if err != nil {
 		return false, err
 	}
 
-	if _, err := s.StartPlanFanout(ctx, decomposeID, updated.PendingStages); err != nil {
+	if _, err := s.StartPlanFanout(ctx, decomposeID, FanoutTargets{
+		Stages: updated.PendingStages,
+		// The rollback undoes whatever the stages end up saying, so a replanned
+		// stage leaves it stale even when the answer was never about it.
+		Rollback: true,
+	}); err != nil {
 		return false, fmt.Errorf("replan answered stages: %w", err)
 	}
 	return true, nil

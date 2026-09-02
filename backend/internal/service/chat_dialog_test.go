@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 type retryDialogRepo struct {
@@ -150,6 +150,68 @@ func (p *retryLLMProvider) CompleteWithTools(_ context.Context, messages []llm.M
 	resp := p.responses[p.calls]
 	p.calls++
 	return resp, nil
+}
+
+// The rollback agent has neither create_action_plan nor update_action_plan, so a
+// turn it ends in prose has to be reminded of the tool it does have.
+func TestRunPersistingAgentLoop_remindsTheRollbackAgentOfItsOwnTool(t *testing.T) {
+	t.Parallel()
+
+	dialogID := uuid.New()
+	planID := uuid.New()
+	repo := &retryDialogRepo{
+		dialog: domain.Dialog{ID: dialogID, Mode: "plan"},
+		messages: []domain.DialogMessage{
+			{DialogID: dialogID, Seq: 0, Role: "system", Content: "You plan infrastructure work."},
+			{DialogID: dialogID, Seq: 1, Role: "user", Content: "## The plan as written"},
+		},
+	}
+
+	provider := &retryLLMProvider{
+		responses: []llm.AssistantMessage{
+			{Content: "Here is how I would undo it."},
+			{ToolCalls: []llm.ToolCall{{
+				ID:        "call_1",
+				Name:      UpdateRollbackPlanToolName,
+				Arguments: `{"rollback":[{"type":"web","action":"turn the flag off"}]}`,
+			}}},
+			{Content: "Rollback saved."},
+		},
+	}
+
+	dataDir := t.TempDir()
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
+	// The plan already holds a stage, so the rollback has something to undo.
+	if _, err := svc.WriteActionPlan(planID, []byte(`{"stages":[{"title":"Bump the chart","steps":[]}],"rollback":[]}`)); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	catalog := newToolCatalog()
+	catalog.localHandlers[UpdateRollbackPlanToolName] = svc.updateRollbackPlanHandler(planID)
+
+	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "plan", catalog, loopConfig{
+		planID: planID,
+		stage:  rollbackStageTitle,
+		kind:   FanoutStageKindRollback,
+	})
+	if err != nil {
+		t.Fatalf("runPersistingAgentLoop: %v", err)
+	}
+	if !resp.ActionPlanUpdated {
+		t.Error("ActionPlanUpdated = false, want true: update_rollback_plan writes the plan too")
+	}
+
+	if provider.calls != 3 {
+		t.Fatalf("completion rounds = %d, want 3", provider.calls)
+	}
+	second := provider.seen[1]
+	last := second[len(second)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, UpdateRollbackPlanToolName) {
+		t.Errorf("second round did not end with the rollback reminder: %+v", last)
+	}
+	if strings.Contains(last.Content, CreateActionPlanToolName) {
+		t.Errorf("reminder names a tool the rollback agent does not have: %+v", last)
+	}
 }
 
 func TestRunPersistingAgentLoop_remindsPlanTurnToCreateActionPlan(t *testing.T) {

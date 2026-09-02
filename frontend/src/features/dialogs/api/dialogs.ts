@@ -506,10 +506,17 @@ export type FanoutRunStatus =
 	| 'done'
 	| 'failed'
 
+export type FanoutStageKind = 'rollback'
+
 export interface FanoutStage {
 	title: string
 	wave: number
 	status: FanoutStageStatus
+	/**
+	 * Absent for a DAG stage. The rollback agent carries one, because it is
+	 * addressed by kind and its title is only a label.
+	 */
+	kind?: FanoutStageKind
 	/** The subagent's own dialog, so its research can be read back. */
 	dialogId?: string
 	error?: string
@@ -517,6 +524,7 @@ export interface FanoutStage {
 
 export interface PlanBlocker {
 	stage: string
+	kind?: FanoutStageKind
 	question: string
 	options?: string[]
 	assumption?: string
@@ -532,20 +540,28 @@ export interface FanoutRun {
 	blockers?: PlanBlocker[]
 	pendingAskId?: string
 	pendingStages?: string[]
+	/** Whether the run the pending answers start also redoes the rollback. */
+	pendingRollback?: boolean
 	error?: string
 }
 
 /**
- * Plans every DAG stage with one subagent each. Answers 202 straight away: the
- * run continues in the background and reports over the dialog's SSE stream.
+ * Plans every DAG stage with one subagent each, then works out the plan's
+ * rollback with one more. Answers 202 straight away: the run continues in the
+ * background and reports over the dialog's SSE stream.
+ *
+ * Naming stages restricts the run to them and still redoes the rollback, since
+ * the rollback follows whatever those stages end up saying. Pass rollback
+ * explicitly to override that either way.
  */
 export function startPlanFanout(
 	id: string,
 	stages?: string[],
+	rollback?: boolean,
 ): Promise<FanoutRun> {
 	return api.post<FanoutRun>(
 		`/dialogs/${encodeURIComponent(id)}/plan-fanout`,
-		{ stages: stages ?? [] },
+		{ stages: stages ?? [], ...(rollback === undefined ? {} : { rollback }) },
 	)
 }
 

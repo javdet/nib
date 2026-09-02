@@ -19,6 +19,9 @@ type toolBinding struct {
 	// stage locks update_action_plan to a single DAG stage. Empty for an
 	// ordinary turn, which may write any stage.
 	stage string
+	// kind says which part of the plan a fan-out subagent owns, so the blockers
+	// it reports come back to it rather than to a stage of the same name.
+	kind FanoutStageKind
 	// categoryNames enumerates the tool categories set_category may choose from.
 	// It is passed per call rather than read from ChatService so concurrent
 	// catalog builds cannot race on shared state.
@@ -55,6 +58,7 @@ var localToolRegistrars = []localToolRegistrar{
 	registerSetCategoryTool,
 	registerCreateActionPlanTool,
 	registerUpdateActionPlanTool,
+	registerUpdateRollbackPlanTool,
 	registerGetActionListTool,
 	registerGetKBDocumentTool,
 	registerUpdateKBTool,
@@ -201,6 +205,14 @@ func registerUpdateActionPlanTool(s *ChatService, catalog *toolCatalog, b toolBi
 	catalog.tools = append(catalog.tools, UpdateActionPlanToolDef(s.allowToolsDir))
 }
 
+func registerUpdateRollbackPlanTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, UpdateRollbackPlanToolName) {
+		return
+	}
+	catalog.localHandlers[UpdateRollbackPlanToolName] = s.updateRollbackPlanHandler(b.planID)
+	catalog.tools = append(catalog.tools, UpdateRollbackPlanToolDef(s.allowToolsDir))
+}
+
 func registerGetActionListTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
 	if b.planID == uuid.Nil || s.dialogRepo == nil || !localToolAllowed(allow, GetActionListToolName) {
 		return
@@ -239,6 +251,6 @@ func registerReportBlockerTool(s *ChatService, catalog *toolCatalog, b toolBindi
 	if b.planID == uuid.Nil || b.stage == "" || !localToolAllowed(allow, ReportBlockerToolName) {
 		return
 	}
-	catalog.localHandlers[ReportBlockerToolName] = s.reportBlockerHandler(b.planID, b.stage)
+	catalog.localHandlers[ReportBlockerToolName] = s.reportBlockerHandler(b.planID, b.stage, b.kind)
 	catalog.tools = append(catalog.tools, ReportBlockerToolDef())
 }

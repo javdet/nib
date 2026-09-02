@@ -41,11 +41,22 @@ const stageActionPlanReminder = "Your last message contained no tool calls, whic
 	"Call update_action_plan now with stage %q and the steps and checks you worked out. " +
 	"If something is still unclear, call report_blocker, then store the stage anyway under a stated assumption."
 
-func actionPlanReminderFor(stage string) string {
-	if stage == "" {
+// rollbackActionPlanReminder is the variant for the rollback agent, which owns no
+// stage and has neither create_action_plan nor update_action_plan.
+const rollbackActionPlanReminder = "Your last message contained no tool calls, which ends the turn, and you have not stored the rollback yet. " +
+	"Describing calls you intend to make has no effect: only an actual tool call runs. " +
+	"Call update_rollback_plan now with the whole list you worked out. " +
+	"If something is still unclear, call report_blocker, then store the rollback anyway under a stated assumption."
+
+func actionPlanReminderFor(cfg loopConfig) string {
+	switch {
+	case cfg.kind == FanoutStageKindRollback:
+		return rollbackActionPlanReminder
+	case cfg.stage != "":
+		return fmt.Sprintf(stageActionPlanReminder, cfg.stage)
+	default:
 		return actionPlanReminder
 	}
-	return fmt.Sprintf(stageActionPlanReminder, stage)
 }
 
 // needsActionPlanReminder reports whether a tool-free reply is ending a plan turn
@@ -57,13 +68,14 @@ func (s *ChatService) needsActionPlanReminder(cfg loopConfig, modeName string, c
 	}
 	_, canUpdate := catalog.localHandlers[UpdateActionPlanToolName]
 	_, canCreate := catalog.localHandlers[CreateActionPlanToolName]
-	if !canUpdate && !canCreate {
+	_, canRollback := catalog.localHandlers[UpdateRollbackPlanToolName]
+	if !canUpdate && !canCreate && !canRollback {
 		return false
 	}
 
-	// A stage subagent owes exactly one stage, and its siblings write the same
-	// file, so the file existing proves nothing about this stage.
-	if cfg.stage != "" {
+	// A fan-out subagent owes one part of a file its siblings also write, so the
+	// file existing proves nothing about the part this one owed.
+	if cfg.stage != "" || cfg.kind != FanoutStageKindStage {
 		return true
 	}
 

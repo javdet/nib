@@ -31,6 +31,7 @@ var localSystemToolNames = []string{
 	CreateSubjectsToolName,
 	CreateActionPlanToolName,
 	UpdateActionPlanToolName,
+	UpdateRollbackPlanToolName,
 	GetActionListToolName,
 	GetKBDocumentToolName,
 	UpdateKBToolName,
