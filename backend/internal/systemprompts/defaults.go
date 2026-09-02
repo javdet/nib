@@ -20,7 +20,9 @@ const EditableName = "discuss"
 // plan_stage narrows the plan prompt to a single stage for a fan-out subagent.
 // rollback_stage narrows it to the plan's one rollback list, for the agent that
 // runs once every stage has been written.
-var Auxiliary = []string{"plan_stage", "rollback_stage"}
+// execute_action narrows the execute prompt to a single action, for the subagent
+// the planning chat hands one row of the plan to.
+var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action"}
 
 const mdSuffix = ".md"
 

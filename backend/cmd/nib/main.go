@@ -165,6 +165,16 @@ func run() error {
 	kbDocSvc := kbdoc.NewService(cfg.DataDir, cfg.KnowledgeBaseDir)
 	mcpConfigSvc := mcpconfig.NewService(cfg.DataDir, cfg.MCP.File)
 	resolvedToolsDir := mode.ResolveDir(cfg.DataDir, cfg.IncludedTools.Dir)
+	// The per-mode allow lists ship in the binary and are reconciled onto the
+	// data volume here. A failure is not fatal: a mode whose list is missing runs
+	// unfiltered, which is worse than the operator's own list but better than a
+	// backend that will not start.
+	if seeded, err := mode.SeedAllowLists(resolvedToolsDir); err != nil {
+		slog.Warn("seed tool allow lists", "dir", resolvedToolsDir, "error", err)
+	} else if len(seeded.Created) > 0 || len(seeded.Added) > 0 {
+		slog.Info("tool allow lists reconciled",
+			"dir", resolvedToolsDir, "created", seeded.Created, "added", seeded.Added)
+	}
 	includedToolsSvc := includedtools.NewService(resolvedToolsDir)
 	executorConfigStore := executor.NewConfigStore(
 		cfg.DataDir,
@@ -280,6 +290,11 @@ func run() error {
 			Concurrency:        cfg.Agent.PlanFanoutConcurrency,
 			StageMaxIterations: cfg.Agent.StageMaxIterations,
 			TimeoutMinutes:     cfg.Agent.PlanFanoutTimeoutMinutes,
+		},
+		service.ActionExecConfig{
+			Concurrency:    cfg.Agent.ActionExecConcurrency,
+			MaxIterations:  cfg.Agent.ActionExecMaxIterations,
+			TimeoutMinutes: cfg.Agent.ActionExecTimeoutMinutes,
 		},
 	)
 	// Both mcp.json edits and secret rotations change what a resolved MCP server

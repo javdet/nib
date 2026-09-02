@@ -191,7 +191,8 @@ func TestSkeleton(t *testing.T) {
 		"## CI/CD",
 		"## Secrets Management",
 		"## Observability",
-		"## Constraints and Guardrails",
+		"## Access and Permissions",
+		"## Backup and Disaster Recovery",
 	} {
 		if !strings.Contains(Skeleton(), heading) {
 			t.Errorf("skeleton is missing %q", heading)

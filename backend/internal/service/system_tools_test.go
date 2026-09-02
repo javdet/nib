@@ -33,6 +33,7 @@ var localSystemToolNames = []string{
 	UpdateActionPlanToolName,
 	UpdateRollbackPlanToolName,
 	GetActionListToolName,
+	ExecuteActionToolName,
 	GetKBDocumentToolName,
 	UpdateKBToolName,
 }
@@ -188,20 +189,38 @@ func TestSystemToolsForMode_returnsModeAllowList(t *testing.T) {
 	}
 }
 
-// systemToolsTestDataDir returns backend/seed/tools, the defaults baked into the
-// image and copied into DATA_DIR/tools on first start (see docker-entrypoint.sh).
-// The runtime DATA_DIR itself is a Docker volume and is not in the working tree,
-// so the seed directory is what these tests can assert against.
+// systemToolsTestDataDir builds the tools directory a running backend would have:
+// the per-mode allow lists reconciled out of the binary, plus the tool schemas
+// seeded from the image. The runtime DATA_DIR is a Docker volume and is not in
+// the working tree, so these tests assemble the same thing from both sources.
 func systemToolsTestDataDir(t *testing.T) string {
 	t.Helper()
 
-	dir := filepath.Join("..", "..", "seed", "tools")
-	if _, err := os.Stat(filepath.Join(dir, "decompose.json")); err != nil {
-		t.Fatalf("stat seed tools dir: %v", err)
+	dir := t.TempDir()
+	if _, err := mode.SeedAllowLists(dir); err != nil {
+		t.Fatalf("seed allow lists: %v", err)
 	}
-	abs, err := filepath.Abs(dir)
+
+	schemaSrc := filepath.Join("..", "..", "seed", "tools", "schemas")
+	entries, err := os.ReadDir(schemaSrc)
 	if err != nil {
-		t.Fatalf("filepath.Abs(%q) err = %v", dir, err)
+		t.Fatalf("read seed schemas: %v", err)
 	}
-	return abs
+	schemaDst := filepath.Join(dir, "schemas")
+	if err := os.MkdirAll(schemaDst, 0o755); err != nil {
+		t.Fatalf("create schemas dir: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(schemaSrc, e.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(schemaDst, e.Name()), b, 0o644); err != nil {
+			t.Fatalf("write %s: %v", e.Name(), err)
+		}
+	}
+	return dir
 }

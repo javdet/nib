@@ -121,6 +121,7 @@ type ChatService struct {
 	attachmentsDir   string
 	maxIterations    int
 	fanout           PlanFanoutConfig
+	actionExec       ActionExecConfig
 	activity         *ActivityBroker
 
 	mcpDiscoveryMu    sync.RWMutex
@@ -143,6 +144,21 @@ type ChatService struct {
 	// fanoutCancels holds the cancel func of each in-flight fan-out, keyed by the
 	// dialog it plans, so an operator can stop a run that is going nowhere.
 	fanoutCancels sync.Map
+
+	// transcriptWriteMu serialises appends to one dialog's transcript, keyed by
+	// that dialog. An agent round writes its assistant row and the tool results
+	// answering it as separate inserts, and anything appended between the two
+	// breaks the pairing every later replay depends on.
+	transcriptWriteMu sync.Map
+
+	// execCancels holds the cancel func of each in-flight action sub-agent,
+	// keyed by plan and action row, so restarting an action can stop the
+	// attempt already running on it. Storing the key is also the claim that
+	// keeps two sub-agents off the same row.
+	execCancels sync.Map
+
+	// execSem bounds how many action sub-agents run at once across every plan.
+	execSem chan struct{}
 }
 
 func NewChatService(
@@ -167,11 +183,13 @@ func NewChatService(
 	allowToolsDir string,
 	maxIterations int,
 	fanout PlanFanoutConfig,
+	actionExec ActionExecConfig,
 ) *ChatService {
 	if maxIterations <= 0 {
 		maxIterations = defaultMaxIterations
 	}
 	fanout = fanout.withDefaults()
+	actionExec = actionExec.withDefaults()
 	return &ChatService{
 		provider:         provider,
 		systemPromptsSvc: systemPromptsSvc,
@@ -200,6 +218,8 @@ func NewChatService(
 		attachmentsDir:   filepath.Join(dataDir, "attachments"),
 		maxIterations:    maxIterations,
 		fanout:           fanout,
+		actionExec:       actionExec,
+		execSem:          make(chan struct{}, actionExec.Concurrency),
 		activity:         NewActivityBroker(),
 	}
 }

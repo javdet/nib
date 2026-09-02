@@ -38,30 +38,41 @@ func newToolBinding(dialogID uuid.UUID) toolBinding {
 type localToolRegistrar func(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{})
 
 // localToolRegistrars preserves the historical tool registration order.
-var localToolRegistrars = []localToolRegistrar{
-	registerChatNameTool,
-	registerKnowledgeSearchTool,
-	registerToolSearchTool,
-	registerGetSkillTool,
-	registerAPICallTool,
-	registerExecuteCommandTool,
-	registerGetSecretsTool,
-	registerListVariablesTool,
-	registerRunExecutorTool,
-	registerAskQuestionTool,
-	registerReportBlockerTool,
-	registerCreateDAGTool,
-	registerCreatePlanContractTool,
-	registerCreateSummaryTool,
-	registerCreateTableTool,
-	registerCreateSubjectsTool,
-	registerSetCategoryTool,
-	registerCreateActionPlanTool,
-	registerUpdateActionPlanTool,
-	registerUpdateRollbackPlanTool,
-	registerGetActionListTool,
-	registerGetKBDocumentTool,
-	registerUpdateKBTool,
+//
+// It is filled in init rather than in its own declaration because execute_action
+// closes the loop: registering it reaches StartActionAgent, which builds a tool
+// catalog for the subagent, which reads this list. That is a genuine cycle to the
+// compiler even though nothing recurses at run time -- a subagent never has
+// execute_action in its allow set. Do not fold this back into the var.
+var localToolRegistrars []localToolRegistrar
+
+func init() {
+	localToolRegistrars = []localToolRegistrar{
+		registerChatNameTool,
+		registerKnowledgeSearchTool,
+		registerToolSearchTool,
+		registerGetSkillTool,
+		registerAPICallTool,
+		registerExecuteCommandTool,
+		registerGetSecretsTool,
+		registerListVariablesTool,
+		registerRunExecutorTool,
+		registerAskQuestionTool,
+		registerReportBlockerTool,
+		registerCreateDAGTool,
+		registerCreatePlanContractTool,
+		registerCreateSummaryTool,
+		registerCreateTableTool,
+		registerCreateSubjectsTool,
+		registerSetCategoryTool,
+		registerCreateActionPlanTool,
+		registerUpdateActionPlanTool,
+		registerUpdateRollbackPlanTool,
+		registerGetActionListTool,
+		registerExecuteActionTool,
+		registerGetKBDocumentTool,
+		registerUpdateKBTool,
+	}
 }
 
 func (s *ChatService) addLocalTools(catalog *toolCatalog, allow map[string]struct{}, b toolBinding) {
@@ -235,6 +246,17 @@ func registerUpdateKBTool(s *ChatService, catalog *toolCatalog, _ toolBinding, a
 	}
 	catalog.localHandlers[UpdateKBToolName] = s.knowledgeSvc.ExecuteUpdateKB
 	catalog.tools = append(catalog.tools, UpdateKBToolDef())
+}
+
+// registerExecuteActionTool gives a conversation that owns an action plan the
+// ability to carry one of its actions out. A subagent executing an action has it
+// deleted from its allow set: it holds one row and must not hand out more.
+func registerExecuteActionTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || s.dialogRepo == nil || !localToolAllowed(allow, ExecuteActionToolName) {
+		return
+	}
+	catalog.localHandlers[ExecuteActionToolName] = s.executeActionHandler(b)
+	catalog.tools = append(catalog.tools, ExecuteActionToolDef())
 }
 
 func registerCreatePlanContractTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {

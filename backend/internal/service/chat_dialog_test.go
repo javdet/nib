@@ -180,7 +180,7 @@ func TestRunPersistingAgentLoop_remindsTheRollbackAgentOfItsOwnTool(t *testing.T
 	}
 
 	dataDir := t.TempDir()
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 	// The plan already holds a stage, so the rollback has something to undo.
 	if _, err := svc.WriteActionPlan(planID, []byte(`{"stages":[{"title":"Bump the chart","steps":[]}],"rollback":[]}`)); err != nil {
 		t.Fatalf("write plan: %v", err)
@@ -239,7 +239,7 @@ func TestRunPersistingAgentLoop_remindsPlanTurnToCreateActionPlan(t *testing.T) 
 	}
 
 	dataDir := t.TempDir()
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers[CreateActionPlanToolName] = svc.createActionPlanHandler(dialogID)
@@ -292,7 +292,7 @@ func TestRunPersistingAgentLoop_noReminderOutsidePlanMode(t *testing.T) {
 	}
 
 	provider := &retryLLMProvider{responses: []llm.AssistantMessage{{Content: "hello"}}}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	resp, err := svc.runPersistingAgentLoop(context.Background(), dialogID, "discuss", newToolCatalog(), loopConfig{})
 	if err != nil {
@@ -344,7 +344,7 @@ func TestRetryLastResponse_truncatesAndRegenerates(t *testing.T) {
 			{Content: "new answer"},
 		},
 	}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", dataDir, "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	resp, err := svc.RetryLastResponse(context.Background(), dialogID)
 	if err != nil {
@@ -393,7 +393,7 @@ func TestRetryLastResponse_noUserMessage(t *testing.T) {
 			{DialogID: dialogID, Seq: 0, Role: "system", Content: "You are helpful."},
 		},
 	}
-	svc := NewChatService(&retryLLMProvider{}, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
+	svc := NewChatService(&retryLLMProvider{}, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	_, err := svc.RetryLastResponse(context.Background(), dialogID)
 	if err == nil {

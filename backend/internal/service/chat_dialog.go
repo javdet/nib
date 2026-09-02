@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
@@ -262,6 +263,7 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 		actionPlanChecksPath(s.actionPlansDir, dialogID),
 		actionPlanCommentsPath(s.actionPlansDir, dialogID),
 		actionPlanRunsPath(s.actionPlansDir, dialogID),
+		actionPlanExecPath(s.actionPlansDir, dialogID),
 	}
 	for _, path := range files {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -297,6 +299,29 @@ func (c loopConfig) withDefaults(dialogID uuid.UUID, serviceMax int) loopConfig 
 	return c
 }
 
+// transcriptMutex returns the lock guarding appends to one dialog's transcript.
+//
+// A round is written as an assistant row carrying tool_calls followed by one
+// tool row per call, with a network round trip between them. A foreign append
+// landing in that gap — an action sub-agent posting its result, a fan-out
+// posting its questions — separates the assistant row from its results, and
+// repairOrphanToolCalls then answers every call twice, which the completion API
+// rejects outright. Everything that writes to a dialog another agent may be
+// mid-round in takes this lock.
+func (s *ChatService) transcriptMutex(dialogID uuid.UUID) *sync.Mutex {
+	mu, _ := s.transcriptWriteMu.LoadOrStore(dialogID, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
+// appendMessageLocked appends one row under the transcript lock. It is for
+// writers outside the agent loop; the loop holds the lock across a whole round.
+func (s *ChatService) appendMessageLocked(ctx context.Context, dialogID uuid.UUID, msg domain.DialogMessage) (domain.DialogMessage, error) {
+	mu := s.transcriptMutex(dialogID)
+	mu.Lock()
+	defer mu.Unlock()
+	return s.dialogRepo.AppendMessage(ctx, dialogID, msg)
+}
+
 func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.UUID, modeName string, catalog *toolCatalog, cfg loopConfig) (domain.ChatResponse, error) {
 	cfg = cfg.withDefaults(dialogID, s.maxIterations)
 	logCtx := newAgentLogCtx(&dialogID, modeName)
@@ -318,6 +343,18 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 
 	reminders := 0
 	toolFailures := 0
+
+	// The lock is taken per round rather than for the whole turn, so a sub-agent
+	// result lands between rounds instead of waiting out the entire turn. One
+	// deferred release covers every early return inside the locked stretch.
+	transcriptLocked := false
+	unlockTranscript := func() {
+		if transcriptLocked {
+			transcriptLocked = false
+			s.transcriptMutex(dialogID).Unlock()
+		}
+	}
+	defer unlockTranscript()
 
 	for round := 0; round < cfg.maxIterations; round++ {
 		roundNum := round + 1
@@ -377,6 +414,8 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("marshal tool_calls round %d: %w", roundNum, err)
 		}
+		s.transcriptMutex(dialogID).Lock()
+		transcriptLocked = true
 		if _, err := s.dialogRepo.AppendMessage(ctx, dialogID, domain.DialogMessage{
 			Role:      "assistant",
 			Content:   asst.Content,
@@ -451,6 +490,10 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				return domain.ChatResponse{}, fmt.Errorf("round %d: %w", roundNum, ErrTooManyToolFailures)
 			}
 		}
+
+		// Every tool row answering this round's assistant row is now stored, so
+		// the pairing is complete and a foreign append is safe again.
+		unlockTranscript()
 
 		if execCount > 0 {
 			s.activity.Publish(dialogID, domain.AgentActivity{

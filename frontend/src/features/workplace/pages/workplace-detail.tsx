@@ -22,8 +22,8 @@ import {
 import { MarkdownMessage } from '@/components/markdown-message'
 import { downloadTextFile } from '@/lib/download'
 import {
-	executeActionPlanAction,
-	ensureActionPlanExecutorChat,
+	getActionPlanExecRuns,
+	type ActionExecRuns,
 	getDialog,
 	getDialogActionPlan,
 	getDialogDag,
@@ -65,6 +65,10 @@ import {
 	planMarkdownFileName,
 } from '../lib/plan-markdown'
 import { actionPlanNumberForKey } from '../lib/action-plan-number'
+import {
+	executeActionMessage,
+	restartActionMessage,
+} from '../lib/execute-action-message'
 
 // commandActionTypes are the step types executed by copying commands into a
 // terminal, so their command field is offered for editing.
@@ -172,6 +176,7 @@ export function WorkplaceDetail() {
 	const [savingSubjects, setSavingSubjects] = useState(false)
 	const [savingCategories, setSavingCategories] = useState(false)
 	const [liveActionPlanVersion, setLiveActionPlanVersion] = useState(0)
+	const [execRuns, setExecRuns] = useState<ActionExecRuns>({})
 	const [executorType, setExecutorType] = useState<ExecutorType | null>(null)
 	const [simplifiedView, setSimplifiedView] = useState(
 		() => localStorage.getItem('plan-simplified-view') !== 'false',
@@ -184,15 +189,23 @@ export function WorkplaceDetail() {
 		setLoading(true)
 		setError(null)
 		try {
-			const [dialogData, summary, dag, planState, actionPlanData, run] =
-				await Promise.all([
-					getDialog(dialogId),
-					getDialogSummary(dialogId),
-					getDialogDag(dialogId),
-					getPlanState(dialogId),
-					getDialogActionPlan(dialogId),
-					getPlanFanout(dialogId),
-				])
+			const [
+				dialogData,
+				summary,
+				dag,
+				planState,
+				actionPlanData,
+				run,
+				runs,
+			] = await Promise.all([
+				getDialog(dialogId),
+				getDialogSummary(dialogId),
+				getDialogDag(dialogId),
+				getPlanState(dialogId),
+				getDialogActionPlan(dialogId),
+				getPlanFanout(dialogId),
+				getActionPlanExecRuns(dialogId),
+			])
 			setDialog(dialogData)
 			setSummaryContent(summary)
 			setDagContent(dag)
@@ -200,6 +213,7 @@ export function WorkplaceDetail() {
 			setActionPlan(actionPlanData?.plan ?? null)
 			setActionPlanChecked(actionPlanData?.checked ?? [])
 			setActionPlanComments(actionPlanData?.comments ?? {})
+			setExecRuns(runs)
 			setPlanStatus(planState.status)
 			setPlanScheduledAt(planState.scheduledAt)
 		} catch (err) {
@@ -210,6 +224,7 @@ export function WorkplaceDetail() {
 			setActionPlan(null)
 			setActionPlanChecked([])
 			setActionPlanComments({})
+			setExecRuns({})
 			setPlanStatus('draft')
 			setPlanScheduledAt(0)
 			setError(
@@ -262,6 +277,14 @@ export function WorkplaceDetail() {
 				ev.kind === 'plan_fanout_done'
 			) {
 				void getPlanFanout(id).then(setFanoutRun).catch(() => {})
+				return
+			}
+			if (
+				ev.kind === 'action_exec_started' ||
+				ev.kind === 'action_exec_done' ||
+				ev.kind === 'action_exec_failed'
+			) {
+				void getActionPlanExecRuns(id).then(setExecRuns).catch(() => {})
 			}
 		})
 
@@ -718,72 +741,38 @@ export function WorkplaceDetail() {
 		[id, reordering],
 	)
 
-	const handleExecuteAction = useCallback(
-		async (step: ActionStep, key: string) => {
+	// Execution is driven from the planning chat: the button sends the sentence
+	// an operator could have typed, and the agent turns it into an execute_action
+	// call. Routing both through the same path is what makes a hand-typed request
+	// -- in any wording, in any language -- behave exactly like the button.
+	const sendActionCommand = useCallback(
+		(key: string, compose: (number: string) => string) => {
 			if (!id) return
 
-			try {
-				// A code action goes straight to the coding agent: the backend
-				// creates the chat, stores the task in it, and launches the
-				// container. No message is sent to the LLM.
-				if (step.type === 'code') {
-					const { dialog } = await executeActionPlanAction(
-						id,
-						key,
-					)
-					selectMode('execute')
-					setActiveDialogId(dialog.id)
-					bumpDialogsVersion()
-					return
-				}
-
-				const { dialog, created } = await ensureActionPlanExecutorChat(
-					id,
-				)
-				selectMode('execute')
-
-				const parts: string[] = []
-				if (created && summaryContent) {
-					parts.push(`## Summary\n\n${summaryContent}`)
-				}
-				// The number lets the executor name the row back to the operator.
-				const number = actionPlanNumberForKey(key)
-				if (number) {
-					parts.push(`## Action Number\n\n${number}`)
-				}
-				parts.push(`## Action Type\n\n${step.type}`)
-				parts.push(`## Action\n\n${step.action}`)
-				if (step.pr_title?.trim()) {
-					parts.push(`## PR Title\n\n${step.pr_title.trim()}`)
-				}
-				const comment = actionPlanComments[key]?.trim()
-				if (comment) {
-					parts.push(`## Comment\n\n${comment}`)
-				}
-				enqueuePendingMessage({
-					dialogId: dialog.id,
-					text: parts.join('\n\n'),
-				})
-
-				setActiveDialogId(dialog.id)
-				bumpDialogsVersion()
-			} catch (err) {
-				setError(
-					err instanceof Error
-						? err.message
-						: 'Failed to start execution',
-				)
+			const number = actionPlanNumberForKey(key)
+			if (!number) {
+				setError('This action has no number yet; reload the plan and try again.')
+				return
 			}
+
+			enqueuePendingMessage({ dialogId: id, text: compose(number) })
+			setActiveDialogId(id)
 		},
-		[
-			id,
-			summaryContent,
-			actionPlanComments,
-			selectMode,
-			enqueuePendingMessage,
-			setActiveDialogId,
-			bumpDialogsVersion,
-		],
+		[id, enqueuePendingMessage, setActiveDialogId],
+	)
+
+	const handleExecuteAction = useCallback(
+		(_step: ActionStep, key: string) => {
+			sendActionCommand(key, executeActionMessage)
+		},
+		[sendActionCommand],
+	)
+
+	const handleRestartAction = useCallback(
+		(key: string) => {
+			sendActionCommand(key, restartActionMessage)
+		},
+		[sendActionCommand],
 	)
 
 	const handleScheduleChange = useCallback(
@@ -1285,6 +1274,8 @@ export function WorkplaceDetail() {
 							onComment={handleOpenComment}
 							onEdit={handleOpenEditAction}
 							onExecute={handleExecuteAction}
+							onRestart={handleRestartAction}
+							execRuns={execRuns}
 							onReorder={(scope, stage, from, to) =>
 								void handleReorder(scope, stage, from, to)
 							}

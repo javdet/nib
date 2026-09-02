@@ -78,6 +78,9 @@ export type AgentActivityKind =
 	| 'plan_stage_done'
 	| 'plan_stage_failed'
 	| 'plan_fanout_done'
+	| 'action_exec_started'
+	| 'action_exec_done'
+	| 'action_exec_failed'
 
 export interface AgentActivity {
 	kind: AgentActivityKind
@@ -85,7 +88,9 @@ export interface AgentActivity {
 	count?: number
 	/** Plan stage a fan-out event belongs to. */
 	stage?: string
-	/** Outcome of a stage or of a whole fan-out run. */
+	/** Row key of the action an action-execution event belongs to. */
+	action?: string
+	/** Outcome of a stage, a fan-out run, or an action run. */
 	status?: string
 }
 
@@ -454,18 +459,33 @@ export function executeActionPlanAction(
 	)
 }
 
-export interface EnsureExecutorChatResponse {
-	dialog: Dialog
-	created: boolean
+/** Where a per-action sub-agent run ended up. */
+export type ActionExecStatus =
+	| 'running'
+	| 'done'
+	| 'failed'
+	| 'blocked'
+	| 'cancelled'
+
+/**
+ * One attempt at one action row. It carries neither the row's number nor its
+ * dialog id: the number is derived from position and moves when a stage is
+ * reordered, and the dialog is recorded with the agent-runner runs.
+ */
+export interface ActionExecRun {
+	status: ActionExecStatus
+	startedAt: number
+	finishedAt?: number
+	error?: string
+	attempt: number
 }
 
-/** Returns or creates the shared execute chat for non-code actions of a plan. */
-export function ensureActionPlanExecutorChat(
-	id: string,
-): Promise<EnsureExecutorChatResponse> {
-	return api.post<EnsureExecutorChatResponse>(
-		`/dialogs/${encodeURIComponent(id)}/action-plan/executor-chat`,
-		{},
+/** Latest sub-agent run per action row key. */
+export type ActionExecRuns = Record<string, ActionExecRun>
+
+export function getActionPlanExecRuns(id: string): Promise<ActionExecRuns> {
+	return api.get<ActionExecRuns>(
+		`/dialogs/${encodeURIComponent(id)}/action-plan/exec`,
 	)
 }
 

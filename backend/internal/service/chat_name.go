@@ -93,3 +93,16 @@ func argString(v any) string {
 		return fmt.Sprint(v)
 	}
 }
+
+// argBool reads a boolean tool argument, tolerating the string forms a model
+// sometimes emits in place of a JSON boolean.
+func argBool(v any) bool {
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		return strings.EqualFold(strings.TrimSpace(b), "true")
+	default:
+		return false
+	}
+}

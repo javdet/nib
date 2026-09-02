@@ -6,7 +6,14 @@ import {
 	type DragEvent,
 	type ReactNode,
 } from 'react'
-import { GripVertical, MessageSquare, Pencil, Play } from 'lucide-react'
+import {
+	GripVertical,
+	Loader2,
+	MessageSquare,
+	Pencil,
+	Play,
+	RotateCcw,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CopyButton } from '@/components/copy-button'
@@ -17,13 +24,55 @@ import {
 } from '@/components/ui/tooltip'
 import { MarkdownMessage } from '@/components/markdown-message'
 import { cn } from '@/lib/utils'
-import type { ActionPlan, ActionStep } from '@/features/dialogs/api/dialogs'
+import type {
+	ActionExecRun,
+	ActionExecRuns,
+	ActionPlan,
+	ActionStep,
+} from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
 import { actionTypeIcon } from '../lib/action-type-icon'
 import {
 	actionPlanItemNumber,
 	actionPlanStageNumber,
 } from '../lib/action-plan-number'
+
+// The status of a sub-agent run, shown beside the row it belongs to. The record
+// is separate from the checkbox on purpose: "the sub-agent finished" is a weaker
+// claim than "this action is done", which stays the operator's to make.
+function ExecStatusDot({ run }: { run: ActionExecRun }) {
+	if (run.status === 'running') {
+		return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+	}
+
+	const color =
+		run.status === 'done'
+			? 'bg-green-500'
+			: run.status === 'blocked'
+				? 'bg-amber-500'
+				: run.status === 'cancelled'
+					? 'bg-muted-foreground'
+					: 'bg-destructive'
+	return <span className={cn('h-2.5 w-2.5 rounded-full', color)} />
+}
+
+function execRunTooltip(run: ActionExecRun): string {
+	const attempt = run.attempt > 1 ? ` (attempt ${run.attempt})` : ''
+	switch (run.status) {
+		case 'running':
+			return `Sub-agent running${attempt}`
+		case 'done':
+			return `Sub-agent finished${attempt} — tick the box yourself once you are satisfied`
+		case 'blocked':
+			return run.error
+				? `Needs a decision${attempt}: ${run.error}`
+				: `Needs a decision${attempt}`
+		case 'cancelled':
+			return `Cancelled${attempt}`
+		default:
+			return run.error ? `Failed${attempt}: ${run.error}` : `Failed${attempt}`
+	}
+}
 
 const EXECUTOR_DISABLED_REASON =
 	'Executor is disabled — set its type in executor settings to run code actions'
@@ -36,6 +85,10 @@ interface ActionPlanViewProps {
 	onComment: (key: string) => void
 	onEdit: (key: string) => void
 	onExecute: (step: ActionStep, key: string) => void
+	// onRestart abandons whatever is running on a row and starts a fresh
+	// sub-agent. Only offered once a row has a run to restart.
+	onRestart: (key: string) => void
+	execRuns: ActionExecRuns
 	onReorder: (scope: ActionPlanScope, stage: number, from: number, to: number) => void
 	reordering?: boolean
 	// executorDisabled mirrors the "disabled" executor type: code actions have
@@ -232,6 +285,8 @@ interface ExecutableActionRowProps {
 	onComment: () => void
 	onEdit: () => void
 	onExecute: () => void
+	onRestart: () => void
+	execRun?: ActionExecRun
 	executeDisabled?: boolean
 	executeDisabledReason?: string
 	dragDisabled?: boolean
@@ -249,6 +304,8 @@ function ExecutableActionRow({
 	onComment,
 	onEdit,
 	onExecute,
+	onRestart,
+	execRun,
 	executeDisabled = false,
 	executeDisabledReason,
 	dragDisabled,
@@ -326,6 +383,37 @@ function ExecutableActionRow({
 					</TooltipContent>
 				</Tooltip>
 			</div>
+			{execRun && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="flex w-12 shrink-0 items-center justify-center self-stretch border-l">
+							<ExecStatusDot run={execRun} />
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
+				</Tooltip>
+			)}
+			{execRun && execRun.status !== 'running' && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="flex w-12 shrink-0 self-stretch border-l">
+							<button
+								type="button"
+								onClick={onRestart}
+								className={cn(
+									'flex flex-1 cursor-pointer items-center justify-center transition-colors',
+									'duration-[var(--dur-fast)] focus-ring-inset',
+									'text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground',
+								)}
+								aria-label="Run action again"
+							>
+								<RotateCcw className="h-4 w-4" />
+							</button>
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>Run again with a new sub-agent</TooltipContent>
+				</Tooltip>
+			)}
 			<Tooltip>
 				{/* The button is wrapped so the tooltip still explains why it is off:
 				    a natively disabled button swallows its own pointer events. */}
@@ -423,6 +511,8 @@ export function ActionPlanView({
 	onComment,
 	onEdit,
 	onExecute,
+	onRestart,
+	execRuns,
 	onReorder,
 	reordering = false,
 	executorDisabled = false,
@@ -591,6 +681,8 @@ export function ActionPlanView({
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
 											onExecute={() => onExecute(step, key)}
+											onRestart={() => onRestart(key)}
+											execRun={execRuns[key]}
 											executeDisabled={
 												executorDisabled && isCodeStep(step)
 											}
@@ -681,6 +773,8 @@ export function ActionPlanView({
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
 										onExecute={() => onExecute(step, key)}
+										onRestart={() => onRestart(key)}
+										execRun={execRuns[key]}
 										executeDisabled={
 											executorDisabled && isCodeStep(step)
 										}

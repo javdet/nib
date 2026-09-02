@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
@@ -10,6 +11,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { dialogIdFromHref } from '@/lib/dialog-link'
 
 const markdownComponents: Components = {
 	p: ({ children }) => (
@@ -117,16 +119,69 @@ const markdownComponents: Components = {
 	},
 }
 
-interface MarkdownMessageProps {
-	content: string
+function buildMarkdownComponents(
+	onDialogLink?: (dialogId: string) => void,
+): Components {
+	return {
+	...markdownComponents,
+	a: ({ href, children }) => {
+		// There is no route to a dialog by id -- the app switches dialogs through
+		// context -- so a link to one has to be intercepted rather than followed.
+		const dialogId = dialogIdFromHref(href)
+		if (dialogId && onDialogLink) {
+			return (
+				<button
+					type="button"
+					onClick={() => onDialogLink(dialogId)}
+					className="cursor-pointer underline underline-offset-2"
+				>
+					{children}
+				</button>
+			)
+		}
+		if (dialogId) {
+			// Nothing can open it from here; showing a dead link would be worse.
+			return <span>{children}</span>
+		}
+		return (
+			<a
+				href={href}
+				target="_blank"
+				rel="noreferrer noopener"
+				className="break-all underline underline-offset-2"
+			>
+				{children}
+			</a>
+		)
+	},
+	}
 }
 
-export function MarkdownMessage({ content }: MarkdownMessageProps) {
+
+interface MarkdownMessageProps {
+	content: string
+	/**
+	 * Called instead of navigating when the message links to another dialog.
+	 * Omitted everywhere the surrounding view cannot switch dialogs, which
+	 * renders such a link as plain text rather than a link that goes nowhere.
+	 */
+	onDialogLink?: (dialogId: string) => void
+}
+
+export function MarkdownMessage({
+	content,
+	onDialogLink,
+}: MarkdownMessageProps) {
+	const components = useMemo(
+		() => buildMarkdownComponents(onDialogLink),
+		[onDialogLink],
+	)
+
 	return (
 		<div className="min-w-0 break-words">
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm, remarkBreaks]}
-				components={markdownComponents}
+				components={components}
 			>
 				{content}
 			</ReactMarkdown>

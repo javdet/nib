@@ -263,7 +263,55 @@ export function ChatPanel() {
 		void reloadMessages(activeDialogId)
 	}, [activeDialogId, reloadMessages])
 
-	const callingTool = useToolActivity(activeDialogId, handleAgentResult)
+	// An action sub-agent finishes on its own schedule, so its result can land
+	// while the operator is mid-turn here. Reloading then would replace the
+	// optimistic user bubble and re-show a question they have already answered,
+	// so a busy panel defers the refresh to the end of the turn instead.
+	const [pendingActionRefresh, setPendingActionRefresh] = useState(false)
+
+	const handleActionResult = useCallback(() => {
+		if (!activeDialogId) {
+			return
+		}
+		if (loading || submittingAnswers) {
+			setPendingActionRefresh(true)
+			return
+		}
+		void reloadMessages(activeDialogId)
+	}, [activeDialogId, loading, submittingAnswers, reloadMessages])
+
+	useEffect(() => {
+		if (!pendingActionRefresh || loading || submittingAnswers) {
+			return
+		}
+		if (!activeDialogId) {
+			setPendingActionRefresh(false)
+			return
+		}
+		setPendingActionRefresh(false)
+		void reloadMessages(activeDialogId)
+	}, [
+		pendingActionRefresh,
+		loading,
+		submittingAnswers,
+		activeDialogId,
+		reloadMessages,
+	])
+
+	// A sub-agent's result links back to the dialog it ran in. Opening it is a
+	// context switch rather than navigation, so the link is handled here.
+	const handleOpenDialogLink = useCallback(
+		(dialogId: string) => {
+			setActiveDialogId(dialogId)
+		},
+		[setActiveDialogId],
+	)
+
+	const callingTool = useToolActivity(
+		activeDialogId,
+		handleAgentResult,
+		handleActionResult,
+	)
 	const thinkingPhrase = useThinkingPhrase(loading)
 
 	/**
@@ -858,7 +906,10 @@ export function ChatPanel() {
 									)}
 								>
 									{msg.role === 'assistant' && msg.content ? (
-										<MarkdownMessage content={msg.content} />
+										<MarkdownMessage
+											content={msg.content}
+											onDialogLink={handleOpenDialogLink}
+										/>
 									) : (
 										msg.content
 									)}
