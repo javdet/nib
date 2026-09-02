@@ -39,9 +39,14 @@ if [ ! -e "${DATA_DIR}/mcp.json" ]; then
 	fi
 fi
 
-# Per-mode allow lists live in tools/, the action plan tool schemas in
-# tools/schemas/. Copied file by file so a default added in a later release
-# lands in an existing volume without touching the files the operator edited.
+# The action plan tool schemas live in tools/schemas/. Copied file by file so a
+# default added in a later release lands in an existing volume without touching
+# the files the operator edited.
+#
+# The per-mode allow lists are NOT seeded here any more: copy-if-absent cannot
+# add a newly shipped tool to a list that already exists, which left new tools
+# dead on every upgraded install. They are embedded in the binary and reconciled
+# at startup instead (see mode.SeedAllowLists).
 if [ -d "${SEED_DIR}/tools" ]; then
 	while IFS= read -r src; do
 		rel="${src#"${SEED_DIR}/tools/"}"

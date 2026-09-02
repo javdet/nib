@@ -255,25 +255,21 @@ func (h *DialogHandler) ExecuteActionPlanAction() http.HandlerFunc {
 	}
 }
 
-// ExecutorChat returns or creates the shared execute chat for non-code actions
-// of the plan stored on planDialogID.
-func (h *DialogHandler) ExecutorChat() http.HandlerFunc {
+// ActionPlanExecRuns reports the latest sub-agent run per action row, which is
+// what puts a status beside each row in the plan view.
+func (h *DialogHandler) ActionPlanExecRuns() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parseUUIDParam(w, r, "id", "dialog id")
 		if !ok {
 			return
 		}
 
-		dialog, created, err := h.chatSvc.EnsureExecutorDialog(r.Context(), id)
+		runs, err := h.chatSvc.ReadActionPlanExecRuns(id)
 		if err != nil {
 			handleServiceError(w, err)
 			return
 		}
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"dialog":  dialog,
-			"created": created,
-		})
+		writeJSON(w, http.StatusOK, runs)
 	}
 }
 

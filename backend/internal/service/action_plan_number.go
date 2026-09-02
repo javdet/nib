@@ -1,6 +1,11 @@
 package service
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
 
 // The operator-facing numbering of a plan. Every label is derived from the
 // item's position, the same way actionPlanItemKey derives its storage key, so
@@ -72,4 +77,105 @@ func renumberActionPlanItems(raw any, stage int, scope ActionPlanScope) {
 func asArray(raw any) []any {
 	items, _ := raw.([]any)
 	return items
+}
+
+// The operator-facing labels, matched lowercased: "1.2" for a step, "1.c1" for a
+// check, "r1" for a rollback entry. A label may be zero-padded or carry a leading
+// "#", because these come back from a model quoting what it saw in the web
+// interface rather than from code.
+var (
+	actionPlanStepNumberPattern     = regexp.MustCompile(`^(\d+)\.(\d+)$`)
+	actionPlanCheckNumberPattern    = regexp.MustCompile(`^(\d+)\.c(\d+)$`)
+	actionPlanRollbackNumberPattern = regexp.MustCompile(`^r(\d+)$`)
+)
+
+// parseActionPlanNumber turns an operator-facing label into the row key the plan
+// side files are indexed by. It is the inverse of actionPlanItemNumber and
+// actionPlanRollbackNumber, and it also passes a raw row key straight through so
+// a model that quotes one back is not punished for it.
+//
+// The inverse is only partial: "9.4" parses to a well-formed key for a row that
+// may not exist. Callers must follow this with a lookup — findActionPlanStep
+// already reports ErrActionNotFound — and never treat a parse as proof.
+func parseActionPlanNumber(number string) (string, bool) {
+	s := strings.ToLower(strings.TrimSpace(number))
+	s = strings.TrimPrefix(s, "#")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", false
+	}
+
+	// A row key is already what the caller wants; accept it unchanged.
+	if actionPlanKeyPattern.MatchString(s) || actionPlanRollbackKeyPattern.MatchString(s) {
+		return s, true
+	}
+
+	if m := actionPlanStepNumberPattern.FindStringSubmatch(s); m != nil {
+		stage, index, ok := parseActionPlanLabelPair(m[1], m[2])
+		if !ok {
+			return "", false
+		}
+		return actionPlanItemKey(stage, ActionPlanScopeSteps, index), true
+	}
+	if m := actionPlanCheckNumberPattern.FindStringSubmatch(s); m != nil {
+		stage, index, ok := parseActionPlanLabelPair(m[1], m[2])
+		if !ok {
+			return "", false
+		}
+		return actionPlanItemKey(stage, ActionPlanScopeChecks, index), true
+	}
+	if m := actionPlanRollbackNumberPattern.FindStringSubmatch(s); m != nil {
+		index, err := strconv.Atoi(m[1])
+		if err != nil || index < 1 {
+			return "", false
+		}
+		return fmt.Sprintf("rollback.%d", index-1), true
+	}
+	return "", false
+}
+
+// parseActionPlanLabelPair converts a "stage.item" label pair to zero-based
+// indexes. Labels are one-based on both halves, so a zero in either is not a
+// label this plan could ever have produced.
+func parseActionPlanLabelPair(rawStage, rawIndex string) (stage, index int, ok bool) {
+	stage, err := strconv.Atoi(rawStage)
+	if err != nil || stage < 1 {
+		return 0, 0, false
+	}
+	index, err = strconv.Atoi(rawIndex)
+	if err != nil || index < 1 {
+		return 0, 0, false
+	}
+	return stage - 1, index - 1, true
+}
+
+// actionPlanNumberForKey renders the operator-facing label of a row key. It is
+// the pair of parseActionPlanNumber and, like every number here, is derived from
+// position rather than read back from the document.
+func actionPlanNumberForKey(key string) string {
+	if m := actionPlanKeyPattern.FindStringSubmatch(key); m != nil {
+		stage, err := strconv.Atoi(m[1])
+		if err != nil {
+			return ""
+		}
+		index, err := strconv.Atoi(m[3])
+		if err != nil {
+			return ""
+		}
+		switch m[2] {
+		case "step":
+			return actionPlanItemNumber(stage, ActionPlanScopeSteps, index)
+		case "check":
+			return actionPlanItemNumber(stage, ActionPlanScopeChecks, index)
+		}
+		return ""
+	}
+	if strings.HasPrefix(key, "rollback.") {
+		index, err := strconv.Atoi(strings.TrimPrefix(key, "rollback."))
+		if err != nil || index < 0 {
+			return ""
+		}
+		return actionPlanRollbackNumber(index)
+	}
+	return ""
 }

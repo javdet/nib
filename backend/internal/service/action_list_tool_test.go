@@ -277,7 +277,7 @@ func TestBuildActionListResponse(t *testing.T) {
 	}
 	checked := map[string]struct{}{"s0.step0": {}}
 
-	resp := buildActionListResponse(plan, checked)
+	resp := buildActionListResponse(plan, checked, ActionExecRuns{})
 	if len(resp.Stages) != 1 || len(resp.Stages[0].Actions) != 2 || !resp.Stages[0].Actions[0].Executed {
 		t.Fatalf("actions = %#v", resp.Stages[0].Actions)
 	}

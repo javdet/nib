@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/javdet/nib/internal/atomicfile"
@@ -239,6 +238,9 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 		runsPath := actionPlanRunsPath(s.actionPlansDir, dialogID)
 		_ = os.Remove(runsPath)
 
+		execPath := actionPlanExecPath(s.actionPlansDir, dialogID)
+		_ = os.Remove(execPath)
+
 		return "Action plan saved to " + relPath, nil
 	}
 }
@@ -257,10 +259,6 @@ func actionPlanCommentsPath(dir string, dialogID uuid.UUID) string {
 
 func actionPlanRunsPath(dir string, dialogID uuid.UUID) string {
 	return filepath.Join(dir, dialogID.String()+".runs.json")
-}
-
-func actionPlanExecutorPath(dir string, dialogID uuid.UUID) string {
-	return filepath.Join(dir, dialogID.String()+".executor.json")
 }
 
 // ReadActionPlan returns the stored action plan JSON for a dialog, or false if none exists.
@@ -430,45 +428,3 @@ func (s *ChatService) WriteActionPlanRuns(dialogID uuid.UUID, runs map[string]st
 	return writeActionPlanFile(path, data)
 }
 
-// ReadActionPlanExecutorDialog returns the persisted shared execute chat id for
-// a plan dialog, or false when none has been created yet.
-func (s *ChatService) ReadActionPlanExecutorDialog(dialogID uuid.UUID) (uuid.UUID, bool, error) {
-	path := actionPlanExecutorPath(s.actionPlansDir, dialogID)
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return uuid.Nil, false, nil
-	}
-	if err != nil {
-		return uuid.Nil, false, err
-	}
-
-	var stored struct {
-		DialogID string `json:"dialogId"`
-	}
-	if err := json.Unmarshal(b, &stored); err != nil {
-		return uuid.Nil, false, fmt.Errorf("unmarshal action plan executor: %w", err)
-	}
-
-	execID, err := uuid.Parse(strings.TrimSpace(stored.DialogID))
-	if err != nil {
-		return uuid.Nil, false, fmt.Errorf("parse action plan executor id: %w", err)
-	}
-	return execID, true, nil
-}
-
-// WriteActionPlanExecutorDialog persists the shared execute chat id for a plan.
-func (s *ChatService) WriteActionPlanExecutorDialog(dialogID, execDialogID uuid.UUID) error {
-	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
-	}
-
-	data, err := json.Marshal(map[string]string{
-		"dialogId": execDialogID.String(),
-	})
-	if err != nil {
-		return fmt.Errorf("marshal action plan executor: %w", err)
-	}
-
-	path := actionPlanExecutorPath(s.actionPlansDir, dialogID)
-	return writeActionPlanFile(path, data)
-}

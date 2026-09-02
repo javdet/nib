@@ -146,6 +146,12 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 // recordActionPlanRun maps an action row key to the execute dialog that was
 // launched for it, so a later webhook can attach the PR URL to the right step.
 func (s *ChatService) recordActionPlanRun(planDialogID uuid.UUID, key string, execDialogID uuid.UUID) error {
+	// Action subagents register here from goroutines of their own, so the
+	// read-modify-write needs the same lock every other plan-file update takes.
+	mu := s.planMutex(planDialogID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	runs, err := s.ReadActionPlanRuns(planDialogID)
 	if err != nil {
 		return fmt.Errorf("execute code action: read runs: %w", err)

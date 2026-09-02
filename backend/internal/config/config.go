@@ -74,6 +74,14 @@ type AgentConfig struct {
 	// PlanFanoutTimeoutMinutes bounds a whole fan-out run. It outlives the HTTP
 	// request that starts it, so it needs a deadline of its own.
 	PlanFanoutTimeoutMinutes int `yaml:"planFanoutTimeoutMinutes"`
+	// ActionExecConcurrency caps how many action subagents execute at once.
+	ActionExecConcurrency int `yaml:"actionExecConcurrency"`
+	// ActionExecMaxIterations is the completion round budget of a single action
+	// subagent, which carries out one action rather than planning a whole stage.
+	ActionExecMaxIterations int `yaml:"actionExecMaxIterations"`
+	// ActionExecTimeoutMinutes bounds one action run. Like a fan-out it outlives
+	// the turn that starts it, so it needs a deadline of its own.
+	ActionExecTimeoutMinutes int `yaml:"actionExecTimeoutMinutes"`
 }
 
 // LogConfig controls optional mirroring of stderr to a file.

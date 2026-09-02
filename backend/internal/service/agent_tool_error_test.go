@@ -132,7 +132,7 @@ func TestRunPersistingAgentLoop_recoversFromToolFailure(t *testing.T) {
 		},
 	}
 
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {
@@ -200,7 +200,7 @@ func TestRunPersistingAgentLoop_tooManyToolFailures(t *testing.T) {
 	}
 
 	provider := &retryLLMProvider{responses: responses}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 20, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 20, PlanFanoutConfig{}, ActionExecConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {
@@ -251,7 +251,7 @@ func TestRunPersistingAgentLoop_fatalOnCancelledContext(t *testing.T) {
 			}},
 		}},
 	}
-	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{})
+	svc := NewChatService(provider, nil, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", t.TempDir(), "", 10, PlanFanoutConfig{}, ActionExecConfig{})
 
 	catalog := newToolCatalog()
 	catalog.localHandlers["failing_tool"] = func(_ context.Context, _ map[string]any) (string, error) {

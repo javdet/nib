@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/javdet/nib/internal/llm"
 	"github.com/google/uuid"
@@ -19,7 +20,8 @@ func GetActionListToolDef() llm.ToolDef {
 		Name: GetActionListToolName,
 		Description: "Return the action plan bound to the current conversation. " +
 			"Includes stages with actions, verification checks, and rollback steps, each with type and executed status. " +
-			"Each action and check carries the `number` the operator sees next to it in the web interface.",
+			"Each action and check carries the `number` the operator sees next to it in the web interface. " +
+			"`executed` is the operator's checkbox; `run` is the last sub-agent attempt, which is a weaker claim.",
 		Parameters: getActionListParameters,
 	}
 }
@@ -37,13 +39,37 @@ type actionListStage struct {
 }
 
 type actionListAction struct {
-	Number   string `json:"number"`
-	Type     string `json:"type"`
-	Action   string `json:"action"`
-	Command  string `json:"command,omitempty"`
-	PRTitle  string `json:"pr_title,omitempty"`
-	PRURL    string `json:"pr_url,omitempty"`
-	Executed bool   `json:"executed"`
+	Number  string `json:"number"`
+	Type    string `json:"type"`
+	Action  string `json:"action"`
+	Command string `json:"command,omitempty"`
+	PRTitle string `json:"pr_title,omitempty"`
+	PRURL   string `json:"pr_url,omitempty"`
+	// Executed is the operator's checkbox: their judgement that the action is
+	// genuinely done. Nothing sets it automatically.
+	Executed bool `json:"executed"`
+	// Run is the last sub-agent attempt at this action, when there has been one.
+	// It is deliberately separate from Executed: a sub-agent finishing is not
+	// the same claim as the operator accepting the result.
+	Run *actionListRun `json:"run,omitempty"`
+}
+
+type actionListRun struct {
+	Status  string `json:"status"`
+	Attempt int    `json:"attempt"`
+	Error   string `json:"error,omitempty"`
+}
+
+func actionListRunFor(runs ActionExecRuns, key string) *actionListRun {
+	run, ok := runs[key]
+	if !ok {
+		return nil
+	}
+	return &actionListRun{
+		Status:  string(run.Status),
+		Attempt: run.Attempt,
+		Error:   run.Error,
+	}
 }
 
 type actionListCheck struct {
@@ -115,7 +141,15 @@ func (s *ChatService) getActionListHandler(dialogID uuid.UUID) localToolHandler 
 			return "action plan contains invalid JSON", nil
 		}
 
-		resp := buildActionListResponse(plan, checkedSet)
+		// A failed read costs the run column, not the plan: the agent can still
+		// see what it is meant to do.
+		execRuns, err := s.ReadActionPlanExecRuns(planID)
+		if err != nil {
+			slog.Warn("read action plan exec runs", "plan_id", planID, "error", err)
+			execRuns = ActionExecRuns{}
+		}
+
+		resp := buildActionListResponse(plan, checkedSet, execRuns)
 		out, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("marshal action list: %w", err)
@@ -138,7 +172,7 @@ func (s *ChatService) resolveActionPlanDialogID(ctx context.Context, dialogID uu
 	return dialogID, nil
 }
 
-func buildActionListResponse(plan storedActionPlan, checked map[string]struct{}) actionListResponse {
+func buildActionListResponse(plan storedActionPlan, checked map[string]struct{}, execRuns ActionExecRuns) actionListResponse {
 	resp := actionListResponse{
 		Stages:   make([]actionListStage, 0, len(plan.Stages)),
 		Rollback: make([]actionListAction, 0, len(plan.Rollback)),
@@ -164,6 +198,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 				PRTitle:  step.PRTitle,
 				PRURL:    step.PRURL,
 				Executed: executed,
+				Run:      actionListRunFor(execRuns, key),
 			})
 		}
 		for checkIdx, check := range stage.Checks {
@@ -189,6 +224,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{})
 			PRTitle:  step.PRTitle,
 			PRURL:    step.PRURL,
 			Executed: executed,
+			Run:      actionListRunFor(execRuns, key),
 		})
 	}
 	return resp

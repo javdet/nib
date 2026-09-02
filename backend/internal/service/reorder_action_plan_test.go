@@ -156,7 +156,7 @@ func TestRemapCommentKeys(t *testing.T) {
 		"s1.step0":   "other stage",
 		"rollback.0": "rollback note",
 	}
-	got := remapCommentKeys(comments, 0, ActionPlanScopeSteps, perm)
+	got := remapActionPlanKeys(comments, 0, ActionPlanScopeSteps, perm)
 	want := map[string]string{
 		"s0.step2":   "note A",
 		"s0.step0":   "note B",

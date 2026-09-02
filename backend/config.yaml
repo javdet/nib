@@ -61,6 +61,16 @@ agent:
   stageMaxIterations: 15
   # Deadline for a whole fan-out run. It outlives the request that starts it.
   planFanoutTimeoutMinutes: 60
+  # Action execution: one subagent per plan action, run from the planning chat.
+  # How many action subagents may execute at once, across every plan.
+  actionExecConcurrency: 4
+  # Completion round budget for a single action subagent. It carries out one
+  # action rather than planning a stage, so it needs fewer rounds than a plan
+  # but more than a stage: executing tends to mean several tool calls in a row.
+  actionExecMaxIterations: 20
+  # Deadline for one action run. Like a fan-out it outlives the turn that
+  # starts it, so it needs a deadline of its own.
+  actionExecTimeoutMinutes: 30
 
 knowledge_base:
   uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable

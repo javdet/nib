@@ -105,13 +105,17 @@ func remapCheckedKeys(checked []string, stage int, scope ActionPlanScope, perm [
 	return out
 }
 
-func remapCommentKeys(comments map[string]string, stage int, scope ActionPlanScope, perm []int) map[string]string {
-	if len(comments) == 0 {
-		return comments
+// remapActionPlanKeys moves a key-addressed side store onto the row keys a
+// reorder produced. Checkboxes, comments, agent-runner dialogs and execution
+// records are all indexed by position, so each one is remapped in the same pass
+// that renumbers the plan -- a store left behind points at somebody else's row.
+func remapActionPlanKeys[V any](store map[string]V, stage int, scope ActionPlanScope, perm []int) map[string]V {
+	if len(store) == 0 {
+		return store
 	}
 
-	out := make(map[string]string, len(comments))
-	for key, value := range comments {
+	out := make(map[string]V, len(store))
+	for key, value := range store {
 		m := actionPlanKeyPattern.FindStringSubmatch(key)
 		if m == nil {
 			out[key] = value
@@ -303,7 +307,7 @@ func (s *ChatService) ReorderActionPlanItems(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	comments = remapCommentKeys(comments, stage, scope, perm)
+	comments = remapActionPlanKeys(comments, stage, scope, perm)
 
 	if err := s.WriteActionPlanComments(dialogID, comments); err != nil {
 		return nil, nil, nil, err
@@ -313,9 +317,19 @@ func (s *ChatService) ReorderActionPlanItems(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	runs = remapCommentKeys(runs, stage, scope, perm)
+	runs = remapActionPlanKeys(runs, stage, scope, perm)
 
 	if err := s.WriteActionPlanRuns(dialogID, runs); err != nil {
+		return nil, nil, nil, err
+	}
+
+	execRuns, err := s.ReadActionPlanExecRuns(dialogID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	execRuns = remapActionPlanKeys(execRuns, stage, scope, perm)
+
+	if err := s.WriteActionPlanExecRuns(dialogID, execRuns); err != nil {
 		return nil, nil, nil, err
 	}
 
