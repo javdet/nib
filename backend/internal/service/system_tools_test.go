@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -85,8 +86,29 @@ func TestSystemToolDefs_returnsAllLocalTools(t *testing.T) {
 	if !chatName.AlwaysOn {
 		t.Fatalf("chat_name always_on = false, want true")
 	}
+	if chatName.Modes == nil {
+		t.Fatal("chat_name modes is nil, want empty slice")
+	}
 	if len(chatName.Modes) != 0 {
 		t.Fatalf("chat_name modes = %#v, want empty", chatName.Modes)
+	}
+
+	raw, err := json.Marshal(defs)
+	if err != nil {
+		t.Fatalf("json.Marshal(defs) err = %v", err)
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(defs) err = %v", err)
+	}
+	for _, item := range decoded {
+		modes, ok := item["modes"]
+		if !ok {
+			t.Fatalf("tool %q missing modes", item["name"])
+		}
+		if modes == nil {
+			t.Fatalf("tool %q modes is JSON null", item["name"])
+		}
 	}
 }
 

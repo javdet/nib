@@ -52,6 +52,7 @@ func (s *ChatService) SystemToolDefs() ([]SystemToolDef, error) {
 		}
 		if tool.Name == ChatNameToolName {
 			def.AlwaysOn = true
+			def.Modes = []string{}
 		} else {
 			def.Modes = modesForTool(tool.Name, modeAllowLists)
 		}
@@ -110,7 +111,9 @@ func (s *ChatService) loadModeAllowLists() (map[string]map[string]struct{}, erro
 }
 
 func modesForTool(name string, modeAllowLists map[string]map[string]struct{}) []string {
-	var modes []string
+	// Non-nil so encoding/json emits [] rather than null; the catalog UI
+	// reads modes.length and crashes on null.
+	modes := make([]string, 0)
 	for _, m := range mode.Modes {
 		allow := modeAllowLists[m]
 		if allow == nil {

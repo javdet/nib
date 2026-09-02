@@ -1101,7 +1101,9 @@ export function WorkplaceDetail() {
 				)}
 			</Card>
 
-			<Card>
+			{/* The glass sheet is the whole section, not a panel inside a card:
+			    the DAG is drawn on it the way it would be on a board. */}
+			<div className="dag-board">
 				<CardHeader>
 					<div
 						role="button"
@@ -1135,7 +1137,7 @@ export function WorkplaceDetail() {
 						)}
 					</CardContent>
 				)}
-			</Card>
+			</div>
 
 			<Card>
 				<CardHeader>

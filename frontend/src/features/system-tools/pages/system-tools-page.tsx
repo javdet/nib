@@ -20,6 +20,7 @@ function formatParameters(parameters: unknown): string {
 
 function ToolCard({ tool }: { tool: SystemTool }) {
 	const [schemaOpen, setSchemaOpen] = useState(false)
+	const modes = tool.modes ?? []
 
 	return (
 		<Card>
@@ -36,8 +37,8 @@ function ToolCard({ tool }: { tool: SystemTool }) {
 					<div className="flex flex-wrap gap-1.5">
 						{tool.always_on ? (
 							<Badge variant="default">always</Badge>
-						) : tool.modes.length > 0 ? (
-							tool.modes.map((mode) => (
+						) : modes.length > 0 ? (
+							modes.map((mode) => (
 								<Badge key={mode} variant="secondary">
 									{mode}
 								</Badge>
@@ -97,8 +98,10 @@ export function SystemToolsPage() {
 		return tools.filter(
 			(tool) =>
 				tool.name.toLowerCase().includes(query) ||
-				tool.description.toLowerCase().includes(query) ||
-				tool.modes.some((mode) => mode.toLowerCase().includes(query)),
+				(tool.description ?? '').toLowerCase().includes(query) ||
+				(tool.modes ?? []).some((mode) =>
+					mode.toLowerCase().includes(query),
+				),
 		)
 	}, [tools, filter])
 
