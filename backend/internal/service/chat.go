@@ -290,12 +290,30 @@ func (s *ChatService) resolveSystemPrompt(ctx context.Context, modeName string) 
 		}
 	}
 
+	// The rule catalog goes where plans are written -- the interactive plan
+	// dialog and, through resolveSystemPrompt(stagePlanMode), the stage and
+	// rollback subagents that inherit this prompt.
+	if modeListsRules(modeName) && s.rulesSvc != nil {
+		section, err := s.buildRulesSection()
+		if err != nil {
+			return "", fmt.Errorf("build rules section: %w", err)
+		}
+		if section != "" {
+			rendered = rendered + "\n\n" + section
+		}
+	}
+
 	return rendered, nil
 }
 
 // modeListsSkills reports whether the mode's system prompt carries the skill catalog.
 func modeListsSkills(modeName string) bool {
 	return modeName == "main" || modeName == "discuss"
+}
+
+// modeListsRules reports whether the mode's system prompt carries the rule catalog.
+func modeListsRules(modeName string) bool {
+	return modeName == "plan"
 }
 
 // resolveAllowSet returns the union of system tools (from data/tools/{mode}.json)

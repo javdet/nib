@@ -88,13 +88,6 @@ func (r *multiDialogRepo) SetDialogTaskID(_ context.Context, id uuid.UUID, taskI
 	return nil
 }
 
-func (r *multiDialogRepo) SetDialogSubjects(_ context.Context, id uuid.UUID, subjects []string) error {
-	if d, ok := r.dialogs[id]; ok {
-		d.Subjects = subjects
-	}
-	return nil
-}
-
 func (r *multiDialogRepo) SetDialogCategories(_ context.Context, id uuid.UUID, categories []string) error {
 	if d, ok := r.dialogs[id]; ok {
 		d.Categories = categories

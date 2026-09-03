@@ -82,12 +82,11 @@ func (s *ChatService) actionAgentAllowSet(ctx context.Context, planID uuid.UUID)
 // buildActionSeed is the first user message of an action subagent: the plan
 // context every subagent gets, then the one action this run owns.
 func (s *ChatService) buildActionSeed(
-	ctx context.Context,
 	planID uuid.UUID,
 	key, number string,
 	step storedActionStep,
 ) (string, error) {
-	parts, _, err := s.sharedSeedSections(ctx, planID)
+	parts, _, err := s.sharedSeedSections(planID)
 	if err != nil {
 		return "", err
 	}

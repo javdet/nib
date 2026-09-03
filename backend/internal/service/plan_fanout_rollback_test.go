@@ -167,7 +167,7 @@ func TestBuildRollbackSeed_carriesThePlanAndNoStageOfItsOwn(t *testing.T) {
 		Steps:  []storedActionStep{{Number: "1.1", Type: "shell", Action: "enable jmx"}},
 	}}
 
-	seed, err := svc.buildRollbackSeed(context.Background(), planID, stages)
+	seed, err := svc.buildRollbackSeed(planID, stages)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}

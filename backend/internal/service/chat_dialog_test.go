@@ -78,11 +78,6 @@ func (r *retryDialogRepo) SetDialogTaskID(_ context.Context, _ uuid.UUID, taskID
 	return nil
 }
 
-func (r *retryDialogRepo) SetDialogSubjects(_ context.Context, _ uuid.UUID, subjects []string) error {
-	r.dialog.Subjects = subjects
-	return nil
-}
-
 func (r *retryDialogRepo) SetDialogCategories(_ context.Context, _ uuid.UUID, categories []string) error {
 	r.dialog.Categories = categories
 	return nil
@@ -305,10 +300,9 @@ func TestRetryLastResponse_truncatesAndRegenerates(t *testing.T) {
 	dialogID := uuid.New()
 	repo := &retryDialogRepo{
 		dialog: domain.Dialog{
-			ID:       dialogID,
-			Mode:     "",
-			Title:    "old title",
-			Subjects: []string{"infra"},
+			ID:    dialogID,
+			Mode:  "",
+			Title: "old title",
 		},
 		messages: []domain.DialogMessage{
 			{DialogID: dialogID, Seq: 0, Role: "system", Content: "You are helpful."},
@@ -363,9 +357,6 @@ func TestRetryLastResponse_truncatesAndRegenerates(t *testing.T) {
 
 	if repo.dialog.Title != "" {
 		t.Fatalf("title = %q, want empty", repo.dialog.Title)
-	}
-	if len(repo.dialog.Subjects) != 0 {
-		t.Fatalf("subjects = %v, want empty", repo.dialog.Subjects)
 	}
 	for _, path := range []string{
 		filepath.Join(dataDir, "dags", id+".md"),

@@ -14,7 +14,6 @@ type Dialog struct {
 	Mode      string     `json:"mode"`
 	ParentID  *uuid.UUID `json:"parentId,omitempty"`
 	TaskID    *string    `json:"taskId,omitempty"`
-	Subjects   []string `json:"subjects,omitempty"`
 	Categories []string `json:"categories,omitempty"`
 	Pinned     bool     `json:"pinned"`
 	CreatedAt time.Time  `json:"createdAt"`

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/rules"
 	"github.com/javdet/nib/internal/service"
 	"github.com/google/uuid"
 )
@@ -32,10 +31,6 @@ type createDialogPayload struct {
 
 type updateDialogTitlePayload struct {
 	Title string `json:"title"`
-}
-
-type updateDialogSubjectsPayload struct {
-	Subjects []string `json:"subjects"`
 }
 
 type updateDialogCategoriesPayload struct {
@@ -232,32 +227,6 @@ func (h *DialogHandler) UpdateTitle() http.HandlerFunc {
 		}
 
 		if err := h.dialogSvc.UpdateTitle(r.Context(), id, req.Title); err != nil {
-			handleServiceError(w, err)
-			return
-		}
-
-		d, err := h.dialogSvc.Get(r.Context(), id)
-		if err != nil {
-			handleServiceError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, d)
-	}
-}
-
-func (h *DialogHandler) UpdateSubjects() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := parseUUIDParam(w, r, "id", "dialog id")
-		if !ok {
-			return
-		}
-
-		var req updateDialogSubjectsPayload
-		if !decodeJSON(w, r, &req) {
-			return
-		}
-
-		if err := h.dialogSvc.SetSubjects(r.Context(), id, req.Subjects); err != nil {
 			handleServiceError(w, err)
 			return
 		}
@@ -514,24 +483,5 @@ func (h *DialogHandler) UpdateSummary() http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"content": summary})
-	}
-}
-
-func (h *DialogHandler) Rules() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := parseUUIDParam(w, r, "id", "dialog id")
-		if !ok {
-			return
-		}
-
-		matched, err := h.dialogSvc.MatchedRules(r.Context(), id)
-		if err != nil {
-			handleServiceError(w, err)
-			return
-		}
-		if matched == nil {
-			matched = []rules.Rule{}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"rules": matched})
 	}
 }

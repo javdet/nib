@@ -74,10 +74,6 @@ func (r *mapDialogRepo) SetDialogTaskID(_ context.Context, _ uuid.UUID, taskID *
 	return nil
 }
 
-func (r *mapDialogRepo) SetDialogSubjects(_ context.Context, _ uuid.UUID, subjects []string) error {
-	return nil
-}
-
 func (r *mapDialogRepo) SetDialogCategories(_ context.Context, _ uuid.UUID, categories []string) error {
 	return nil
 }

@@ -6,6 +6,9 @@ import (
 
 const mdSuffix = ".md"
 
+// Meta holds parsed frontmatter metadata for a rule.
+type Meta = filestore.Meta
+
 // Rule holds a single rule file.
 type Rule struct {
 	Name    string `json:"name"`
@@ -14,7 +17,7 @@ type Rule struct {
 
 // ListResult is the aggregate view of rule files.
 type ListResult struct {
-	Rules []string `json:"rules"`
+	Rules []Meta `json:"rules"`
 }
 
 // Service manages file-based rules as {name}.md under a rules directory.
@@ -36,13 +39,13 @@ func (s *Service) Dir() string {
 	return s.store.Dir()
 }
 
-// List returns rule basenames (without .md), sorted alphabetically.
+// List returns rule metadata sorted alphabetically by name.
 func (s *Service) List() (ListResult, error) {
-	names, err := s.store.ListNames()
+	metas, err := s.store.ListMeta()
 	if err != nil {
 		return ListResult{}, err
 	}
-	return ListResult{Rules: names}, nil
+	return ListResult{Rules: metas}, nil
 }
 
 // Get reads a single rule by name.

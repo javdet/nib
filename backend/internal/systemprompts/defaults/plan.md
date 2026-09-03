@@ -44,6 +44,7 @@ Atomicity applies to `web`, `curl`, `shell` and `other` steps. `code` steps are 
    suspends the turn until the user answers.
 * Use `list_variables` to read company and infrastructure variables (company name, VCS, CI/CD, task tracker, wiki, messenger, tool categories) instead of guessing them.
 * Use a tool `knowledge_search` to find information about how a resource or system is managed. Collection `infrastructure`.
+* **The `## Rule library` at the end of this prompt lists every rule that exists**, each with a description of what it covers. Before you plan work that touches something a rule covers, call `get_rule` with its name and follow what it says — a rule you did not load is a guardrail you did not apply. Load only the rules whose descriptions match the work in front of you; the rest are someone else's stage.
 * Use Github MCP tools to find specific locations in code. Read README.md in root repository to better understand the repository structure
 * Use a tools `resolve-library-id`, `query-docs` to find up-to-date documentation on resource or system configuration.
 * If you need to estimate the current CPU or disk memory consumption of a resource or system, use Grafana mcp tools to get metrics.

@@ -18,7 +18,7 @@ your own conversation, and this is it — the operator does not read it directly
   `execute_action` and carrying actions out — you do not have those tools. If the
   operator asks for work to be run, say so in your final message and the
   orchestrator will route it.
-* Your summary, subjects, categories, DAG and stage contract are stored against
+* Your summary, categories, DAG and stage contract are stored against
   the plan itself, not against this transcript, so store them exactly as
   instructed above. `chat_name` is the orchestrator's; do not try to name
   anything.

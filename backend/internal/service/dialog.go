@@ -9,7 +9,6 @@ import (
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/javdet/nib/internal/rules"
 	"github.com/google/uuid"
 )
 
@@ -23,19 +22,11 @@ var ErrTooManyDialogTags = errors.New("too many tags")
 
 // DialogService implements business logic for persisted chat dialogs.
 type DialogService struct {
-	repo         repository.DialogRepository
-	rulesSvc     *rules.Service
-	variableRepo repository.VariableRepository
-	selection    *SelectionStore
+	repo repository.DialogRepository
 }
 
-func NewDialogService(repo repository.DialogRepository, rulesSvc *rules.Service, variableRepo repository.VariableRepository, selection *SelectionStore) *DialogService {
-	return &DialogService{
-		repo:         repo,
-		rulesSvc:     rulesSvc,
-		variableRepo: variableRepo,
-		selection:    selection,
-	}
+func NewDialogService(repo repository.DialogRepository) *DialogService {
+	return &DialogService{repo: repo}
 }
 
 func (s *DialogService) List(ctx context.Context, limit, offset int) ([]domain.Dialog, error) {
@@ -129,17 +120,6 @@ func (s *DialogService) UpdateTitle(ctx context.Context, id uuid.UUID, title str
 	return nil
 }
 
-func (s *DialogService) SetSubjects(ctx context.Context, id uuid.UUID, subjects []string) error {
-	list, err := normalizeTagList(subjects)
-	if err != nil {
-		return err
-	}
-	if err := s.repo.SetDialogSubjects(ctx, id, list); err != nil {
-		return fmt.Errorf("set dialog subjects: %w", err)
-	}
-	return nil
-}
-
 func (s *DialogService) SetCategories(ctx context.Context, id uuid.UUID, categories []string) error {
 	list, err := normalizeTagList(categories)
 	if err != nil {
@@ -217,38 +197,3 @@ func (s *DialogService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// MatchedRules returns rule files whose names match the dialog's persisted subjects.
-func (s *DialogService) MatchedRules(ctx context.Context, id uuid.UUID) ([]rules.Rule, error) {
-	d, err := s.repo.GetDialog(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("get dialog: %w", err)
-	}
-	if s.rulesSvc == nil || len(d.Subjects) == 0 {
-		return []rules.Rule{}, nil
-	}
-
-	var matched []rules.Rule
-	for _, subject := range d.Subjects {
-		name := strings.TrimSpace(subject)
-		if name == "" {
-			continue
-		}
-		rule, err := s.rulesSvc.Get(name)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) || errors.Is(err, rules.ErrInvalidName) {
-				continue
-			}
-			return nil, fmt.Errorf("get rule %q: %w", name, err)
-		}
-		rendered, err := RenderTemplateVariables(ctx, rule.Content, s.variableRepo, s.selection)
-		if err != nil {
-			return nil, fmt.Errorf("render rule %q: %w", name, err)
-		}
-		rule.Content = rendered
-		matched = append(matched, rule)
-	}
-	if matched == nil {
-		matched = []rules.Rule{}
-	}
-	return matched, nil
-}

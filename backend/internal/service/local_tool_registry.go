@@ -10,7 +10,7 @@ import (
 //
 // dialogID and planID are the same for a root turn and differ for a subagent:
 // its transcript lives in its own dialog while every plan artifact -- the
-// summary, the DAG, the stage contract, the subjects, the categories and the
+// summary, the DAG, the stage contract, the categories and the
 // action plan -- belongs to the root dialog that spawned it.
 //
 // The two matching is also what marks a turn as the orchestrator's own, which is
@@ -56,6 +56,7 @@ func init() {
 		registerKnowledgeSearchTool,
 		registerToolSearchTool,
 		registerGetSkillTool,
+		registerGetRuleTool,
 		registerAPICallTool,
 		registerExecuteCommandTool,
 		registerGetSecretsTool,
@@ -67,7 +68,6 @@ func init() {
 		registerCreatePlanContractTool,
 		registerCreateSummaryTool,
 		registerCreateTableTool,
-		registerCreateSubjectsTool,
 		registerSetCategoryTool,
 		registerCreateActionPlanTool,
 		registerUpdateActionPlanTool,
@@ -118,6 +118,14 @@ func registerGetSkillTool(s *ChatService, catalog *toolCatalog, _ toolBinding, a
 	}
 	catalog.localHandlers[GetSkillToolName] = s.ExecuteGetSkill
 	catalog.tools = append(catalog.tools, GetSkillToolDef())
+}
+
+func registerGetRuleTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {
+	if s.rulesSvc == nil || !localToolAllowed(allow, GetRuleToolName) {
+		return
+	}
+	catalog.localHandlers[GetRuleToolName] = s.ExecuteGetRule
+	catalog.tools = append(catalog.tools, GetRuleToolDef())
 }
 
 func registerAPICallTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {
@@ -189,14 +197,6 @@ func registerCreateTableTool(s *ChatService, catalog *toolCatalog, b toolBinding
 	}
 	catalog.localHandlers[CreateTableToolName] = s.createTableHandler(b.dialogID)
 	catalog.tools = append(catalog.tools, CreateTableToolDef())
-}
-
-func registerCreateSubjectsTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.planID == uuid.Nil || !localToolAllowed(allow, CreateSubjectsToolName) {
-		return
-	}
-	catalog.localHandlers[CreateSubjectsToolName] = s.createSubjectsHandler(b.planID)
-	catalog.tools = append(catalog.tools, CreateSubjectsToolDef())
 }
 
 func registerSetCategoryTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {

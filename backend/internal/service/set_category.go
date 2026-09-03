@@ -51,7 +51,7 @@ func (s *ChatService) setCategoryHandler(dialogID uuid.UUID) localToolHandler {
 			return "categories is required", nil
 		}
 
-		categories := normalizeSubjects(argStringSlice(raw))
+		categories := normalizeCategories(argStringSlice(raw))
 		if len(categories) == 0 {
 			return "categories must contain at least one non-empty name", nil
 		}
@@ -86,4 +86,45 @@ func (s *ChatService) setCategoryHandler(dialogID uuid.UUID) localToolHandler {
 
 		return fmt.Sprintf("Categories saved: %s", strings.Join(categories, ", ")), nil
 	}
+}
+
+func argStringSlice(v any) []string {
+	if v == nil {
+		return nil
+	}
+	switch items := v.(type) {
+	case []string:
+		return items
+	case []any:
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			s := strings.TrimSpace(argString(item))
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeCategories(categories []string) []string {
+	if len(categories) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(categories))
+	out := make([]string, 0, len(categories))
+	for _, category := range categories {
+		normalized := strings.ToLower(strings.TrimSpace(category))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out
 }

@@ -13,7 +13,6 @@ export type {
 	ActionStage,
 	ActionPlan,
 	ActionPlanResponse,
-	DialogRule,
 	PagedDialogs,
 	PlanState,
 } from './dialogs'

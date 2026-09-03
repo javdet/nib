@@ -1,9 +1,9 @@
-package skills_test
+package filestore_test
 
 import (
 	"testing"
 
-	"github.com/javdet/nib/internal/skills"
+	"github.com/javdet/nib/internal/filestore"
 )
 
 func TestParseFrontmatter(t *testing.T) {
@@ -58,7 +58,7 @@ do something`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := skills.ParseFrontmatter(tt.content)
+			got := filestore.ParseFrontmatter(tt.content)
 			if got.Name != tt.wantName {
 				t.Fatalf("Name = %q, want %q", got.Name, tt.wantName)
 			}

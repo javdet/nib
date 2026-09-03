@@ -3,18 +3,14 @@ package service
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/rules"
 	"github.com/google/uuid"
 )
 
 type stubDialogRepo struct {
 	dialog     domain.Dialog
-	subjects   []string
 	categories []string
 }
 
@@ -49,11 +45,7 @@ func (s *stubDialogRepo) UpdateTitle(context.Context, uuid.UUID, string) error {
 func (s *stubDialogRepo) SetDialogTaskID(context.Context, uuid.UUID, *string) error {
 	return nil
 }
-func (s *stubDialogRepo) SetDialogSubjects(_ context.Context, _ uuid.UUID, subjects []string) error {
-	s.subjects = subjects
-	s.dialog.Subjects = subjects
-	return nil
-}
+
 func (s *stubDialogRepo) SetDialogCategories(_ context.Context, _ uuid.UUID, categories []string) error {
 	s.categories = categories
 	s.dialog.Categories = categories
@@ -102,77 +94,6 @@ func (s *stubVariableRepo) Upsert(context.Context, domain.PromptVariable) (domai
 }
 func (s *stubVariableRepo) LoadAll(context.Context) (map[string]map[string]any, error) {
 	return s.vars, nil
-}
-
-func TestDialogService_MatchedRules_rendersTemplateVariables(t *testing.T) {
-	t.Parallel()
-
-	dataDir := t.TempDir()
-	rulesDir := filepath.Join(dataDir, "rules")
-	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
-		t.Fatalf("mkdir rules: %v", err)
-	}
-	ruleContent := "Company: {{ .global.CompanyName }}, project: {{ .builtin.Project }}"
-	if err := os.WriteFile(filepath.Join(rulesDir, "postgres.md"), []byte(ruleContent), 0o644); err != nil {
-		t.Fatalf("write rule: %v", err)
-	}
-
-	rulesSvc := rules.NewService(dataDir, "")
-	selection := NewSelectionStore()
-	selection.Set(domain.Selection{Project: "demo", Environment: "any", Cloud: "any", Location: "any"})
-
-	dialogID := uuid.New()
-	svc := NewDialogService(
-		&stubDialogRepo{dialog: domain.Dialog{ID: dialogID, Subjects: []string{"postgres"}}},
-		rulesSvc,
-		&stubVariableRepo{vars: map[string]map[string]any{
-			"global": {"CompanyName": "AutomagicOps"},
-		}},
-		selection,
-	)
-
-	matched, err := svc.MatchedRules(context.Background(), dialogID)
-	if err != nil {
-		t.Fatalf("MatchedRules: %v", err)
-	}
-	if len(matched) != 1 {
-		t.Fatalf("matched rules = %d, want 1", len(matched))
-	}
-	want := "Company: AutomagicOps, project: demo"
-	if matched[0].Content != want {
-		t.Fatalf("rendered content = %q, want %q", matched[0].Content, want)
-	}
-}
-
-func TestDialogService_MatchedRules_plainContentUnchanged(t *testing.T) {
-	t.Parallel()
-
-	dataDir := t.TempDir()
-	rulesDir := filepath.Join(dataDir, "rules")
-	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
-		t.Fatalf("mkdir rules: %v", err)
-	}
-	const plain = "- Postgres must listen on all interfaces"
-	if err := os.WriteFile(filepath.Join(rulesDir, "postgres.md"), []byte(plain), 0o644); err != nil {
-		t.Fatalf("write rule: %v", err)
-	}
-
-	rulesSvc := rules.NewService(dataDir, "")
-	dialogID := uuid.New()
-	svc := NewDialogService(
-		&stubDialogRepo{dialog: domain.Dialog{ID: dialogID, Subjects: []string{"postgres"}}},
-		rulesSvc,
-		nil,
-		nil,
-	)
-
-	matched, err := svc.MatchedRules(context.Background(), dialogID)
-	if err != nil {
-		t.Fatalf("MatchedRules: %v", err)
-	}
-	if len(matched) != 1 || matched[0].Content != plain {
-		t.Fatalf("matched = %+v, want plain content %q", matched, plain)
-	}
 }
 
 func TestNormalizeTagList(t *testing.T) {
@@ -247,31 +168,11 @@ func TestNormalizeTagList(t *testing.T) {
 	}
 }
 
-func TestDialogService_SetSubjects(t *testing.T) {
-	t.Parallel()
-
-	repo := &stubDialogRepo{dialog: domain.Dialog{ID: uuid.New()}}
-	svc := NewDialogService(repo, nil, nil, nil)
-
-	if err := svc.SetSubjects(context.Background(), repo.dialog.ID, []string{"Postgres", "nginx"}); err != nil {
-		t.Fatalf("SetSubjects: %v", err)
-	}
-	want := []string{"postgres", "nginx"}
-	if len(repo.subjects) != len(want) {
-		t.Fatalf("subjects = %v, want %v", repo.subjects, want)
-	}
-	for i := range want {
-		if repo.subjects[i] != want[i] {
-			t.Fatalf("subjects = %v, want %v", repo.subjects, want)
-		}
-	}
-}
-
 func TestDialogService_SetCategories(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubDialogRepo{dialog: domain.Dialog{ID: uuid.New()}}
-	svc := NewDialogService(repo, nil, nil, nil)
+	svc := NewDialogService(repo)
 
 	if err := svc.SetCategories(context.Background(), repo.dialog.ID, []string{"Cloud", "k8s"}); err != nil {
 		t.Fatalf("SetCategories: %v", err)

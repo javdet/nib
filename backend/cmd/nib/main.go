@@ -264,7 +264,7 @@ func run() error {
 		}
 	}()
 	toolSearchSvc := service.NewToolSearchService(toolCatalogStore, llmProvider, cfg.LLM.EmbeddingModel)
-	dialogSvc := service.NewDialogService(dialogRepo, rulesSvc, variableRepo, selectionStore)
+	dialogSvc := service.NewDialogService(dialogRepo)
 	chatSvc := service.NewChatService(
 		llmProvider,
 		systemPromptsSvc,

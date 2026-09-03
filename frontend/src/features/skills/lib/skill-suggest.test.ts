@@ -5,6 +5,8 @@ import {
 	applySkillSelection,
 	matchSkills,
 	parseSkillQuery,
+	shouldRearmSkillMenu,
+	skillMenuQuery,
 } from './skill-suggest'
 
 function skill(name: string, description = ''): SkillMeta {
@@ -111,5 +113,41 @@ describe('matchSkills', () => {
 describe('applySkillSelection', () => {
 	it('inserts the command with a trailing space for the argument', () => {
 		expect(applySkillSelection('jira-get-board')).toBe('/jira-get-board ')
+	})
+})
+
+describe('skillMenuQuery', () => {
+	it('returns null when dismissed even on a slash token', () => {
+		expect(skillMenuQuery('/jira', true)).toBeNull()
+	})
+
+	it('returns the parsed query when not dismissed', () => {
+		expect(skillMenuQuery('/jira', false)).toBe('jira')
+		expect(skillMenuQuery('/', false)).toBe('')
+	})
+
+	it('returns null for prose when not dismissed', () => {
+		expect(skillMenuQuery('hello', false)).toBeNull()
+	})
+})
+
+describe('shouldRearmSkillMenu', () => {
+	it('re-arms when the slash token is removed', () => {
+		expect(shouldRearmSkillMenu('/jira', '')).toBe(true)
+		expect(shouldRearmSkillMenu('/jira', 'hello')).toBe(true)
+	})
+
+	it('re-arms when the draft newly becomes a slash token', () => {
+		expect(shouldRearmSkillMenu('', '/')).toBe(true)
+		expect(shouldRearmSkillMenu('hello', '/dep')).toBe(true)
+	})
+
+	it('does not re-arm while extending an existing token', () => {
+		expect(shouldRearmSkillMenu('/', '/j')).toBe(false)
+		expect(shouldRearmSkillMenu('/j', '/ji')).toBe(false)
+	})
+
+	it('does not re-arm when the token becomes invalid but still starts with /', () => {
+		expect(shouldRearmSkillMenu('/jira', '/jira ')).toBe(false)
 	})
 })

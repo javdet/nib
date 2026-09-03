@@ -26,7 +26,7 @@ func NewDialogRepo(pool *pgxpool.Pool) *DialogRepo {
 	return &DialogRepo{pool: pool}
 }
 
-const dialogColumns = `id, title, mode, parent_id, task_id, subjects, categories, pinned, created_at, updated_at`
+const dialogColumns = `id, title, mode, parent_id, task_id, categories, pinned, created_at, updated_at`
 
 const messageColumns = `id, dialog_id, seq, role, content, tool_calls, tool_call_id, name, created_at`
 
@@ -277,25 +277,6 @@ func (r *DialogRepo) SetDialogTaskID(ctx context.Context, id uuid.UUID, taskID *
 	return nil
 }
 
-func (r *DialogRepo) SetDialogSubjects(ctx context.Context, id uuid.UUID, subjects []string) error {
-	if subjects == nil {
-		subjects = []string{}
-	}
-	for i := range subjects {
-		subjects[i] = textutil.Sanitize(subjects[i])
-	}
-	tag, err := r.pool.Exec(ctx,
-		`UPDATE chat_dialogs SET subjects = $2, updated_at = now() WHERE id = $1`,
-		id, subjects)
-	if err != nil {
-		return fmt.Errorf("update chat dialog subjects: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return repository.ErrNotFound
-	}
-	return nil
-}
-
 func (r *DialogRepo) SetDialogCategories(ctx context.Context, id uuid.UUID, categories []string) error {
 	if categories == nil {
 		categories = []string{}
@@ -481,7 +462,7 @@ func nextDialogMessageSeq(ctx context.Context, tx pgx.Tx, dialogID uuid.UUID) (i
 
 func scanDialog(rows pgx.Rows) (domain.Dialog, error) {
 	var d domain.Dialog
-	err := rows.Scan(&d.ID, &d.Title, &d.Mode, &d.ParentID, &d.TaskID, &d.Subjects, &d.Categories, &d.Pinned, &d.CreatedAt, &d.UpdatedAt)
+	err := rows.Scan(&d.ID, &d.Title, &d.Mode, &d.ParentID, &d.TaskID, &d.Categories, &d.Pinned, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return domain.Dialog{}, err
 	}
@@ -490,7 +471,7 @@ func scanDialog(rows pgx.Rows) (domain.Dialog, error) {
 
 func scanDialogRow(row pgx.Row) (domain.Dialog, error) {
 	var d domain.Dialog
-	err := row.Scan(&d.ID, &d.Title, &d.Mode, &d.ParentID, &d.TaskID, &d.Subjects, &d.Categories, &d.Pinned, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &d.Title, &d.Mode, &d.ParentID, &d.TaskID, &d.Categories, &d.Pinned, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return domain.Dialog{}, err
 	}

@@ -5,7 +5,6 @@
     "get_skill",
     "ask_question",
     "create_summary",
-    "create_subjects",
     "set_category",
     "create_dag",
     "create_plan_contract",

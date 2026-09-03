@@ -60,7 +60,8 @@ import {
 import {
 	applySkillSelection,
 	matchSkills,
-	parseSkillQuery,
+	shouldRearmSkillMenu,
+	skillMenuQuery,
 } from '@/features/skills/lib/skill-suggest'
 
 const RECONNECT_POLL_MS = 3000
@@ -174,7 +175,7 @@ export function ChatPanel() {
 	const { skills, reload: reloadSkills, isStale: areSkillsStale } = useSkills()
 	// Open/closed and the query are derived from the draft, so deleting the slash,
 	// typing a space or sending all close the menu without any bookkeeping.
-	const skillQuery = skillMenuDismissed ? null : parseSkillQuery(draft)
+	const skillQuery = skillMenuQuery(draft, skillMenuDismissed)
 	const skillSuggestions = useMemo(
 		() => (skillQuery === null ? [] : matchSkills(skills, skillQuery)),
 		[skills, skillQuery],
@@ -793,14 +794,28 @@ export function ChatPanel() {
 	)
 
 	function handleDraftChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+		const prev = draft
 		const next = e.target.value
 		setDraft(next)
 		setActiveSkillIndex(0)
-		if (!next.startsWith('/')) {
-			// Re-arm once the command token is gone, so a dismissed menu comes back
-			// the next time a message starts with a slash.
+		if (shouldRearmSkillMenu(prev, next)) {
 			setSkillMenuDismissed(false)
 		}
+	}
+
+	function handleTextareaFocus() {
+		setSkillMenuDismissed(false)
+	}
+
+	function handleTextareaBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
+		const related = e.relatedTarget
+		if (
+			related instanceof HTMLElement &&
+			related.closest(`#${SKILL_LISTBOX_ID}`)
+		) {
+			return
+		}
+		setSkillMenuDismissed(true)
 	}
 
 	const handleSelectSkill = useCallback((name: string) => {
@@ -1104,7 +1119,8 @@ export function ChatPanel() {
 						value={draft}
 						onChange={handleDraftChange}
 						onKeyDown={handleKeyDown}
-						onBlur={() => setSkillMenuDismissed(true)}
+						onFocus={handleTextareaFocus}
+						onBlur={handleTextareaBlur}
 						placeholder="Message…"
 						rows={2}
 						disabled={inputDisabled}

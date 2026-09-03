@@ -270,9 +270,6 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 	if err := s.dialogRepo.UpdateTitle(ctx, dialogID, ""); err != nil {
 		return fmt.Errorf("reset title: %w", err)
 	}
-	if err := s.dialogRepo.SetDialogSubjects(ctx, dialogID, nil); err != nil {
-		return fmt.Errorf("reset subjects: %w", err)
-	}
 	if err := s.dialogRepo.SetDialogCategories(ctx, dialogID, nil); err != nil {
 		return fmt.Errorf("reset categories: %w", err)
 	}

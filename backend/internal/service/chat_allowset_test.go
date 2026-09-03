@@ -50,9 +50,7 @@ func (r *allowSetDialogRepo) UpdateTitle(context.Context, uuid.UUID, string) err
 func (r *allowSetDialogRepo) SetDialogTaskID(context.Context, uuid.UUID, *string) error {
 	return nil
 }
-func (r *allowSetDialogRepo) SetDialogSubjects(context.Context, uuid.UUID, []string) error {
-	return nil
-}
+
 func (r *allowSetDialogRepo) SetDialogCategories(context.Context, uuid.UUID, []string) error {
 	return nil
 }

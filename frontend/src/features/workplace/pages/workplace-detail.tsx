@@ -43,7 +43,6 @@ import {
 	updatePlanSchedule,
 	updateDialogSummary,
 	updateDialogTitle,
-	updateDialogSubjects,
 	updateDialogCategories,
 	type ActionPlan,
 	type ActionStep,
@@ -184,7 +183,6 @@ export function WorkplaceDetail() {
 	const [isEditingSummary, setIsEditingSummary] = useState(false)
 	const [summaryDraft, setSummaryDraft] = useState('')
 	const [savingSummary, setSavingSummary] = useState(false)
-	const [savingSubjects, setSavingSubjects] = useState(false)
 	const [savingCategories, setSavingCategories] = useState(false)
 	const [liveActionPlanVersion, setLiveActionPlanVersion] = useState(0)
 	const [execRuns, setExecRuns] = useState<ActionExecRuns>({})
@@ -429,42 +427,6 @@ export function WorkplaceDetail() {
 		}
 	}, [id, summaryDraft, summaryContent, savingSummary])
 
-	const handleSaveSubjects = useCallback(
-		async (nextSubjects: string[]) => {
-			if (!id || !dialog || savingSubjects) return
-
-			const previous = dialog.subjects ?? []
-			const unchanged =
-				previous.length === nextSubjects.length &&
-				previous.every((subject, index) => subject === nextSubjects[index])
-			if (unchanged) {
-				return
-			}
-
-			setDialog((current) =>
-				current ? { ...current, subjects: nextSubjects } : current,
-			)
-			setSavingSubjects(true)
-			setError(null)
-			try {
-				const updated = await updateDialogSubjects(id, nextSubjects)
-				setDialog(updated)
-			} catch (err) {
-				setDialog((current) =>
-					current ? { ...current, subjects: previous } : current,
-				)
-				setError(
-					err instanceof Error
-						? err.message
-						: 'Failed to update components',
-				)
-			} finally {
-				setSavingSubjects(false)
-			}
-		},
-		[id, dialog, savingSubjects],
-	)
-
 	const handleSaveCategories = useCallback(
 		async (nextCategories: string[]) => {
 			if (!id || !dialog || savingCategories) return
@@ -492,7 +454,9 @@ export function WorkplaceDetail() {
 					current ? { ...current, categories: previous } : current,
 				)
 				setError(
-					err instanceof Error ? err.message : 'Failed to update rules',
+					err instanceof Error
+						? err.message
+						: 'Failed to update tool categories',
 				)
 			} finally {
 				setSavingCategories(false)
@@ -1080,11 +1044,9 @@ export function WorkplaceDetail() {
 					onScheduleChange={(nextUnix) => void handleScheduleChange(nextUnix)}
 					scheduleDisabled={!isDecomposed || savingSchedule}
 					showSchedulingHint={!isDecomposed}
-					components={dialog.subjects ?? []}
-					rules={dialog.categories ?? []}
-					onComponentsChange={(next) => void handleSaveSubjects(next)}
-					onRulesChange={(next) => void handleSaveCategories(next)}
-					disabled={savingSubjects || savingCategories}
+					categories={dialog.categories ?? []}
+					onCategoriesChange={(next) => void handleSaveCategories(next)}
+					disabled={savingCategories}
 				/>
 			)}
 
