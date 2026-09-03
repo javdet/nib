@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
 	Send,
 	Square,
@@ -51,6 +51,17 @@ import {
 } from '@/features/dialogs/lib/turn-state'
 import { useThinkingPhrase } from '@/features/dialogs/hooks/use-thinking-phrase'
 import { useToolActivity } from '@/features/dialogs/hooks/use-tool-activity'
+import { useSkills } from '@/features/skills/hooks/use-skills'
+import {
+	SkillSuggestMenu,
+	SKILL_LISTBOX_ID,
+	skillOptionId,
+} from '@/features/skills/components/skill-suggest-menu'
+import {
+	applySkillSelection,
+	matchSkills,
+	parseSkillQuery,
+} from '@/features/skills/lib/skill-suggest'
 
 const RECONNECT_POLL_MS = 3000
 const RECONNECT_MAX_MS = 30 * 60 * 1000
@@ -148,14 +159,34 @@ export function ChatPanel() {
 	const [reconnecting, setReconnecting] = useState(false)
 	const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([])
 	const [uploading, setUploading] = useState(false)
+	const [activeSkillIndex, setActiveSkillIndex] = useState(0)
+	const [skillMenuDismissed, setSkillMenuDismissed] = useState(false)
 	const scrollRef = useRef<HTMLDivElement>(null)
 	const abortRef = useRef<AbortController | null>(null)
 	const dialogIdRef = useRef<string | null>(null)
 	const loadedDialogIdRef = useRef<string | null>(null)
 	const fileInputRef = useRef<HTMLInputElement>(null)
+	const textareaRef = useRef<HTMLTextAreaElement>(null)
 
 	const hasPendingQuestions = pendingQuestions.length > 0
 	const inputDisabled = loading || messagesLoading || hasPendingQuestions
+
+	const { skills, reload: reloadSkills, isStale: areSkillsStale } = useSkills()
+	// Open/closed and the query are derived from the draft, so deleting the slash,
+	// typing a space or sending all close the menu without any bookkeeping.
+	const skillQuery = skillMenuDismissed ? null : parseSkillQuery(draft)
+	const skillSuggestions = useMemo(
+		() => (skillQuery === null ? [] : matchSkills(skills, skillQuery)),
+		[skills, skillQuery],
+	)
+	const isSkillMenuOpen = !inputDisabled && skillSuggestions.length > 0
+
+	const isSkillMenuArmed = skillQuery !== null
+	useEffect(() => {
+		if (isSkillMenuArmed && areSkillsStale()) {
+			void reloadSkills()
+		}
+	}, [isSkillMenuArmed, areSkillsStale, reloadSkills])
 
 	useEffect(() => {
 		scrollRef.current?.scrollTo({
@@ -178,6 +209,8 @@ export function ChatPanel() {
 		setLoading(false)
 		setSubmittingAnswers(false)
 		setReconnecting(false)
+		setSkillMenuDismissed(false)
+		setActiveSkillIndex(0)
 
 		if (!activeDialogId) {
 			setMessagesLoading(false)
@@ -759,7 +792,67 @@ export function ChatPanel() {
 		[activeDialogId],
 	)
 
+	function handleDraftChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+		const next = e.target.value
+		setDraft(next)
+		setActiveSkillIndex(0)
+		if (!next.startsWith('/')) {
+			// Re-arm once the command token is gone, so a dismissed menu comes back
+			// the next time a message starts with a slash.
+			setSkillMenuDismissed(false)
+		}
+	}
+
+	const handleSelectSkill = useCallback((name: string) => {
+		setDraft(applySkillSelection(name))
+		setSkillMenuDismissed(false)
+		setActiveSkillIndex(0)
+		// The row's mousedown kept focus in the textarea, but the caret still has to
+		// be pushed past the text React just wrote.
+		requestAnimationFrame(() => {
+			const el = textareaRef.current
+			if (!el) return
+			el.focus()
+			el.setSelectionRange(el.value.length, el.value.length)
+		})
+	}, [])
+
 	function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+		// An IME candidate window owns Enter and the arrows while composing.
+		if (e.nativeEvent.isComposing) {
+			return
+		}
+
+		if (isSkillMenuOpen) {
+			if (e.key === 'ArrowDown') {
+				e.preventDefault()
+				setActiveSkillIndex((i) => (i + 1) % skillSuggestions.length)
+				return
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault()
+				setActiveSkillIndex(
+					(i) => (i - 1 + skillSuggestions.length) % skillSuggestions.length,
+				)
+				return
+			}
+			if (e.key === 'Escape') {
+				e.preventDefault()
+				setSkillMenuDismissed(true)
+				return
+			}
+			// Enter accepts the suggestion rather than sending: the draft is still
+			// only the command token, so there is nothing worth sending yet.
+			if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+				const picked = skillSuggestions[activeSkillIndex]
+				if (picked) {
+					e.preventDefault()
+					handleSelectSkill(picked.name)
+					return
+				}
+			}
+		}
+
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault()
 			void handleSend()
@@ -981,7 +1074,15 @@ export function ChatPanel() {
 				</div>
 			)}
 
-			<div className="shrink-0 border-t p-3">
+			<div className="relative shrink-0 border-t p-3">
+				{isSkillMenuOpen && (
+					<SkillSuggestMenu
+						suggestions={skillSuggestions}
+						activeIndex={activeSkillIndex}
+						onActiveIndexChange={setActiveSkillIndex}
+						onSelect={handleSelectSkill}
+					/>
+				)}
 				{pendingAttachments.length > 0 && (
 					<div className="mb-2 flex flex-wrap gap-1.5">
 						{pendingAttachments.map((a) =>
@@ -999,13 +1100,22 @@ export function ChatPanel() {
 						onChange={(e) => void handleFilesSelected(e)}
 					/>
 					<Textarea
+						ref={textareaRef}
 						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
+						onChange={handleDraftChange}
 						onKeyDown={handleKeyDown}
+						onBlur={() => setSkillMenuDismissed(true)}
 						placeholder="Message…"
 						rows={2}
 						disabled={inputDisabled}
 						className="min-h-[72px] min-w-0 resize-none"
+						role="combobox"
+						aria-autocomplete="list"
+						aria-expanded={isSkillMenuOpen}
+						aria-controls={SKILL_LISTBOX_ID}
+						aria-activedescendant={
+							isSkillMenuOpen ? skillOptionId(activeSkillIndex) : undefined
+						}
 					/>
 					<div className="flex shrink-0 flex-col gap-2 self-end">
 						<IconButton

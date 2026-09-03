@@ -1,12 +1,16 @@
 import {
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useRef,
 	useState,
 	type DragEvent,
 	type ReactNode,
 } from 'react'
 import {
+	ChevronDown,
+	ChevronUp,
+	FolderGit2,
 	GripVertical,
 	Loader2,
 	MessageSquare,
@@ -47,7 +51,7 @@ function ExecStatusDot({ run }: { run: ActionExecRun }) {
 
 	const color =
 		run.status === 'done'
-			? 'bg-green-500'
+			? 'bg-success'
 			: run.status === 'blocked'
 				? 'bg-amber-500'
 				: run.status === 'cancelled'
@@ -76,6 +80,19 @@ function execRunTooltip(run: ActionExecRun): string {
 
 const EXECUTOR_DISABLED_REASON =
 	'Executor is disabled — set its type in executor settings to run code actions'
+
+// Rows open collapsed so a ten-step plan stays scannable. The cut is a height
+// rather than a sentence count: an action is markdown, and lists, tables and
+// code blocks have no sentences to count but do have lines to clip. Roughly six
+// lines of prose at the body's leading.
+const COLLAPSED_BODY_PX = 132
+
+// Done is an opaque emerald surface rather than a translucent green wash, so a
+// finished row reads as a settled state instead of a film laid over the card.
+// Redefining --border retints every divider inside the row at once: the base
+// layer resolves every border-color through it.
+const DONE_SURFACE =
+	'border-success-border bg-success-surface [--border:var(--success-border)]'
 
 interface ActionPlanViewProps {
 	plan: ActionPlan
@@ -120,7 +137,7 @@ function DragHandle({
 	return (
 		<div
 			className={cn(
-				'flex w-8 shrink-0 select-none items-center justify-center self-stretch border-r',
+				'flex h-9 shrink-0 select-none items-center justify-center border-t',
 				disabled
 					? 'cursor-not-allowed text-muted-foreground/40'
 					: 'cursor-grab text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing',
@@ -138,19 +155,282 @@ function DragHandle({
 	)
 }
 
-// ItemNumber is the left gutter label ("1.2", "1.C1", "R1"). It repeats the drag
-// handle's stretched-column shape so every row keeps the same grid of gutters.
-function ItemNumber({ id, number }: { id: string; number: string }) {
+interface RowGutterProps {
+	id: string
+	number: string
+	checked: boolean
+	onToggle: (key: string, nextChecked: boolean) => void
+	dragDisabled?: boolean
+	onGripPointerDown: () => void
+	onGripPointerUp: () => void
+}
+
+// The gutter stacks the three things that address a row rather than act on it:
+// which item it is, whether it is done, and the grip that moves it. Keeping them
+// in one column leaves the whole width of the row to the action itself.
+function RowGutter({
+	id,
+	number,
+	checked,
+	onToggle,
+	dragDisabled,
+	onGripPointerDown,
+	onGripPointerUp,
+}: RowGutterProps) {
+	return (
+		<div className="flex w-10 shrink-0 flex-col self-stretch border-r">
+			<div
+				id={`${id}-number`}
+				className={cn(
+					'flex h-9 shrink-0 select-none items-center justify-center',
+					'border-b font-mono text-xs tabular-nums',
+					checked ? 'text-success' : 'text-muted-foreground',
+				)}
+			>
+				{number}
+			</div>
+			<div className="flex flex-1 items-start justify-center py-2">
+				<Checkbox
+					checked={checked}
+					onCheckedChange={(value) => onToggle(id, value === true)}
+					aria-labelledby={`${id}-number ${id}-label`}
+					className={cn(
+						'cursor-pointer',
+						'data-[state=checked]:border-success data-[state=checked]:bg-success',
+						'data-[state=checked]:text-success-foreground',
+					)}
+				/>
+			</div>
+			<DragHandle
+				disabled={dragDisabled}
+				onGripPointerDown={onGripPointerDown}
+				onGripPointerUp={onGripPointerUp}
+			/>
+		</div>
+	)
+}
+
+interface HeaderButtonProps {
+	label: string
+	tooltip: ReactNode
+	onClick: () => void
+	disabled?: boolean
+	active?: boolean
+	children: ReactNode
+}
+
+function HeaderButton({
+	label,
+	tooltip,
+	onClick,
+	disabled = false,
+	active = false,
+	children,
+}: HeaderButtonProps) {
+	return (
+		<Tooltip>
+			{/* The button is wrapped so the tooltip still explains why it is off:
+			    a natively disabled button swallows its own pointer events. */}
+			<TooltipTrigger asChild>
+				<span className="flex h-9 w-9 shrink-0 self-stretch border-l">
+					<button
+						type="button"
+						onClick={onClick}
+						disabled={disabled}
+						className={cn(
+							'flex flex-1 items-center justify-center transition-colors',
+							'duration-[var(--dur-fast)] focus-ring-inset',
+							disabled && 'cursor-not-allowed text-muted-foreground/40',
+							!disabled && 'cursor-pointer hover:bg-foreground/[0.07]',
+							!disabled &&
+								(active
+									? 'text-primary hover:text-primary'
+									: 'text-muted-foreground hover:text-foreground'),
+						)}
+						aria-label={label}
+					>
+						{children}
+					</button>
+				</span>
+			</TooltipTrigger>
+			<TooltipContent>{tooltip}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// CollapsibleBody clips its content to COLLAPSED_BODY_PX and offers a toggle,
+// but only once the content genuinely overflows -- a two-line action gets no
+// furniture it does not need.
+function CollapsibleBody({ id, children }: { id: string; children: ReactNode }) {
+	const contentRef = useRef<HTMLDivElement>(null)
+	const [expanded, setExpanded] = useState(false)
+	const [overflows, setOverflows] = useState(false)
+
+	useLayoutEffect(() => {
+		const el = contentRef.current
+		if (!el) return
+
+		// Measured on the inner, unclamped element: the outer wrapper's height is
+		// the answer we imposed, so asking it would only echo the clamp back.
+		const measure = () => {
+			setOverflows(el.scrollHeight > COLLAPSED_BODY_PX + 4)
+		}
+		measure()
+
+		// Markdown settles late -- tables reflow, long code wraps -- so remeasure
+		// rather than trusting the first pass.
+		const observer = new ResizeObserver(measure)
+		observer.observe(el)
+		return () => observer.disconnect()
+	}, [])
+
+	const collapsed = overflows && !expanded
+
+	return (
+		<>
+			<div
+				id={id}
+				className={cn(
+					'overflow-hidden',
+					// A mask rather than a gradient overlay, so the fade works over the
+					// muted surface and the emerald one without knowing which it is on.
+					collapsed &&
+						'[mask-image:linear-gradient(to_bottom,black_calc(100%_-_2rem),transparent)]',
+				)}
+				style={{ maxHeight: collapsed ? COLLAPSED_BODY_PX : undefined }}
+			>
+				<div ref={contentRef}>{children}</div>
+			</div>
+			{overflows ? (
+				<div className="mt-1 flex justify-end">
+					<button
+						type="button"
+						onClick={() => setExpanded((prev) => !prev)}
+						aria-expanded={expanded}
+						aria-controls={id}
+						className={cn(
+							'flex cursor-pointer items-center gap-0.5 rounded text-xs',
+							'text-muted-foreground transition-colors focus-ring',
+							'duration-[var(--dur-fast)] hover:text-foreground',
+						)}
+					>
+						{expanded ? 'less' : 'more...'}
+						{expanded ? (
+							<ChevronUp className="size-3.5" aria-hidden />
+						) : (
+							<ChevronDown className="size-3.5" aria-hidden />
+						)}
+					</button>
+				</div>
+			) : null}
+		</>
+	)
+}
+
+function RepositoryBadge({ step }: { step: ActionStep }) {
+	const repository = step.repository?.trim()
+	if (!isCodeStep(step) || !repository) return null
+
+	return (
+		<Badge
+			variant="outline"
+			className="max-w-full font-normal"
+			title={`repository: ${repository}`}
+		>
+			<FolderGit2 className="size-3.5 shrink-0" aria-hidden />
+			<span className="truncate">{repository}</span>
+		</Badge>
+	)
+}
+
+// The type icon sits beside the narrative in a flex row so every line of text
+// shares the same left edge instead of wrapping around a float.
+function ActionTypeTile({ type }: { type: string }) {
+	const TypeIcon = actionTypeIcon(type)
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span
+					tabIndex={0}
+					aria-label={type}
+					className={cn(
+						'flex size-10 shrink-0 items-center justify-center',
+						'rounded-md border bg-background/60 text-muted-foreground',
+					)}
+				>
+					<TypeIcon className="size-5" aria-hidden />
+				</span>
+			</TooltipTrigger>
+			<TooltipContent>{type}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// ActionBody renders the step narrative and, for shell and curl steps, the
+// commands themselves as a copyable block.
+function ActionBody({ step }: { step: ActionStep }) {
+	const command = step.command?.trim()
+	const type = step.type?.trim()
+	const prURL = step.pr_url?.trim()
+
+	const narrative = (
+		<div className="min-w-0 flex-1">
+			<MarkdownMessage content={step.action} />
+			{isCodeStep(step) ? (
+				<div className="mt-2 text-xs">
+					<span className="text-muted-foreground">Pull request: </span>
+					{prURL ? (
+						<a
+							href={prURL}
+							target="_blank"
+							rel="noreferrer noopener"
+							className="break-all underline underline-offset-2"
+						>
+							{prURL}
+						</a>
+					) : (
+						<span className="text-muted-foreground">—</span>
+					)}
+				</div>
+			) : null}
+			{command ? (
+				<div className="mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
+					<code className="min-w-0 flex-1 overflow-x-auto whitespace-pre py-1 font-mono text-xs leading-relaxed">
+						{command}
+					</code>
+					<CopyButton text={command} label="Copy command" />
+				</div>
+			) : null}
+		</div>
+	)
+
+	if (!type) return narrative
+
+	return (
+		<div className="flex items-start gap-3">
+			<ActionTypeTile type={type} />
+			{narrative}
+		</div>
+	)
+}
+
+interface RowBodyProps {
+	id: string
+	checked: boolean
+	children: ReactNode
+}
+
+function RowBody({ id, checked, children }: RowBodyProps) {
 	return (
 		<div
-			id={`${id}-number`}
+			id={`${id}-label`}
 			className={cn(
-				'flex w-10 shrink-0 select-none items-center justify-center',
-				'self-stretch border-r font-mono text-xs tabular-nums',
-				'text-muted-foreground',
+				'min-w-0 select-text px-3 py-2',
+				checked && 'text-foreground/75',
 			)}
 		>
-			{number}
+			<CollapsibleBody id={`${id}-body`}>{children}</CollapsibleBody>
 		</div>
 	)
 }
@@ -180,99 +460,24 @@ function CheckableRow({
 		<div
 			className={cn(
 				'flex overflow-hidden rounded-md border border-dashed bg-muted/25 text-sm',
-				checked && 'border-green-500/40 bg-green-500/10',
+				checked && DONE_SURFACE,
 			)}
 		>
-			<ItemNumber id={id} number={number} />
-			<DragHandle
-				disabled={dragDisabled}
+			<RowGutter
+				id={id}
+				number={number}
+				checked={checked}
+				onToggle={onToggle}
+				dragDisabled={dragDisabled}
 				onGripPointerDown={onGripPointerDown}
 				onGripPointerUp={onGripPointerUp}
 			/>
-			<div className="flex min-w-0 flex-1 select-text items-start gap-3 px-3 py-2">
-				<Checkbox
-					checked={checked}
-					onCheckedChange={(value) => onToggle(id, value === true)}
-					aria-labelledby={`${id}-number ${id}-label`}
-					className="mt-0.5 cursor-pointer"
-				/>
-				<div id={`${id}-label`} className="min-w-0 flex-1">
+			<div className="min-w-0 flex-1">
+				<RowBody id={id} checked={checked}>
 					{children}
-				</div>
+				</RowBody>
 			</div>
 		</div>
-	)
-}
-
-function ActionLabels({ step }: { step: ActionStep }) {
-	const type = step.type?.trim()
-	const repository = step.repository?.trim()
-	const showRepository = type?.toLowerCase() === 'code' && !!repository
-
-	if (!type && !showRepository) return null
-
-	const TypeIcon = type ? actionTypeIcon(type) : null
-
-	return (
-		<div className="mb-1 flex flex-wrap items-center gap-1.5">
-			{type && TypeIcon ? (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span
-							tabIndex={0}
-							className="inline-flex text-muted-foreground"
-							aria-label={type}
-						>
-							<TypeIcon className="h-4 w-4" aria-hidden />
-						</span>
-					</TooltipTrigger>
-					<TooltipContent>{type}</TooltipContent>
-				</Tooltip>
-			) : null}
-			{showRepository ? (
-				<Badge variant="outline">repository: {repository}</Badge>
-			) : null}
-		</div>
-	)
-}
-
-// ActionBody renders the step narrative and, for shell and curl steps, the
-// commands themselves as a copyable block.
-function ActionBody({ step }: { step: ActionStep }) {
-	const command = step.command?.trim()
-	const isCode = step.type?.trim().toLowerCase() === 'code'
-	const prURL = step.pr_url?.trim()
-
-	return (
-		<>
-			<ActionLabels step={step} />
-			<MarkdownMessage content={step.action} />
-			{isCode ? (
-				<div className="mt-2 text-xs">
-					<span className="text-muted-foreground">Pull request: </span>
-					{prURL ? (
-						<a
-							href={prURL}
-							target="_blank"
-							rel="noreferrer noopener"
-							className="break-all underline underline-offset-2"
-						>
-							{prURL}
-						</a>
-					) : (
-						<span className="text-muted-foreground">—</span>
-					)}
-				</div>
-			) : null}
-			{command ? (
-				<div className="mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
-					<code className="min-w-0 flex-1 overflow-x-auto whitespace-pre py-1 font-mono text-xs leading-relaxed">
-						{command}
-					</code>
-					<CopyButton text={command} label="Copy command" />
-				</div>
-			) : null}
-		</>
 	)
 }
 
@@ -281,6 +486,7 @@ interface ExecutableActionRowProps {
 	number: string
 	checked: boolean
 	comment: string
+	header: ReactNode
 	onToggle: (key: string, nextChecked: boolean) => void
 	onComment: () => void
 	onEdit: () => void
@@ -300,6 +506,7 @@ function ExecutableActionRow({
 	number,
 	checked,
 	comment,
+	header,
 	onToggle,
 	onComment,
 	onEdit,
@@ -319,131 +526,76 @@ function ExecutableActionRow({
 		<div
 			className={cn(
 				'flex overflow-hidden rounded-md border bg-muted/60 text-sm',
-				checked && 'border-green-500/40 bg-green-500/10',
+				checked && DONE_SURFACE,
 			)}
 		>
-			<ItemNumber id={id} number={number} />
-			<DragHandle
-				disabled={dragDisabled}
+			<RowGutter
+				id={id}
+				number={number}
+				checked={checked}
+				onToggle={onToggle}
+				dragDisabled={dragDisabled}
 				onGripPointerDown={onGripPointerDown}
 				onGripPointerUp={onGripPointerUp}
 			/>
-			<div className="flex min-w-0 flex-1 select-text items-start gap-3 px-3 py-2">
-				<Checkbox
-					checked={checked}
-					onCheckedChange={(value) => onToggle(id, value === true)}
-					aria-labelledby={`${id}-number ${id}-label`}
-					className="mt-0.5 cursor-pointer"
-				/>
-				<div id={`${id}-label`} className="min-w-0 flex-1">
-					{children}
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className="flex h-9 shrink-0 items-center border-b pl-3">
+					<div className="flex min-w-0 flex-1 items-center pr-2">{header}</div>
+					{execRun && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span className="flex h-9 w-9 shrink-0 items-center justify-center">
+									<ExecStatusDot run={execRun} />
+								</span>
+							</TooltipTrigger>
+							<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
+						</Tooltip>
+					)}
+					{execRun && execRun.status !== 'running' && (
+						<HeaderButton
+							label="Run action again"
+							tooltip="Run again with a new sub-agent"
+							onClick={onRestart}
+						>
+							<RotateCcw className="h-4 w-4" />
+						</HeaderButton>
+					)}
+					<HeaderButton
+						label="Edit action"
+						tooltip="Edit action"
+						onClick={onEdit}
+					>
+						<Pencil className="h-4 w-4" />
+					</HeaderButton>
+					<HeaderButton
+						label={hasComment ? 'Edit comment' : 'Add comment'}
+						tooltip={hasComment ? 'Edit comment' : 'Add comment'}
+						onClick={onComment}
+						active={hasComment}
+					>
+						<MessageSquare
+							className={cn('h-4 w-4', hasComment && 'fill-current')}
+						/>
+					</HeaderButton>
+					<HeaderButton
+						label="Execute action"
+						tooltip={
+							executeDisabled && executeDisabledReason
+								? executeDisabledReason
+								: 'Execute action'
+						}
+						onClick={onExecute}
+						disabled={executeDisabled}
+					>
+						<span className="flex size-6 items-center justify-center rounded-full border border-current/40">
+							<Play className="ml-0.5 size-3 fill-current" />
+						</span>
+					</HeaderButton>
 				</div>
+				<RowBody id={id} checked={checked}>
+					{children}
+				</RowBody>
 			</div>
-			<div className="flex w-12 shrink-0 flex-col self-stretch border-l">
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							onClick={onEdit}
-							className={cn(
-								'flex flex-1 cursor-pointer items-center justify-center',
-								'text-muted-foreground transition-colors focus-ring-inset',
-								'duration-[var(--dur-fast)] hover:bg-foreground/[0.07]',
-								'hover:text-foreground',
-							)}
-							aria-label="Edit action"
-						>
-							<Pencil className="h-4 w-4" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent>Edit action</TooltipContent>
-				</Tooltip>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
-							type="button"
-							onClick={onComment}
-							className={cn(
-								'flex flex-1 cursor-pointer items-center justify-center border-t',
-								'transition-colors duration-[var(--dur-fast)] focus-ring-inset',
-								'hover:bg-foreground/[0.07]',
-								hasComment
-									? 'text-primary hover:text-primary'
-									: 'text-muted-foreground hover:text-foreground',
-							)}
-							aria-label={hasComment ? 'Edit comment' : 'Add comment'}
-						>
-							<MessageSquare
-								className={cn('h-4 w-4', hasComment && 'fill-current')}
-							/>
-						</button>
-					</TooltipTrigger>
-					<TooltipContent>
-						{hasComment ? 'Edit comment' : 'Add comment'}
-					</TooltipContent>
-				</Tooltip>
-			</div>
-			{execRun && (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span className="flex w-12 shrink-0 items-center justify-center self-stretch border-l">
-							<ExecStatusDot run={execRun} />
-						</span>
-					</TooltipTrigger>
-					<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
-				</Tooltip>
-			)}
-			{execRun && execRun.status !== 'running' && (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span className="flex w-12 shrink-0 self-stretch border-l">
-							<button
-								type="button"
-								onClick={onRestart}
-								className={cn(
-									'flex flex-1 cursor-pointer items-center justify-center transition-colors',
-									'duration-[var(--dur-fast)] focus-ring-inset',
-									'text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground',
-								)}
-								aria-label="Run action again"
-							>
-								<RotateCcw className="h-4 w-4" />
-							</button>
-						</span>
-					</TooltipTrigger>
-					<TooltipContent>Run again with a new sub-agent</TooltipContent>
-				</Tooltip>
-			)}
-			<Tooltip>
-				{/* The button is wrapped so the tooltip still explains why it is off:
-				    a natively disabled button swallows its own pointer events. */}
-				<TooltipTrigger asChild>
-					<span className="flex w-12 shrink-0 self-stretch border-l">
-						<button
-							type="button"
-							onClick={onExecute}
-							disabled={executeDisabled}
-							className={cn(
-								'flex flex-1 items-center justify-center transition-colors',
-								'duration-[var(--dur-fast)] focus-ring-inset',
-								executeDisabled
-									? 'cursor-not-allowed text-muted-foreground/40'
-									: 'cursor-pointer text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground',
-							)}
-							aria-label="Execute action"
-						>
-							<span className="flex h-7 w-7 items-center justify-center rounded-full border border-current/40">
-								<Play className="ml-0.5 h-3 w-3 fill-current" />
-							</span>
-						</button>
-					</span>
-				</TooltipTrigger>
-				<TooltipContent>
-					{executeDisabled && executeDisabledReason
-						? executeDisabledReason
-						: 'Execute action'}
-				</TooltipContent>
-			</Tooltip>
 		</div>
 	)
 }
@@ -633,16 +785,9 @@ export function ActionPlanView({
 		<div className="space-y-6">
 			{plan.stages.map((stage, stageIdx) => (
 				<section key={`stage-${stageIdx}`} className="space-y-3">
-					<div>
-						<h3 className="text-sm font-semibold">
-							{actionPlanStageNumber(stageIdx)}. {stage.title}
-						</h3>
-						{stage.description ? (
-							<p className="mt-1 text-xs text-muted-foreground">
-								{stage.description}
-							</p>
-						) : null}
-					</div>
+					<h3 className="text-lg font-semibold">
+						{actionPlanStageNumber(stageIdx)}. {stage.title}
+					</h3>
 
 					{stage.steps.length > 0 ? (
 						<ul className="space-y-2">
@@ -677,6 +822,7 @@ export function ActionPlanView({
 											)}
 											checked={checkedSet.has(key)}
 											comment={comments[key] ?? ''}
+											header={<RepositoryBadge step={step} />}
 											onToggle={onToggle}
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
@@ -758,7 +904,7 @@ export function ActionPlanView({
 
 			{plan.rollback.length > 0 ? (
 				<section className="space-y-3">
-					<h3 className="text-sm font-semibold">Rollback</h3>
+					<h3 className="text-lg font-semibold">Rollback</h3>
 					<ul className="space-y-2">
 						{plan.rollback.map((step, idx) => {
 							const key = `rollback.${idx}`
@@ -769,6 +915,7 @@ export function ActionPlanView({
 										number={actionPlanItemNumber('rollback', 0, idx)}
 										checked={checkedSet.has(key)}
 										comment={comments[key] ?? ''}
+										header={<RepositoryBadge step={step} />}
 										onToggle={onToggle}
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
