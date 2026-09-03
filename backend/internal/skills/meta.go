@@ -4,22 +4,15 @@ import (
 	"strings"
 )
 
-const (
-	CategorySearchable = "searchable"
-	CategoryIncluded   = "included"
-)
-
 // Meta holds parsed frontmatter metadata for a skill.
 type Meta struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Category    string `json:"category"`
 }
 
-// ParseFrontmatter extracts name, description, and category from skill file content.
-// Category defaults to searchable when missing or invalid.
+// ParseFrontmatter extracts name and description from skill file content.
 func ParseFrontmatter(content string) Meta {
-	result := Meta{Category: CategorySearchable}
+	var result Meta
 
 	normalized := strings.TrimPrefix(content, "\uFEFF")
 	if !strings.HasPrefix(normalized, "---") {
@@ -57,8 +50,6 @@ func ParseFrontmatter(content string) Meta {
 			result.Name = value
 		case "description":
 			result.Description = value
-		case "category":
-			result.Category = normalizeCategory(value)
 		}
 	}
 	return result
@@ -97,13 +88,4 @@ func unquoteYAMLValue(value string) string {
 		}
 	}
 	return value
-}
-
-func normalizeCategory(category string) string {
-	switch strings.TrimSpace(strings.ToLower(category)) {
-	case CategoryIncluded:
-		return CategoryIncluded
-	default:
-		return CategorySearchable
-	}
 }

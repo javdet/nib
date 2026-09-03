@@ -1,5 +1,4 @@
 import { api } from '@/lib/api-client'
-import type { SkillCategory } from '@/lib/frontmatter'
 
 export interface Skill {
 	name: string
@@ -9,7 +8,6 @@ export interface Skill {
 export interface SkillMeta {
 	name: string
 	description: string
-	category: SkillCategory
 }
 
 export interface SkillList {

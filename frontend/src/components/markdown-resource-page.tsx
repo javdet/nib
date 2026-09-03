@@ -1,12 +1,9 @@
 import { type ReactNode } from 'react'
 import { FileCode2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { FrontmatterEditor } from '@/components/frontmatter-editor'
 import { cn } from '@/lib/utils'
 import type { NamedMarkdownResource } from '@/lib/hooks/use-named-markdown-resource'
-
-import type { MarkdownListItem } from '@/components/markdown-resource-page-types'
 
 interface MarkdownResourcePageProps {
 	title: string
@@ -18,10 +15,8 @@ interface MarkdownResourcePageProps {
 	emptyListMessage: string
 	emptySelectionMessage: string
 	loadingSelectionMessage: string
-	showCategory?: boolean
 	createDialog: ReactNode
 	resource: NamedMarkdownResource
-	listItems?: MarkdownListItem[]
 }
 
 export function MarkdownResourcePage({
@@ -34,16 +29,10 @@ export function MarkdownResourcePage({
 	emptyListMessage,
 	emptySelectionMessage,
 	loadingSelectionMessage,
-	showCategory,
 	createDialog,
 	resource,
-	listItems,
 }: MarkdownResourcePageProps) {
-	const items: MarkdownListItem[] =
-		listItems ??
-		resource.names.map((name) => ({
-			name,
-		}))
+	const items = resource.names
 
 	return (
 		<div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col gap-4 p-6">
@@ -85,13 +74,13 @@ export function MarkdownResourcePage({
 							</div>
 						) : (
 							<ul className="space-y-1">
-								{items.map((item) => {
-									const selected = item.name === resource.selectedName
+								{items.map((name) => {
+									const selected = name === resource.selectedName
 									return (
-										<li key={item.name}>
+										<li key={name}>
 											<button
 												type="button"
-												onClick={() => resource.selectName(item.name)}
+												onClick={() => resource.selectName(name)}
 												className={cn(
 													'flex w-full cursor-pointer items-center justify-between',
 													'gap-2 rounded-md px-2 py-1.5 text-left text-sm',
@@ -102,16 +91,8 @@ export function MarkdownResourcePage({
 												)}
 											>
 												<span className="truncate font-mono">
-													{item.name}.md
+													{name}.md
 												</span>
-												{item.badge ? (
-													<Badge
-														variant="default"
-														className="shrink-0 text-[10px]"
-													>
-														{item.badge}
-													</Badge>
-												) : null}
 											</button>
 										</li>
 									)
@@ -129,7 +110,6 @@ export function MarkdownResourcePage({
 							isDirty={resource.isDirty}
 							loading={resource.contentLoading}
 							saving={resource.saving}
-							showCategory={showCategory}
 							onChange={resource.setContent}
 							onSave={() => void resource.save()}
 							onDelete={() => void resource.remove()}

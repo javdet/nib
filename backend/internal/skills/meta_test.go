@@ -14,61 +14,44 @@ func TestParseFrontmatter(t *testing.T) {
 		content  string
 		wantName string
 		wantDesc string
-		wantCat  string
 	}{
 		{
-			name: "with category included",
+			name: "with body",
 			content: `---
 name: jira-todo-tasks
 description: Retrieve todo tasks from Jira
-category: included
 ---
 
 body`,
 			wantName: "jira-todo-tasks",
 			wantDesc: "Retrieve todo tasks from Jira",
-			wantCat:  skills.CategoryIncluded,
 		},
 		{
-			name: "without category defaults searchable",
+			name: "without body",
 			content: `---
 name: test-skill
 description: A test skill
+---`,
+			wantName: "test-skill",
+			wantDesc: "A test skill",
+		},
+		{
+			name: "unknown keys are ignored",
+			content: `---
+name: test-skill
+description: A test skill
+category: included
 ---
 
 do something`,
 			wantName: "test-skill",
 			wantDesc: "A test skill",
-			wantCat:  skills.CategorySearchable,
-		},
-		{
-			name: "explicit searchable",
-			content: `---
-name: test-skill
-description: A test skill
-category: searchable
----`,
-			wantName: "test-skill",
-			wantDesc: "A test skill",
-			wantCat:  skills.CategorySearchable,
-		},
-		{
-			name: "invalid category defaults searchable",
-			content: `---
-name: test-skill
-description: A test skill
-category: unknown
----`,
-			wantName: "test-skill",
-			wantDesc: "A test skill",
-			wantCat:  skills.CategorySearchable,
 		},
 		{
 			name:     "no frontmatter",
 			content:  "plain body",
 			wantName: "",
 			wantDesc: "",
-			wantCat:  skills.CategorySearchable,
 		},
 	}
 
@@ -81,9 +64,6 @@ category: unknown
 			}
 			if got.Description != tt.wantDesc {
 				t.Fatalf("Description = %q, want %q", got.Description, tt.wantDesc)
-			}
-			if got.Category != tt.wantCat {
-				t.Fatalf("Category = %q, want %q", got.Category, tt.wantCat)
 			}
 		})
 	}

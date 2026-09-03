@@ -3,6 +3,7 @@ package skills_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -51,11 +52,6 @@ func TestSeedWritesDefaultsOnFirstStart(t *testing.T) {
 		}
 		if m.Description == "" {
 			t.Fatalf("built-in skill %q has no description in its frontmatter", m.Name)
-		}
-		// Only included skills reach the system prompt; a searchable built-in
-		// would ship invisible to the agent.
-		if m.Category != skills.CategoryIncluded {
-			t.Fatalf("built-in skill %q has category %q, want included", m.Name, m.Category)
 		}
 	}
 }
@@ -114,8 +110,8 @@ func TestSeedLeavesAnExistingSkillAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Seed() error = %v", err)
 	}
-	if len(result.Created) != 0 || len(result.Skipped) == 0 {
-		t.Fatalf("Seed() = %+v, want the existing name skipped", result)
+	if !slices.Contains(result.Skipped, name) || slices.Contains(result.Created, name) {
+		t.Fatalf("Seed() = %+v, want %q skipped", result, name)
 	}
 	got, err := svc.Get(name)
 	if err != nil {

@@ -74,7 +74,7 @@ func TestExecuteGetSkillNotFound(t *testing.T) {
 	}
 }
 
-func TestBuildIncludedSkillsSection(t *testing.T) {
+func TestBuildSkillsSection(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -83,33 +83,47 @@ func TestBuildIncludedSkillsSection(t *testing.T) {
 		t.Fatalf("mkdir skills: %v", err)
 	}
 
-	included := `---
-name: included-skill
-description: Included skill description
-category: included
+	first := `---
+name: first-skill
+description: First skill description
 ---
 body`
-	searchable := `---
-name: searchable-skill
-description: Searchable skill description
+	second := `---
+name: second-skill
+description: Second skill description
 ---
 body`
-	if err := os.WriteFile(filepath.Join(skillDir, "included-skill.md"), []byte(included), 0o644); err != nil {
-		t.Fatalf("write included skill: %v", err)
+	if err := os.WriteFile(filepath.Join(skillDir, "first-skill.md"), []byte(first), 0o644); err != nil {
+		t.Fatalf("write first skill: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "searchable-skill.md"), []byte(searchable), 0o644); err != nil {
-		t.Fatalf("write searchable skill: %v", err)
+	if err := os.WriteFile(filepath.Join(skillDir, "second-skill.md"), []byte(second), 0o644); err != nil {
+		t.Fatalf("write second skill: %v", err)
 	}
 
 	chatSvc := &ChatService{skillsSvc: skills.NewService(dir, "skills")}
-	section, err := chatSvc.buildIncludedSkillsSection()
+	section, err := chatSvc.buildSkillsSection()
 	if err != nil {
-		t.Fatalf("buildIncludedSkillsSection() error = %v", err)
+		t.Fatalf("buildSkillsSection() error = %v", err)
 	}
-	if !strings.Contains(section, "included-skill: Included skill description") {
-		t.Fatalf("section missing included skill: %s", section)
+	if !strings.Contains(section, "first-skill: First skill description") {
+		t.Fatalf("section missing first skill: %s", section)
 	}
-	if strings.Contains(section, "searchable-skill") {
-		t.Fatalf("section must not list searchable skills: %s", section)
+	if !strings.Contains(section, "second-skill: Second skill description") {
+		t.Fatalf("section missing second skill: %s", section)
+	}
+}
+
+func TestModeListsSkills(t *testing.T) {
+	t.Parallel()
+
+	for _, m := range []string{"main", "discuss"} {
+		if !modeListsSkills(m) {
+			t.Fatalf("modeListsSkills(%q) = false, want true", m)
+		}
+	}
+	for _, m := range []string{"decompose", "plan", "execute", "incident", ""} {
+		if modeListsSkills(m) {
+			t.Fatalf("modeListsSkills(%q) = true, want false", m)
+		}
 	}
 }

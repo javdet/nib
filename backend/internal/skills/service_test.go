@@ -31,9 +31,6 @@ do something
 	if len(list.Skills) != 1 || list.Skills[0].Name != "test-skill" {
 		t.Fatalf("List() = %+v, want [test-skill]", list)
 	}
-	if list.Skills[0].Category != skills.CategorySearchable {
-		t.Fatalf("List().Skills[0].Category = %q, want searchable", list.Skills[0].Category)
-	}
 
 	got, err := svc.Get("test-skill")
 	if err != nil {

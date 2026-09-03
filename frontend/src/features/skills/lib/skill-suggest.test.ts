@@ -8,7 +8,7 @@ import {
 } from './skill-suggest'
 
 function skill(name: string, description = ''): SkillMeta {
-	return { name, description, category: 'searchable' }
+	return { name, description }
 }
 
 describe('parseSkillQuery', () => {

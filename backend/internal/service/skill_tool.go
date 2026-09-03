@@ -64,23 +64,25 @@ func (s *ChatService) ExecuteGetSkill(ctx context.Context, args map[string]any) 
 	return rendered, nil
 }
 
-func (s *ChatService) buildIncludedSkillsSection() (string, error) {
+// buildSkillsSection renders the catalog of every skill on disk for the tail of
+// the system prompt.
+func (s *ChatService) buildSkillsSection() (string, error) {
 	if s.skillsSvc == nil {
 		return "", nil
 	}
 
-	included, err := s.skillsSvc.ListIncluded()
+	list, err := s.skillsSvc.List()
 	if err != nil {
 		return "", err
 	}
-	if len(included) == 0 {
+	if len(list.Skills) == 0 {
 		return "", nil
 	}
 
 	var sb strings.Builder
 	sb.WriteString("## Skills\n")
 	sb.WriteString("The following skills are available. To use one, call get_skill with its name to load the full instructions, then follow them.\n")
-	for _, m := range included {
+	for _, m := range list.Skills {
 		if m.Description == "" {
 			sb.WriteString("- ")
 			sb.WriteString(m.Name)

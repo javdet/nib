@@ -1,7 +1,6 @@
 ---
 name: jira-todo-tasks
 description: Retrieve todo tasks from Jira filtered by project, assignee, and "Selected for Development" status. Returns a JSON array. Use when the user asks for their Jira backlog, todo list, selected tasks, or tasks ready for development.
-category: included
 ---
 
 # Jira Todo Tasks

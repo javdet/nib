@@ -1,7 +1,6 @@
 ---
 name: build-knowledge-base
 description: Build or refresh the knowledge base document for a project from its repositories. Reads the current knowledge base skeleton, examines the repositories over MCP (README.md and CLAUDE.md first, then targeted code search), fills the skeleton in and publishes it with update_kb. Use when the user asks to build, create, fill in, refresh or update the knowledge base for a project from its repos.
-category: included
 ---
 
 # Build Knowledge Base

@@ -278,10 +278,12 @@ func (s *ChatService) resolveSystemPrompt(ctx context.Context, modeName string) 
 		return "", err
 	}
 
-	if modeName == "discuss" && s.skillsSvc != nil {
-		section, err := s.buildIncludedSkillsSection()
+	// The skill catalog is appended only where the operator drives the agent
+	// directly; the sub-agent modes get their work from the plan, not from a menu.
+	if modeListsSkills(modeName) && s.skillsSvc != nil {
+		section, err := s.buildSkillsSection()
 		if err != nil {
-			return "", fmt.Errorf("build included skills section: %w", err)
+			return "", fmt.Errorf("build skills section: %w", err)
 		}
 		if section != "" {
 			rendered = rendered + "\n\n" + section
@@ -289,6 +291,11 @@ func (s *ChatService) resolveSystemPrompt(ctx context.Context, modeName string) 
 	}
 
 	return rendered, nil
+}
+
+// modeListsSkills reports whether the mode's system prompt carries the skill catalog.
+func modeListsSkills(modeName string) bool {
+	return modeName == "main" || modeName == "discuss"
 }
 
 // resolveAllowSet returns the union of system tools (from data/tools/{mode}.json)
