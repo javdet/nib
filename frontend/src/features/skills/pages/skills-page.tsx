@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { FileCode2 } from 'lucide-react'
 import { MarkdownResourcePage } from '@/components/markdown-resource-page'
 import { useNamedMarkdownResource } from '@/lib/hooks/use-named-markdown-resource'
@@ -13,9 +13,6 @@ import {
 
 export function SkillsPage() {
 	const [createOpen, setCreateOpen] = useState(false)
-	const [listItems, setListItems] = useState<{ name: string; badge?: string }[]>(
-		[],
-	)
 
 	const api = useMemo(
 		() => ({
@@ -38,20 +35,6 @@ export function SkillsPage() {
 
 	const resource = useNamedMarkdownResource(api, 'skills')
 
-	useEffect(() => {
-		listSkills()
-			.then((result) =>
-				setListItems(
-					result.skills.map((skill) => ({
-						name: skill.name,
-						badge:
-							skill.category === 'included' ? 'included' : undefined,
-					})),
-				),
-			)
-			.catch(() => setListItems([]))
-	}, [resource.names])
-
 	return (
 		<MarkdownResourcePage
 			title="Skills"
@@ -63,9 +46,7 @@ export function SkillsPage() {
 			emptyListMessage="No skills yet."
 			emptySelectionMessage="Select a skill or add a new one."
 			loadingSelectionMessage="Loading skills..."
-			showCategory
 			resource={resource}
-			listItems={listItems}
 			createDialog={
 				<CreateSkillDialog
 					open={createOpen}

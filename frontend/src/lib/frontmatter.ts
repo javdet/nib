@@ -1,10 +1,7 @@
-export type SkillCategory = 'searchable' | 'included'
-
 export interface FrontmatterFields {
 	name: string
 	description: string
 	body: string
-	category?: SkillCategory
 }
 
 const FRONTMATTER_KEYS = ['name', 'description'] as const
@@ -46,8 +43,8 @@ function unquoteYamlValue(value: string): string {
 
 function parseFrontmatterBlock(
 	block: string,
-): Pick<FrontmatterFields, 'name' | 'description' | 'category'> {
-	const result: Pick<FrontmatterFields, 'name' | 'description' | 'category'> = {
+): Pick<FrontmatterFields, 'name' | 'description'> {
+	const result: Pick<FrontmatterFields, 'name' | 'description'> = {
 		name: '',
 		description: '',
 	}
@@ -60,11 +57,6 @@ function parseFrontmatterBlock(
 		const value = unquoteYamlValue(trimmed.slice(colon + 1))
 		if (key === 'name') result.name = value
 		if (key === 'description') result.description = value
-		if (key === 'category') {
-			const normalized = value.trim().toLowerCase()
-			if (normalized === 'included') result.category = 'included'
-			else if (normalized === 'searchable') result.category = 'searchable'
-		}
 	}
 	return result
 }
@@ -125,9 +117,6 @@ export function buildContent(fields: FrontmatterFields): string {
 	const lines = ['---']
 	for (const key of FRONTMATTER_KEYS) {
 		lines.push(`${key}: ${quoteYamlValue(fields[key])}`)
-	}
-	if (fields.category === 'included') {
-		lines.push('category: included')
 	}
 	lines.push('---')
 

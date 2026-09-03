@@ -43,7 +43,7 @@ describe('parseFrontmatter', () => {
 		expect(rebuilt).toBe(ruleNoBody)
 	})
 
-	it('parses included category', () => {
+	it('drops an unknown frontmatter key on round-trip', () => {
 		const content = `---
 name: jira-todo-tasks
 description: Retrieve todo tasks from Jira
@@ -52,13 +52,7 @@ category: included
 
 body`
 		const parsed = parseFrontmatter(content)
-		expect(parsed.category).toBe('included')
-		const rebuilt = buildContent(parsed)
-		expect(rebuilt).toContain('category: included')
-	})
-
-	it('omits category when searchable by default', () => {
-		const parsed = parseFrontmatter(skillSample)
+		expect(parsed.name).toBe('jira-todo-tasks')
 		const rebuilt = buildContent(parsed)
 		expect(rebuilt).not.toContain('category:')
 	})

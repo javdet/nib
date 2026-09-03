@@ -4,11 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-	buildContent,
-	parseFrontmatter,
-	type SkillCategory,
-} from '@/lib/frontmatter'
+import { buildContent, parseFrontmatter } from '@/lib/frontmatter'
 
 interface FrontmatterEditorProps {
 	fileName: string
@@ -16,7 +12,6 @@ interface FrontmatterEditorProps {
 	isDirty: boolean
 	loading: boolean
 	saving: boolean
-	showCategory?: boolean
 	onChange: (content: string) => void
 	onSave: () => void
 	onDelete: () => void
@@ -28,21 +23,15 @@ export function FrontmatterEditor({
 	isDirty,
 	loading,
 	saving,
-	showCategory = false,
 	onChange,
 	onSave,
 	onDelete,
 }: FrontmatterEditorProps) {
 	const fields = useMemo(() => parseFrontmatter(content), [content])
 
-	function updateField(
-		key: 'name' | 'description' | 'body' | 'category',
-		value: string | SkillCategory | undefined,
-	) {
+	function updateField(key: 'name' | 'description' | 'body', value: string) {
 		onChange(buildContent({ ...fields, [key]: value }))
 	}
-
-	const category: SkillCategory = fields.category ?? 'searchable'
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -100,41 +89,6 @@ export function FrontmatterEditor({
 							disabled={saving}
 						/>
 					</div>
-
-					{showCategory && (
-						<div className="space-y-2">
-							<Label>Category</Label>
-							<div className="inline-flex rounded-md border p-1">
-								<Button
-									type="button"
-									size="sm"
-									variant={
-										category === 'searchable' ? 'secondary' : 'ghost'
-									}
-									onClick={() => updateField('category', undefined)}
-									disabled={saving}
-								>
-									Searchable
-								</Button>
-								<Button
-									type="button"
-									size="sm"
-									variant={
-										category === 'included' ? 'secondary' : 'ghost'
-									}
-									onClick={() => updateField('category', 'included')}
-									disabled={saving}
-								>
-									Included
-								</Button>
-							</div>
-							<p className="text-xs text-muted-foreground">
-								Included skills are listed in the discuss-mode system
-								prompt. Searchable skills are discoverable later via
-								search.
-							</p>
-						</div>
-					)}
 
 					<div className="flex min-h-0 flex-1 flex-col gap-2">
 						<Label htmlFor={`${fileName}-body`}>Body</Label>

@@ -49,24 +49,6 @@ func (s *Service) List() (ListResult, error) {
 	return ListResult{Skills: metas}, nil
 }
 
-// ListIncluded returns skills with category included.
-func (s *Service) ListIncluded() ([]Meta, error) {
-	list, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	var included []Meta
-	for _, m := range list.Skills {
-		if m.Category == CategoryIncluded {
-			included = append(included, m)
-		}
-	}
-	if included == nil {
-		included = []Meta{}
-	}
-	return included, nil
-}
-
 // Get reads a single skill by name.
 func (s *Service) Get(name string) (Skill, error) {
 	doc, err := s.store.Get(name)
@@ -112,7 +94,6 @@ func (s *Service) listSkillMeta() ([]Meta, error) {
 		metas = append(metas, Meta{
 			Name:        name,
 			Description: parsed.Description,
-			Category:    parsed.Category,
 		})
 	}
 	return metas, nil
