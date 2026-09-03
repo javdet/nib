@@ -73,6 +73,7 @@ func init() {
 		registerUpdateActionPlanTool,
 		registerUpdateRollbackPlanTool,
 		registerGetActionListTool,
+		registerGetDAGTool,
 		registerExecuteActionTool,
 		registerGetKBDocumentTool,
 		registerUpdateKBTool,
@@ -236,6 +237,14 @@ func registerGetActionListTool(s *ChatService, catalog *toolCatalog, b toolBindi
 	}
 	catalog.localHandlers[GetActionListToolName] = s.getActionListHandler(b.planID)
 	catalog.tools = append(catalog.tools, GetActionListToolDef())
+}
+
+func registerGetDAGTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || s.dialogRepo == nil || !localToolAllowed(allow, GetDAGToolName) {
+		return
+	}
+	catalog.localHandlers[GetDAGToolName] = s.getDAGHandler(b.planID)
+	catalog.tools = append(catalog.tools, GetDAGToolDef())
 }
 
 func registerGetKBDocumentTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {

@@ -33,6 +33,7 @@ var localSystemToolNames = []string{
 	UpdateActionPlanToolName,
 	UpdateRollbackPlanToolName,
 	GetActionListToolName,
+	GetDAGToolName,
 	ExecuteActionToolName,
 	GetKBDocumentToolName,
 	UpdateKBToolName,

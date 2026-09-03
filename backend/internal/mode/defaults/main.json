@@ -4,6 +4,7 @@
     "stop_execution",
     "ask_question",
     "get_action_list",
+    "get_dag",
     "knowledge_search",
     "get_skill"
   ]
