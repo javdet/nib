@@ -49,10 +49,26 @@ func TestSeedAllowListsWritesMissingLists(t *testing.T) {
 	}
 
 	names := readNames(t, filepath.Join(dir, "decompose.json"))
-	for _, want := range []string{"get_action_list", "execute_action"} {
+	for _, want := range []string{"create_dag", "get_action_list"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("decompose list is missing %q: %v", want, names)
 		}
+	}
+
+	// The orchestrator's own list matters most on an upgrade: without it
+	// LoadAllowList returns nil, which switches filtering off entirely and hands
+	// main every local tool there is.
+	mainNames := readNames(t, filepath.Join(dir, "main.json"))
+	for _, want := range []string{"run_subagent", "stop_execution"} {
+		if !slices.Contains(mainNames, want) {
+			t.Errorf("main list is missing %q: %v", want, mainNames)
+		}
+	}
+
+	// execute_action belongs to the orchestrator now, as run_subagent's execute
+	// sub-agent. A fresh volume must not hand decompose a second way in.
+	if slices.Contains(names, "execute_action") {
+		t.Errorf("decompose list still offers execute_action: %v", names)
 	}
 }
 
@@ -77,8 +93,8 @@ func TestSeedAllowListsAddsNewToolToExistingList(t *testing.T) {
 	if !slices.Contains(names, "an_operators_own_tool") {
 		t.Errorf("the operator's own entry was dropped: %v", names)
 	}
-	if !slices.Contains(names, "execute_action") {
-		t.Errorf("execute_action was not added: %v", names)
+	if !slices.Contains(names, "get_action_list") {
+		t.Errorf("get_action_list was not added: %v", names)
 	}
 	if names[0] != "knowledge_search" || names[1] != "an_operators_own_tool" {
 		t.Errorf("existing order was not preserved: %v", names)

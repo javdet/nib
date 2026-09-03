@@ -15,17 +15,10 @@ type startPlanFanoutPayload struct {
 	Rollback *bool `json:"rollback"`
 }
 
+// targets defers to the service so this route and the orchestrator's plan
+// sub-agent cannot drift on what an empty stage list means.
 func (p startPlanFanoutPayload) targets() service.FanoutTargets {
-	targets := service.AllFanoutTargets()
-	if len(p.Stages) > 0 {
-		// Named stages are a replan; the rollback still follows whatever they
-		// end up saying, unless the caller says otherwise.
-		targets = service.FanoutTargets{Stages: p.Stages, Rollback: true}
-	}
-	if p.Rollback != nil {
-		targets.Rollback = *p.Rollback
-	}
-	return targets
+	return service.PlanFanoutTargetsFor(p.Stages, p.Rollback)
 }
 
 // StartPlanFanout kicks off a plan fan-out and answers 202 immediately: the run

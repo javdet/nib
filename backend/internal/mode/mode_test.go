@@ -33,10 +33,10 @@ func TestIsValid(t *testing.T) {
 
 func TestModesPredefined(t *testing.T) {
 	t.Parallel()
-	if len(Modes) != 5 {
-		t.Fatalf("len(Modes) = %d, want 5", len(Modes))
+	if len(Modes) != 6 {
+		t.Fatalf("len(Modes) = %d, want 6", len(Modes))
 	}
-	for _, want := range []string{"decompose", "plan", "execute", "discuss", "incident"} {
+	for _, want := range []string{"main", "decompose", "plan", "execute", "discuss", "incident"} {
 		if !IsValid(want) {
 			t.Errorf("expected predefined mode %q", want)
 		}

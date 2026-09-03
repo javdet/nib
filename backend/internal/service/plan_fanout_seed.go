@@ -16,10 +16,10 @@ import (
 // sharedSeedSections composes the context every fan-out subagent gets, whichever
 // part of the plan it owns, and hands back the contract so the caller can render
 // the slice of it that is its own.
-func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.UUID) ([]string, PlanContract, error) {
+func (s *ChatService) sharedSeedSections(ctx context.Context, rootID uuid.UUID) ([]string, PlanContract, error) {
 	var parts []string
 
-	summary, found, err := s.ReadSummary(decomposeID)
+	summary, found, err := s.ReadSummary(rootID)
 	if err != nil {
 		return nil, PlanContract{}, fmt.Errorf("read summary: %w", err)
 	}
@@ -27,7 +27,7 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.U
 		parts = append(parts, "## Summary\n\n"+strings.TrimSpace(summary))
 	}
 
-	dag, found, err := s.ReadDAG(decomposeID)
+	dag, found, err := s.ReadDAG(rootID)
 	if err != nil {
 		return nil, PlanContract{}, fmt.Errorf("read dag: %w", err)
 	}
@@ -35,7 +35,7 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.U
 		parts = append(parts, "## DAG\n\n"+strings.TrimSpace(dag))
 	}
 
-	rulesSection, err := s.matchedRulesSection(ctx, decomposeID)
+	rulesSection, err := s.matchedRulesSection(ctx, rootID)
 	if err != nil {
 		return nil, PlanContract{}, err
 	}
@@ -43,9 +43,9 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.U
 		parts = append(parts, "## Rules\n\n"+rulesSection)
 	}
 
-	contract, _, err := s.ReadPlanContract(decomposeID)
+	contract, _, err := s.ReadPlanContract(rootID)
 	if err != nil {
-		slog.Warn("fanout seed: read contract", "dialog_id", decomposeID, "error", err)
+		slog.Warn("fanout seed: read contract", "dialog_id", rootID, "error", err)
 	}
 	return parts, contract, nil
 }
@@ -53,8 +53,8 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, decomposeID uuid.U
 // buildStageSeed composes the first user message of a stage subagent: the shared
 // context every stage gets, the stage it owns, and -- when the contract said this
 // stage could not be planned without them -- the upstream stages already written.
-func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID, title string) (string, error) {
-	parts, contract, err := s.sharedSeedSections(ctx, decomposeID)
+func (s *ChatService) buildStageSeed(ctx context.Context, rootID uuid.UUID, title string) (string, error) {
+	parts, contract, err := s.sharedSeedSections(ctx, rootID)
 	if err != nil {
 		return "", err
 	}
@@ -64,10 +64,10 @@ func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID,
 
 	parts = append(parts, "## Your stage\n\n"+title)
 
-	if upstream := s.upstreamStagesSection(decomposeID, contract, title); upstream != "" {
+	if upstream := s.upstreamStagesSection(rootID, contract, title); upstream != "" {
 		parts = append(parts, upstream)
 	}
-	if answers := s.stageAnswersSection(decomposeID, title); answers != "" {
+	if answers := s.stageAnswersSection(rootID, title); answers != "" {
 		parts = append(parts, answers)
 	}
 
@@ -77,11 +77,11 @@ func (s *ChatService) buildStageSeed(ctx context.Context, decomposeID uuid.UUID,
 // matchedRulesSection renders the rules attached to the plan's subjects, the same
 // set the workplace view shows. Rules are per subject, not per stage, so every
 // stage subagent gets all of them.
-func (s *ChatService) matchedRulesSection(ctx context.Context, decomposeID uuid.UUID) (string, error) {
+func (s *ChatService) matchedRulesSection(ctx context.Context, rootID uuid.UUID) (string, error) {
 	if s.rulesSvc == nil {
 		return "", nil
 	}
-	d, err := s.dialogRepo.GetDialog(ctx, decomposeID)
+	d, err := s.dialogRepo.GetDialog(ctx, rootID)
 	if err != nil {
 		return "", fmt.Errorf("get dialog: %w", err)
 	}
@@ -150,7 +150,7 @@ func contractSection(contract PlanContract, own any) string {
 // upstreamStagesSection returns the already-written stages this one was marked as
 // genuinely unable to proceed without. Ordinary contract dependencies are answered
 // by the values above and produce nothing here.
-func (s *ChatService) upstreamStagesSection(decomposeID uuid.UUID, contract PlanContract, title string) string {
+func (s *ChatService) upstreamStagesSection(rootID uuid.UUID, contract PlanContract, title string) string {
 	var own PlanContractStage
 	for name, stage := range contract.Stages {
 		if normalizeStageTitle(name) == normalizeStageTitle(title) {
@@ -179,7 +179,7 @@ func (s *ChatService) upstreamStagesSection(decomposeID uuid.UUID, contract Plan
 		return ""
 	}
 
-	raw, found, err := s.ReadActionPlan(decomposeID)
+	raw, found, err := s.ReadActionPlan(rootID)
 	if err != nil || !found {
 		return ""
 	}
@@ -210,8 +210,8 @@ func (s *ChatService) upstreamStagesSection(decomposeID uuid.UUID, contract Plan
 // at this stage raised, so the replanned stage replaces its assumptions. A
 // blocker that carries a kind belongs to another agent, whose title this stage
 // may legitimately share.
-func (s *ChatService) stageAnswersSection(decomposeID uuid.UUID, title string) string {
-	run, found, err := s.ReadFanoutRun(decomposeID)
+func (s *ChatService) stageAnswersSection(rootID uuid.UUID, title string) string {
+	run, found, err := s.ReadFanoutRun(rootID)
 	if err != nil || !found {
 		return ""
 	}

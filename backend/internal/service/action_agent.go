@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,7 +13,6 @@ import (
 )
 
 const (
-	defaultActionExecConcurrency   = 4
 	defaultActionExecMaxIterations = 20
 	defaultActionExecTimeout       = 30 * time.Minute
 	// actionExecPromptName is the prompt appended to execute.md for a subagent
@@ -23,15 +23,16 @@ const (
 // ActionExecConfig tunes the per-action subagents. The zero value is the
 // shipped default.
 type ActionExecConfig struct {
+	// Concurrency is retained so an existing config.yaml still loads, and is
+	// clamped to one: see ExecutionLease for why one execution at a time is a
+	// policy rather than a capacity limit.
 	Concurrency    int
 	MaxIterations  int
 	TimeoutMinutes int
 }
 
 func (c ActionExecConfig) withDefaults() ActionExecConfig {
-	if c.Concurrency <= 0 {
-		c.Concurrency = defaultActionExecConcurrency
-	}
+	c.Concurrency = 1
 	if c.MaxIterations <= 0 {
 		c.MaxIterations = defaultActionExecMaxIterations
 	}
@@ -45,69 +46,76 @@ func (c ActionExecConfig) timeout() time.Duration {
 	return time.Duration(c.TimeoutMinutes) * time.Minute
 }
 
-// execClaimKey identifies one action row of one plan across every in-flight run.
-func execClaimKey(planID uuid.UUID, key string) string {
-	return planID.String() + "|" + key
-}
-
 // StartActionAgent runs one non-code action in a subagent of its own and returns
-// as soon as the run is claimed. The work continues in the background and
-// reports over the plan dialog's SSE stream.
+// as soon as the execution lease is taken. The work continues in the background
+// and reports over the plan dialog's SSE stream.
 //
-// The claim is the entry in execCancels, not the record on disk: two calls in a
-// single round would both read a free row before either could write it. rerun
-// stops whatever holds the row and takes it over.
+// The lease is the claim, and it is global: only one execution runs at a time,
+// so a second request is refused with a sentence naming what holds it rather
+// than queued behind work the operator cannot see. rerun is the one exception,
+// and only for the same row -- restarting an action stops the attempt on it.
 func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, key string, rerun bool) (ActionExecRun, error) {
 	if s.dialogRepo == nil {
 		return ActionExecRun{}, fmt.Errorf("start action agent: dialog repository is not configured")
 	}
 
-	claim := execClaimKey(planID, key)
 	// The run outlives the turn that started it, so it gets a deadline of its
 	// own rather than inheriting one that is about to be cancelled.
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.actionExec.timeout())
 
-	if previous, loaded := s.execCancels.LoadOrStore(claim, cancel); loaded {
-		if !rerun {
-			cancel()
-			return ActionExecRun{}, ErrActionAlreadyRunning
-		}
-		// Take the row over: stop the attempt holding it, then claim it.
-		previous.(context.CancelFunc)()
-		s.execCancels.Store(claim, cancel)
+	lease := ExecutionLease{
+		PlanID:    planID,
+		Key:       key,
+		Number:    actionPlanNumberForKey(key),
+		Kind:      ExecutionKindSubagent,
+		StartedAt: time.Now().Unix(),
+		cancel:    cancel,
 	}
+
+	held, ok := s.acquireExecutionLease(lease)
+	if !ok {
+		// rerun takes the same row over. It is not a licence to stop somebody
+		// else's execution: that is what CancelExecution is for, and it is the
+		// operator's call to make.
+		if !rerun || held.PlanID != planID || held.Key != key {
+			cancel()
+			if !rerun && held.PlanID == planID && held.Key == key {
+				return ActionExecRun{}, ErrActionAlreadyRunning
+			}
+			return ActionExecRun{}, newExecutionBusyError(held)
+		}
+		if err := s.stopLeaseHolder(ctx, held); err != nil {
+			cancel()
+			return ActionExecRun{}, fmt.Errorf("start action agent: %w", err)
+		}
+		s.releaseExecutionLease(held.token)
+		if held, ok = s.acquireExecutionLease(lease); !ok {
+			cancel()
+			return ActionExecRun{}, newExecutionBusyError(held)
+		}
+	}
+	token := held.token
 
 	run, err := s.startActionExecRun(planID, key)
 	if err != nil {
 		cancel()
-		s.execCancels.Delete(claim)
+		s.releaseExecutionLease(token)
 		return ActionExecRun{}, err
 	}
 
 	go func() {
 		defer cancel()
-		defer s.execCancels.Delete(claim)
-		s.runActionAgent(runCtx, planID, key)
+		defer s.releaseExecutionLease(token)
+		s.runActionAgent(runCtx, planID, key, token)
 	}()
 
 	return run, nil
 }
 
-// CancelActionAgent stops the subagent working an action row. It reports whether
-// one was running.
-func (s *ChatService) CancelActionAgent(planID uuid.UUID, key string) bool {
-	cancel, ok := s.execCancels.LoadAndDelete(execClaimKey(planID, key))
-	if !ok {
-		return false
-	}
-	cancel.(context.CancelFunc)()
-	return true
-}
-
 // runActionAgent executes one action in a dialog of its own. Every failure is
 // recorded against the run and reported into the plan chat rather than returned:
 // nobody is waiting on this call.
-func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key string) {
+func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key string, token uuid.UUID) {
 	number := actionPlanNumberForKey(key)
 
 	s.activity.Publish(planID, domain.AgentActivity{
@@ -125,25 +133,22 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		s.reportActionResult(context.WithoutCancel(ctx), planID, key, run.Attempt, dialogID, status, body)
 	}
 	fail := func(err error) {
-		slog.Error("action agent failed", "plan_id", planID, "key", key, "error", err)
-		finish(ActionExecFailed, err.Error(), "")
+		// A run the operator stopped is not a failed one, and recording it as
+		// failed hides the difference in the plan view. A run that ran out of
+		// time is a failure: nobody asked for it to stop.
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			slog.Info("action agent stopped", "plan_id", planID, "key", key)
+			finish(ActionExecCancelled, "stopped before it finished", "")
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			slog.Error("action agent timed out", "plan_id", planID, "key", key,
+				"timeout", s.actionExec.timeout())
+			finish(ActionExecFailed, fmt.Sprintf("timed out after %s", s.actionExec.timeout()), "")
+		default:
+			slog.Error("action agent failed", "plan_id", planID, "key", key, "error", err)
+			finish(ActionExecFailed, err.Error(), "")
+		}
 	}
-
-	// Queueing happens here rather than in the tool handler: the handler runs
-	// inside the operator's turn, and blocking it would hold the whole chat
-	// behind another action's work.
-	select {
-	case s.execSem <- struct{}{}:
-	case <-ctx.Done():
-		s.finishActionExecRun(planID, key, ActionExecCancelled, "cancelled before it started")
-		s.activity.Publish(planID, domain.AgentActivity{
-			Kind:   domain.ActivityActionExecFailed,
-			Action: key,
-			Status: string(ActionExecCancelled),
-		})
-		return
-	}
-	defer func() { <-s.execSem }()
 
 	step, err := s.readActionPlanStep(planID, key)
 	if err != nil {
@@ -157,6 +162,9 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 	dialogID = dialog.ID
+	s.stampExecutionLease(token, func(l *ExecutionLease) {
+		l.DialogID = dialog.ID
+	})
 	// runs.json is the one key -> dialog map; the agent-runner webhook reverse
 	// looks up in it, so a subagent registers there too rather than in a map of
 	// its own.

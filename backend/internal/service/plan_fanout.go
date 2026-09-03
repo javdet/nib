@@ -122,22 +122,22 @@ func (c PlanFanoutConfig) timeout() time.Duration {
 	return time.Duration(c.TimeoutMinutes) * time.Minute
 }
 
-// StartPlanFanout plans a decompose dialog's DAG with one subagent per stage,
+// StartPlanFanout plans the root dialog's DAG with one subagent per stage,
 // then hands the finished stages to one more agent that works out the rollback,
 // and returns as soon as the run is recorded. The work continues in the
 // background and reports progress over the dialog's SSE stream.
 //
 // targets says what the run covers; AllFanoutTargets() is the whole plan. A
 // target set holding no work is refused with ErrNoDAGStages.
-func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID, targets FanoutTargets) (FanoutRun, error) {
+func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, targets FanoutTargets) (FanoutRun, error) {
 	if s.dialogRepo == nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: dialog repository is not configured")
 	}
-	if _, err := s.dialogRepo.GetDialog(ctx, decomposeID); err != nil {
+	if _, err := s.dialogRepo.GetDialog(ctx, rootID); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
 
-	dag, found, err := s.ReadDAG(decomposeID)
+	dag, found, err := s.ReadDAG(rootID)
 	if err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: read dag: %w", err)
 	}
@@ -146,21 +146,21 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID
 		return FanoutRun{}, ErrNoDAGStages
 	}
 
-	if existing, found, err := s.ReadFanoutRun(decomposeID); err != nil {
+	if existing, found, err := s.ReadFanoutRun(rootID); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: read run: %w", err)
 	} else if found && existing.Active() {
 		return FanoutRun{}, ErrFanoutInProgress
 	}
 
-	contract, _, err := s.ReadPlanContract(decomposeID)
+	contract, _, err := s.ReadPlanContract(rootID)
 	if err != nil {
 		// A contract that cannot be parsed costs coordination, not the run.
-		slog.Warn("plan fanout: read contract", "dialog_id", decomposeID, "error", err)
+		slog.Warn("plan fanout: read contract", "dialog_id", rootID, "error", err)
 	}
 
 	waves, err := planWaves(titles, contract)
 	if err != nil {
-		slog.Warn("plan fanout: wave order", "dialog_id", decomposeID, "error", err)
+		slog.Warn("plan fanout: wave order", "dialog_id", rootID, "error", err)
 	}
 	waves, rollback, err := targets.work(waves)
 	if err != nil {
@@ -174,26 +174,26 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, decomposeID uuid.UUID
 	}
 	// Blockers already answered stay on the record so a stage being replanned can
 	// be told what the user said.
-	if previous, found, _ := s.ReadFanoutRun(decomposeID); found {
+	if previous, found, _ := s.ReadFanoutRun(rootID); found {
 		run.Blockers = answeredBlockers(previous.Blockers)
 	}
 	run.Stages = fanoutStages(waves, rollback)
-	if err := s.writeFanoutRun(decomposeID, run); err != nil {
+	if err := s.writeFanoutRun(rootID, run); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
 
 	// The run outlives the request that started it, so it gets a deadline of its
 	// own rather than inheriting one that is about to be cancelled.
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.fanout.timeout())
-	s.fanoutCancels.Store(decomposeID, cancel)
+	s.fanoutCancels.Store(rootID, cancel)
 	go func() {
 		defer cancel()
-		defer s.fanoutCancels.Delete(decomposeID)
-		s.runPlanFanout(runCtx, decomposeID, waves, rollback)
+		defer s.fanoutCancels.Delete(rootID)
+		s.runPlanFanout(runCtx, rootID, waves, rollback)
 	}()
 
 	slog.Info("plan fanout started",
-		"dialog_id", decomposeID, "run_id", run.RunID,
+		"dialog_id", rootID, "run_id", run.RunID,
 		"waves", len(waves), "stages", len(run.Stages), "rollback", rollback)
 	return run, nil
 }
@@ -235,7 +235,7 @@ func answeredBlockers(blockers []PlanBlocker) []PlanBlocker {
 // runPlanFanout plans one wave at a time. Stages inside a wave run together; a
 // stage that fails is recorded and its siblings carry on, since a half-written
 // plan is worth more than none.
-func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, waves [][]string, rollback bool) {
+func (s *ChatService) runPlanFanout(ctx context.Context, rootID uuid.UUID, waves [][]string, rollback bool) {
 	for waveIdx, wave := range waves {
 		if ctx.Err() != nil {
 			break
@@ -253,7 +253,7 @@ func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, 
 					return
 				}
 				defer func() { <-sem }()
-				s.runPlanStage(ctx, decomposeID, title, waveIdx)
+				s.runPlanStage(ctx, rootID, title, waveIdx)
 			}(title)
 		}
 		wg.Wait()
@@ -262,22 +262,22 @@ func (s *ChatService) runPlanFanout(ctx context.Context, decomposeID uuid.UUID, 
 	// The rollback is derived from the stages, so it is written last and alone,
 	// once every wave has landed.
 	if rollback {
-		s.runRollbackAgent(ctx, decomposeID)
+		s.runRollbackAgent(ctx, rootID)
 	}
 
 	// A cancelled or timed-out context cannot append the closing question, so the
 	// run is closed as failed and whatever landed stays on the plan.
 	if ctx.Err() != nil {
-		s.closeFanoutRun(decomposeID, FanoutRunFailed, "run cancelled or timed out")
+		s.closeFanoutRun(rootID, FanoutRunFailed, "run cancelled or timed out")
 		return
 	}
-	s.finishPlanFanout(ctx, decomposeID)
+	s.finishPlanFanout(ctx, rootID)
 }
 
 // CancelPlanFanout stops a running fan-out. Stages already written stay on the
 // plan; stages still running are abandoned. It reports whether a run was stopped.
-func (s *ChatService) CancelPlanFanout(decomposeID uuid.UUID) bool {
-	cancel, ok := s.fanoutCancels.LoadAndDelete(decomposeID)
+func (s *ChatService) CancelPlanFanout(rootID uuid.UUID) bool {
+	cancel, ok := s.fanoutCancels.LoadAndDelete(rootID)
 	if !ok {
 		return false
 	}
@@ -287,31 +287,31 @@ func (s *ChatService) CancelPlanFanout(decomposeID uuid.UUID) bool {
 
 // runPlanStage plans a single stage in a dialog of its own. Every failure is
 // recorded against the run rather than returned: the fan-out reports what landed.
-func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, title string, wave int) {
-	s.activity.Publish(decomposeID, domain.AgentActivity{
+func (s *ChatService) runPlanStage(ctx context.Context, rootID uuid.UUID, title string, wave int) {
+	s.activity.Publish(rootID, domain.AgentActivity{
 		Kind:  domain.ActivityPlanStageStarted,
 		Stage: title,
 	})
 
 	fail := func(err error) {
-		slog.Error("plan fanout: stage failed", "dialog_id", decomposeID, "stage", title, "error", err)
-		_ = s.setFanoutStage(decomposeID, title, func(st *FanoutStage) {
+		slog.Error("plan fanout: stage failed", "dialog_id", rootID, "stage", title, "error", err)
+		_ = s.setFanoutStage(rootID, title, func(st *FanoutStage) {
 			st.Status = FanoutStageFailed
 			st.Error = err.Error()
 		})
-		s.activity.Publish(decomposeID, domain.AgentActivity{
+		s.activity.Publish(rootID, domain.AgentActivity{
 			Kind:   domain.ActivityPlanStageFailed,
 			Stage:  title,
 			Status: string(FanoutStageFailed),
 		})
 	}
 
-	stageDialog, err := s.dialogRepo.CreateDialog(ctx, stagePlanMode, title, &decomposeID)
+	stageDialog, err := s.dialogRepo.CreateDialog(ctx, stagePlanMode, title, &rootID)
 	if err != nil {
 		fail(fmt.Errorf("create stage dialog: %w", err))
 		return
 	}
-	if err := s.setFanoutStage(decomposeID, title, func(st *FanoutStage) {
+	if err := s.setFanoutStage(rootID, title, func(st *FanoutStage) {
 		st.Status = FanoutStageRunning
 		st.DialogID = stageDialog.ID.String()
 	}); err != nil {
@@ -324,7 +324,7 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 		fail(err)
 		return
 	}
-	seed, err := s.buildStageSeed(ctx, decomposeID, title)
+	seed, err := s.buildStageSeed(ctx, rootID, title)
 	if err != nil {
 		fail(err)
 		return
@@ -345,14 +345,14 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 		return
 	}
 
-	allow, err := s.stageAllowSet(ctx, decomposeID)
+	allow, err := s.stageAllowSet(ctx, rootID)
 	if err != nil {
 		fail(fmt.Errorf("stage allow set: %w", err))
 		return
 	}
 	binding := toolBinding{
 		dialogID: stageDialog.ID,
-		planID:   decomposeID,
+		planID:   rootID,
 		stage:    title,
 	}
 	catalog, err := s.buildToolCatalog(ctx, allow, binding)
@@ -362,7 +362,7 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 	}
 
 	if _, err := s.runPersistingAgentLoop(ctx, stageDialog.ID, stagePlanMode, catalog, loopConfig{
-		planID:        decomposeID,
+		planID:        rootID,
 		stage:         title,
 		maxIterations: s.fanout.StageMaxIterations,
 	}); err != nil {
@@ -370,10 +370,10 @@ func (s *ChatService) runPlanStage(ctx context.Context, decomposeID uuid.UUID, t
 		return
 	}
 
-	_ = s.setFanoutStage(decomposeID, title, func(st *FanoutStage) {
+	_ = s.setFanoutStage(rootID, title, func(st *FanoutStage) {
 		st.Status = FanoutStageDone
 	})
-	s.activity.Publish(decomposeID, domain.AgentActivity{
+	s.activity.Publish(rootID, domain.AgentActivity{
 		Kind:   domain.ActivityPlanStageDone,
 		Stage:  title,
 		Status: string(FanoutStageDone),
@@ -406,8 +406,8 @@ func (s *ChatService) fanoutSystemPrompt(ctx context.Context, promptName string)
 // rewrite the whole plan, it owns no rollback, and it cannot suspend to ask the
 // user, so create_action_plan, update_rollback_plan and ask_question come out and
 // report_blocker goes in.
-func (s *ChatService) stageAllowSet(ctx context.Context, decomposeID uuid.UUID) (map[string]struct{}, error) {
-	allow, err := s.planFanoutAllowSet(ctx, decomposeID)
+func (s *ChatService) stageAllowSet(ctx context.Context, rootID uuid.UUID) (map[string]struct{}, error) {
+	allow, err := s.planFanoutAllowSet(ctx, rootID)
 	if err != nil {
 		return nil, err
 	}
@@ -421,14 +421,14 @@ func (s *ChatService) stageAllowSet(ctx context.Context, decomposeID uuid.UUID) 
 // set plus the dialog's tool categories, minus the two tools no subagent may have.
 // create_action_plan rewrites the whole plan and would destroy a sibling's work;
 // ask_question suspends the turn and would strand the agents running beside it.
-func (s *ChatService) planFanoutAllowSet(ctx context.Context, decomposeID uuid.UUID) (map[string]struct{}, error) {
+func (s *ChatService) planFanoutAllowSet(ctx context.Context, rootID uuid.UUID) (map[string]struct{}, error) {
 	allow, err := s.resolveAllowSet(stagePlanMode)
 	if err != nil {
 		return nil, err
 	}
 
 	if s.toolCategorySvc != nil {
-		d, err := s.dialogRepo.GetDialog(ctx, decomposeID)
+		d, err := s.dialogRepo.GetDialog(ctx, rootID)
 		if err != nil {
 			return nil, err
 		}
@@ -444,6 +444,7 @@ func (s *ChatService) planFanoutAllowSet(ctx context.Context, decomposeID uuid.U
 		}
 	}
 
+	stripSubagentTools(allow)
 	delete(allow, CreateActionPlanToolName)
 	delete(allow, AskQuestionToolName)
 	allow[ReportBlockerToolName] = struct{}{}

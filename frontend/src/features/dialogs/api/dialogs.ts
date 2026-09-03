@@ -478,6 +478,11 @@ export interface ActionExecRun {
 	finishedAt?: number
 	error?: string
 	attempt: number
+	/** How the run is reached, and so how it is stopped. */
+	kind?: 'subagent' | 'container'
+	jobName?: string
+	containerId?: string
+	namespace?: string
 }
 
 /** Latest sub-agent run per action row key. */
@@ -563,6 +568,45 @@ export interface FanoutRun {
 	/** Whether the run the pending answers start also redoes the rollback. */
 	pendingRollback?: boolean
 	error?: string
+}
+
+/**
+ * ExecutionLease is the one execution running across every plan.
+ *
+ * One at a time is a policy, not a capacity limit: two agents changing live
+ * infrastructure can undo each other's work, and an operator watching one chat
+ * cannot follow two.
+ */
+export interface ExecutionLease {
+	planId: string
+	key: string
+	number: string
+	kind: 'subagent' | 'container'
+	dialogId?: string
+	jobName?: string
+	containerId?: string
+	namespace?: string
+	startedAt: number
+}
+
+/** The execution running right now, or null. */
+export function getExecution(): Promise<ExecutionLease | null> {
+	return api.get<ExecutionLease | null>('/execution')
+}
+
+/**
+ * Force-stops the running execution.
+ *
+ * An endpoint rather than a chat message: a stop has to work while the agent
+ * loop holding the execution is wedged, which is exactly when it is needed.
+ */
+export function stopExecution(): Promise<{
+	stopped: boolean
+	lease: ExecutionLease | null
+}> {
+	return api.delete<{ stopped: boolean; lease: ExecutionLease | null }>(
+		'/execution',
+	)
 }
 
 /**

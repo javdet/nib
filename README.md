@@ -13,9 +13,10 @@ The tool is meant to
 ## Core concepts
 ### Modes
 Work happens in several modes (the current mode is shown in the top right of the interface)
+* Main - the orchestrator, and the only mode you start a plan in: press New plan and describe the task. It does no work itself. It decides which specialist the request needs and launches it as a sub-agent, relays any question back to you, and reports each result in the same chat. The three modes below are those specialists — you can reach their transcripts, but you talk to Main.
 * Decompose - breaks a task into simple stages. You can either send the task description into the chat or ask the agent to pick up a task from your issue tracker (an issue tracker integration over MCP has to be configured first).
-* Plan - works the plan out in detail. The task is broken down into elementary steps (code changes, running commands, working through a web interface)
-* Execute - carries the steps out
+* Plan - works the plan out in detail. The task is broken down into elementary steps (code changes, running commands, working through a web interface). One agent per stage, planning in parallel, then one more that derives the rollback from all of them.
+* Execute - carries the steps out. Only one execution runs at a time; you can force-stop the running one from the action row or by asking in the chat.
 * Discuss - free-form conversation with the agent. This is the only mode whose system prompt you can edit.
 * Incident - deep root cause analysis of incidents (in development)
 

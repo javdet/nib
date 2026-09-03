@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/javdet/nib/internal/domain"
@@ -59,6 +60,7 @@ func (s *ChatService) AppendAgentResult(ctx context.Context, dialogID uuid.UUID,
 		}
 		for _, msg := range existing {
 			if msg.Name == msgName {
+				s.finishCodeActionRun(ctx, dialog, res)
 				s.activity.Publish(dialogID, domain.AgentActivity{Kind: domain.ActivityAgentResult})
 				return msg, nil
 			}
@@ -79,8 +81,60 @@ func (s *ChatService) AppendAgentResult(ctx context.Context, dialogID uuid.UUID,
 		return domain.DialogMessage{}, fmt.Errorf("append agent result: %w", err)
 	}
 
+	s.finishCodeActionRun(ctx, dialog, res)
+
 	s.activity.Publish(dialogID, domain.AgentActivity{Kind: domain.ActivityAgentResult})
 	return stored, nil
+}
+
+// finishCodeActionRun closes the exec run of the code action this webhook belongs
+// to and hands the execution lease back.
+//
+// Nothing did this before: launching a code action recorded "running" and only a
+// sub-agent run ever recorded an ending, so every code action stayed running
+// forever -- a permanent spinner in the plan view, and now, with one execution
+// at a time, a permanent block on every other action in every plan.
+//
+// Both callers may reach it for the same delivery, so every step is idempotent:
+// finishActionExecRun leaves an already-closed run alone and
+// releaseExecutionLease only drops a lease still describing this run.
+func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialog, res AgentRunResult) {
+	if exec.ParentID == nil {
+		return
+	}
+	planID := *exec.ParentID
+
+	runs, err := s.ReadActionPlanRuns(planID)
+	if err != nil {
+		slog.Warn("finish code action run: read runs",
+			"exec_dialog_id", exec.ID, "plan_dialog_id", planID, "error", err)
+		return
+	}
+	key := findRunKeyByExecID(runs, exec.ID)
+	if key == "" {
+		// Not an action run: run_executor uses the same webhook and has no plan
+		// row behind it.
+		return
+	}
+
+	status, errMsg := ActionExecDone, ""
+	if !strings.EqualFold(strings.TrimSpace(res.Status), "success") {
+		status = ActionExecFailed
+		errMsg = fmt.Sprintf("the coding agent exited with code %d", res.ExitCode)
+	}
+
+	s.finishActionExecRun(planID, key, status, errMsg)
+	s.releaseExecutionLeaseForContainer(planID, key, res.JobName)
+
+	kind := domain.ActivityActionExecDone
+	if status != ActionExecDone {
+		kind = domain.ActivityActionExecFailed
+	}
+	s.activity.Publish(planID, domain.AgentActivity{
+		Kind:   kind,
+		Action: key,
+		Status: string(status),
+	})
 }
 
 func agentRunMessageName(jobName string) string {

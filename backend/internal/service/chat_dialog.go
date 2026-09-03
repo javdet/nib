@@ -86,7 +86,7 @@ func (s *ChatService) SendInDialog(ctx context.Context, dialogID uuid.UUID, mess
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
+		catalog, err = s.buildToolCatalog(ctx, allow, s.dialogToolBinding(ctx, d))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: %w", err)
 		}
@@ -166,13 +166,24 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 		return domain.ChatResponse{Response: "Replanning the stages affected by your answers."}, nil
 	}
 
+	// A question a sub-agent raised is answered by resuming that sub-agent. The
+	// orchestrator asked on its behalf and has nothing of its own waiting on the
+	// answer, so resuming its turn here would only make it narrate the question
+	// back at the operator.
+	if resp, resumed, err := s.resumeSubagentFromAnswers(ctx, d, toolCallID, answers); err != nil {
+		return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
+	} else if resumed {
+		slog.Info("subagent resumed from answers", "dialog_id", dialogID, "tool_call_id", toolCallID)
+		return resp, nil
+	}
+
 	catalog := newToolCatalog()
 	if mode.IsValid(d.Mode) {
 		allow, err := s.resolveDialogAllowSet(ctx, d)
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("submit tool result: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
+		catalog, err = s.buildToolCatalog(ctx, allow, s.dialogToolBinding(ctx, d))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
 		}
@@ -197,6 +208,17 @@ func (s *ChatService) RetryLastResponse(ctx context.Context, dialogID uuid.UUID)
 	d, err := s.dialogRepo.GetDialog(ctx, dialogID)
 	if err != nil {
 		return domain.ChatResponse{}, fmt.Errorf("retry last response: %w", err)
+	}
+
+	// A retry wipes the exec records along with everything else the turn
+	// produced, which would leave the lease held against a row nothing can
+	// close. The operator stops the execution first, or waits for it.
+	if held, running := s.ExecutionInProgress(); running {
+		rootID, rootErr := s.resolveRootDialogID(ctx, dialogID)
+		if rootErr == nil && held.PlanID == rootID {
+			return domain.ChatResponse{}, fmt.Errorf("retry last response: %w",
+				newExecutionBusyError(held))
+		}
 	}
 
 	msgs, err := s.dialogRepo.ListMessages(ctx, dialogID)
@@ -229,7 +251,7 @@ func (s *ChatService) RetryLastResponse(ctx context.Context, dialogID uuid.UUID)
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("retry last response: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(dialogID))
+		catalog, err = s.buildToolCatalog(ctx, allow, s.dialogToolBinding(ctx, d))
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("retry last response: %w", err)
 		}
@@ -507,6 +529,13 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			questions, err := parseAskQuestionFromArguments(pendingAsk.Arguments)
 			if err != nil {
 				return domain.ChatResponse{}, fmt.Errorf("parse ask_question round %d: %w", roundNum, err)
+			}
+			// A question the orchestrator puts to the operator may be one it is
+			// relaying for a paused sub-agent. Binding it here is the only place
+			// both ids exist: the sub-agent's dangling call was recorded when it
+			// suspended, and this call id only exists now.
+			if modeName == mainDialogMode {
+				s.bindSubagentPause(dialogID, pendingAsk.ID, questions)
 			}
 			return domain.ChatResponse{
 				Status:            "awaiting_input",

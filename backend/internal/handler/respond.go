@@ -111,6 +111,14 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorSecretMissing):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, service.ErrExecutionBusy),
+		errors.Is(err, service.ErrActionAlreadyRunning),
+		errors.Is(err, service.ErrNoExecutionRunning),
+		errors.Is(err, service.ErrFanoutInProgress):
+		// The request is well formed; something else holds the resource. The
+		// message names what, because waiting or stopping it is the only choice
+		// the operator has.
+		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, service.ErrMCPConnectionUnavailable):
 		writeError(w, http.StatusBadGateway, err.Error())
 	case errors.Is(err, service.ErrTooManyToolFailures):

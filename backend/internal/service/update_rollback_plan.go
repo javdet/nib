@@ -198,9 +198,10 @@ func rollbackDiffers(stored any, next []any) (bool, error) {
 // it: there is nothing to shift when a stage moves.
 var actionPlanRollbackKeyPattern = regexp.MustCompile(`^rollback\.\d+$`)
 
-// dropActionPlanRollbackKeys forgets the checkbox, comment and run keys of the
-// rollback entries, leaving every stage key untouched. Stores that hold nothing
-// are left alone so a plan being drafted does not grow empty side files.
+// dropActionPlanRollbackKeys forgets the checkbox, comment, run and exec-status
+// keys of the rollback entries, leaving every stage key untouched. Stores that
+// hold nothing are left alone so a plan being drafted does not grow empty side
+// files.
 func (s *ChatService) dropActionPlanRollbackKeys(dialogID uuid.UUID) error {
 	keep := func(key string) bool { return !actionPlanRollbackKeyPattern.MatchString(key) }
 
@@ -233,7 +234,30 @@ func (s *ChatService) dropActionPlanRollbackKeys(dialogID uuid.UUID) error {
 			return err
 		}
 	}
+
+	// The exec records go too, or a rewritten rollback inherits the run status of
+	// whatever used to sit at that position -- an R1 the operator never ran
+	// showing as done.
+	execRuns, err := s.ReadActionPlanExecRuns(dialogID)
+	if err != nil {
+		return err
+	}
+	if kept := filterActionExecRuns(execRuns, keep); len(kept) != len(execRuns) {
+		if err := s.WriteActionPlanExecRuns(dialogID, kept); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func filterActionExecRuns(runs ActionExecRuns, keep func(string) bool) ActionExecRuns {
+	out := make(ActionExecRuns, len(runs))
+	for key, run := range runs {
+		if keep(key) {
+			out[key] = run
+		}
+	}
+	return out
 }
 
 func filterActionPlanList(keys []string, keep func(string) bool) []string {

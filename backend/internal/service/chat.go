@@ -118,6 +118,7 @@ type ChatService struct {
 	planContractsDir string
 	planFanoutDir    string
 	planStateDir     string
+	subagentsDir     string
 	attachmentsDir   string
 	maxIterations    int
 	fanout           PlanFanoutConfig
@@ -151,14 +152,19 @@ type ChatService struct {
 	// breaks the pairing every later replay depends on.
 	transcriptWriteMu sync.Map
 
-	// execCancels holds the cancel func of each in-flight action sub-agent,
-	// keyed by plan and action row, so restarting an action can stop the
-	// attempt already running on it. Storing the key is also the claim that
-	// keeps two sub-agents off the same row.
-	execCancels sync.Map
+	// execLeaseMu guards execLease. The lease is the claim that keeps a second
+	// agent off live infrastructure, so it is taken before any work starts and
+	// released by whatever ends it -- the sub-agent goroutine, the agent-runner
+	// webhook, or a force stop.
+	execLeaseMu sync.Mutex
+	// execLease is the one execution allowed at a time, across every plan, or
+	// nil when nothing is running. See ExecutionLease for why it is one.
+	execLease *ExecutionLease
 
-	// execSem bounds how many action sub-agents run at once across every plan.
-	execSem chan struct{}
+	// subagentClaims holds a mutex per orchestrator subagent, keyed by root
+	// dialog and subagent name, so two concurrent turns on one plan cannot run
+	// the same subagent twice over the same transcript.
+	subagentClaims sync.Map
 }
 
 func NewChatService(
@@ -215,11 +221,11 @@ func NewChatService(
 		planContractsDir: filepath.Join(dataDir, "plan_contracts"),
 		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),
 		planStateDir:     filepath.Join(dataDir, "plan_state"),
+		subagentsDir:     filepath.Join(dataDir, "subagents"),
 		attachmentsDir:   filepath.Join(dataDir, "attachments"),
 		maxIterations:    maxIterations,
 		fanout:           fanout,
 		actionExec:       actionExec,
-		execSem:          make(chan struct{}, actionExec.Concurrency),
 		activity:         NewActivityBroker(),
 	}
 }
@@ -342,12 +348,39 @@ func (s *ChatService) planDialogCategories(ctx context.Context, d domain.Dialog)
 	if d.ParentID == nil || s.dialogRepo == nil {
 		return nil
 	}
-	parent, err := s.dialogRepo.GetDialog(ctx, *d.ParentID)
+	// The categories are chosen once, during decomposition, and stored on the
+	// dialog that owns the plan -- which is the root of the lineage, not
+	// necessarily this dialog's immediate parent.
+	rootID, err := s.resolveRootDialogID(ctx, d.ID)
 	if err != nil {
-		slog.Warn("plan allow set: load parent dialog categories", "parent_id", *d.ParentID, "error", err)
+		slog.Warn("plan allow set: resolve plan root", "dialog_id", d.ID, "error", err)
 		return nil
 	}
-	return parent.Categories
+	root, err := s.dialogRepo.GetDialog(ctx, rootID)
+	if err != nil {
+		slog.Warn("plan allow set: load plan root categories", "root_id", rootID, "error", err)
+		return nil
+	}
+	return root.Categories
+}
+
+// dialogToolBinding is the binding for a turn in d: the transcript is d's own,
+// while every plan artifact belongs to the root of its lineage.
+//
+// They are the same dialog for a root turn and differ when an operator types
+// into a subagent's transcript, which would otherwise start a second plan under
+// the subagent's id. It is also what keeps the orchestrator's own tools off a
+// subagent transcript: they are registered only when the two match.
+func (s *ChatService) dialogToolBinding(ctx context.Context, d domain.Dialog) toolBinding {
+	if d.ParentID == nil || s.dialogRepo == nil {
+		return newToolBinding(d.ID)
+	}
+	rootID, err := s.resolveRootDialogID(ctx, d.ID)
+	if err != nil {
+		slog.Warn("tool binding: resolve plan root", "dialog_id", d.ID, "error", err)
+		return newToolBinding(d.ID)
+	}
+	return toolBinding{dialogID: d.ID, planID: rootID}
 }
 
 func (s *ChatService) cachedToolCategoryNames(ctx context.Context) []string {

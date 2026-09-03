@@ -23,10 +23,12 @@ var (
 	ErrKubernetesConfigLoad           = errors.New("failed to load kubernetes config")
 	ErrKubernetesJobRender            = errors.New("failed to render kubernetes job")
 	ErrKubernetesJobCreate            = errors.New("failed to create kubernetes job")
+	ErrKubernetesJobDelete            = errors.New("failed to delete kubernetes job")
 	ErrAgentSecretRequired            = errors.New("agent secret name is required for kubernetes jobs")
 
 	ErrPromptRequired       = errors.New("prompt is required")
 	ErrTargetBranchRequired = errors.New("target branch is required")
 	ErrGitTokenRequired     = errors.New("git API token is required")
 	ErrLLMTokenRequired     = errors.New("LLM token is required")
+	ErrStopTargetRequired   = errors.New("a job name or a container id is required to stop an action run")
 )

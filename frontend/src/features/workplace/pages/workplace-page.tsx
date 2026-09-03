@@ -133,8 +133,11 @@ export function WorkplacePage() {
 		setError(null)
 		setCreating(true)
 		try {
-			selectMode('decompose')
-			const created = await createDialog({ mode: 'decompose' })
+			// A plan starts in main, the orchestrator mode: it is what launches
+			// decomposition, planning and execution, and this button is the only
+			// way a main dialog is created.
+			selectMode('main')
+			const created = await createDialog({ mode: 'main' })
 			setActiveDialogId(created.id)
 			setPage(1)
 			bumpDialogsVersion()

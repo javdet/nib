@@ -22,7 +22,10 @@ const EditableName = "discuss"
 // runs once every stage has been written.
 // execute_action narrows the execute prompt to a single action, for the subagent
 // the planning chat hands one row of the plan to.
-var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action"}
+// decompose_subagent narrows the decompose prompt for the subagent the
+// orchestrator launches: its answer is relayed, and running the plan is the
+// orchestrator's job.
+var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent"}
 
 const mdSuffix = ".md"
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/llm"
 )
 
 // blockerQuestion is one question after folding together the stages that raised it.
@@ -74,18 +72,18 @@ func mergeOptions(existing, extra []string) []string {
 }
 
 // finishPlanFanout closes a run. When stages raised questions it puts up to two of
-// them to the user as a single ask_question on the decompose dialog and parks the
+// them to the user as a single ask_question on the root dialog and parks the
 // run; otherwise the run is simply done. Every stage was written either way.
-func (s *ChatService) finishPlanFanout(ctx context.Context, decomposeID uuid.UUID) {
-	run, found, err := s.ReadFanoutRun(decomposeID)
+func (s *ChatService) finishPlanFanout(ctx context.Context, rootID uuid.UUID) {
+	run, found, err := s.ReadFanoutRun(rootID)
 	if err != nil || !found {
-		slog.Warn("plan fanout: finish without a run record", "dialog_id", decomposeID, "error", err)
+		slog.Warn("plan fanout: finish without a run record", "dialog_id", rootID, "error", err)
 		return
 	}
 
 	questions := groupBlockers(run.Blockers)
 	if len(questions) == 0 {
-		s.closeFanoutRun(decomposeID, FanoutRunDone, "")
+		s.closeFanoutRun(rootID, FanoutRunDone, "")
 		return
 	}
 
@@ -94,10 +92,10 @@ func (s *ChatService) finishPlanFanout(ctx context.Context, decomposeID uuid.UUI
 		asked = asked[:maxBlockerQuestionsPerRound]
 	}
 
-	callID, err := s.appendFanoutQuestion(ctx, decomposeID, run, asked, len(questions))
+	callID, err := s.appendFanoutQuestion(ctx, rootID, run, asked, len(questions))
 	if err != nil {
-		slog.Error("plan fanout: could not ask the user", "dialog_id", decomposeID, "error", err)
-		s.closeFanoutRun(decomposeID, FanoutRunDone, "")
+		slog.Error("plan fanout: could not ask the user", "dialog_id", rootID, "error", err)
+		s.closeFanoutRun(rootID, FanoutRunDone, "")
 		return
 	}
 
@@ -113,7 +111,7 @@ func (s *ChatService) finishPlanFanout(ctx context.Context, decomposeID uuid.UUI
 		}
 	}
 
-	if _, err := s.updateFanoutRun(decomposeID, func(r *FanoutRun) {
+	if _, err := s.updateFanoutRun(rootID, func(r *FanoutRun) {
 		r.Status = FanoutRunAwaitingInput
 		r.FinishedAt = time.Now().Unix()
 		r.PendingAskID = callID
@@ -122,71 +120,114 @@ func (s *ChatService) finishPlanFanout(ctx context.Context, decomposeID uuid.UUI
 		// the rollback agent was the one that asked.
 		r.PendingRollback = true
 	}); err != nil {
-		slog.Error("plan fanout: record pending question", "dialog_id", decomposeID, "error", err)
+		slog.Error("plan fanout: record pending question", "dialog_id", rootID, "error", err)
 	}
 
-	s.activity.Publish(decomposeID, domain.AgentActivity{
+	s.activity.Publish(rootID, domain.AgentActivity{
 		Kind:   domain.ActivityPlanFanoutDone,
 		Status: string(FanoutRunAwaitingInput),
 	})
 }
 
-func (s *ChatService) closeFanoutRun(decomposeID uuid.UUID, status FanoutRunStatus, errMsg string) {
-	if _, err := s.updateFanoutRun(decomposeID, func(r *FanoutRun) {
+func (s *ChatService) closeFanoutRun(rootID uuid.UUID, status FanoutRunStatus, errMsg string) {
+	run, err := s.updateFanoutRun(rootID, func(r *FanoutRun) {
 		r.Status = status
 		r.FinishedAt = time.Now().Unix()
 		r.Error = errMsg
-	}); err != nil {
-		slog.Error("plan fanout: close run", "dialog_id", decomposeID, "error", err)
+	})
+	if err != nil {
+		slog.Error("plan fanout: close run", "dialog_id", rootID, "error", err)
 	}
-	s.activity.Publish(decomposeID, domain.AgentActivity{
+	s.activity.Publish(rootID, domain.AgentActivity{
 		Kind:   domain.ActivityPlanFanoutDone,
 		Status: string(status),
 	})
-	slog.Info("plan fanout finished", "dialog_id", decomposeID, "status", status)
+	// A run that raised no question would otherwise finish in silence: the plan
+	// appears, and the chat the operator asked in says nothing. The
+	// awaiting_input path already posts its question and needs none of this.
+	s.reportFanoutResult(context.Background(), rootID, run, status)
+	slog.Info("plan fanout finished", "dialog_id", rootID, "status", status)
 }
 
-// appendFanoutQuestion writes an assistant message carrying one ask_question call
-// and no tool result, which is exactly the shape the chat panel already renders as
-// a pending question. Nothing in the frontend needs to know a fan-out produced it.
+// reportFanoutResult posts the outcome of a planning run into the chat that
+// asked for it, so the operator reads it where they asked.
+//
+// Named after the run, so a close that happens twice cannot double-post -- the
+// same guard the action sub-agent's report uses.
+func (s *ChatService) reportFanoutResult(
+	ctx context.Context,
+	rootID uuid.UUID,
+	run FanoutRun,
+	status FanoutRunStatus,
+) {
+	if s.dialogRepo == nil || run.RunID == "" {
+		return
+	}
+
+	name := "plan-fanout:" + run.RunID
+	msgs, err := s.dialogRepo.ListMessages(ctx, rootID)
+	if err != nil {
+		slog.Warn("plan fanout: list messages before reporting", "dialog_id", rootID, "error", err)
+		return
+	}
+	for _, msg := range msgs {
+		if msg.Name == name {
+			return
+		}
+	}
+
+	planned, failed := 0, 0
+	for _, st := range run.Stages {
+		switch st.Status {
+		case FanoutStageDone:
+			planned++
+		case FanoutStageFailed:
+			failed++
+		}
+	}
+
+	var body string
+	switch {
+	case status == FanoutRunFailed:
+		body = fmt.Sprintf("**Planning failed** after %d of %d stages.", planned, len(run.Stages))
+		if strings.TrimSpace(run.Error) != "" {
+			body += "\n\n" + run.Error
+		}
+	default:
+		body = fmt.Sprintf("**Action plan written** — %d of %d stages planned.", planned, len(run.Stages))
+		if failed > 0 {
+			body += fmt.Sprintf(" %d failed and can be replanned.", failed)
+		}
+	}
+	body += "\n\nThe plan is in the Action List. This work is finished — do not plan it again unless the operator asks."
+
+	if _, err := s.appendMessageLocked(ctx, rootID, domain.DialogMessage{
+		Role:    "assistant",
+		Content: body,
+		Name:    name,
+	}); err != nil {
+		slog.Warn("plan fanout: report result", "dialog_id", rootID, "error", err)
+	}
+}
+
+// appendFanoutQuestion puts the questions a fan-out raised to the operator in
+// the chat that asked for the planning.
 func (s *ChatService) appendFanoutQuestion(
 	ctx context.Context,
-	decomposeID uuid.UUID,
+	rootID uuid.UUID,
 	run FanoutRun,
 	asked []blockerQuestion,
 	total int,
 ) (string, error) {
-	items := make([]map[string]any, 0, len(asked))
+	questions := make([]domain.Question, 0, len(asked))
 	for _, q := range asked {
-		item := map[string]any{"question": q.Question}
-		if len(q.Options) > 0 {
-			item["options"] = q.Options
-		}
-		items = append(items, item)
+		questions = append(questions, domain.Question{
+			Question: q.Question,
+			Options:  q.Options,
+		})
 	}
-	args, err := json.Marshal(map[string]any{"questions": items})
-	if err != nil {
-		return "", fmt.Errorf("marshal questions: %w", err)
-	}
-
-	callID := "fanout_ask_" + uuid.NewString()
-	toolCalls, err := marshalToolCalls([]llm.ToolCall{{
-		ID:        callID,
-		Name:      AskQuestionToolName,
-		Arguments: string(args),
-	}})
-	if err != nil {
-		return "", fmt.Errorf("marshal tool calls: %w", err)
-	}
-
-	if _, err := s.dialogRepo.AppendMessage(ctx, decomposeID, domain.DialogMessage{
-		Role:      "assistant",
-		Content:   fanoutQuestionPreamble(run, asked, total),
-		ToolCalls: toolCalls,
-	}); err != nil {
-		return "", fmt.Errorf("append question: %w", err)
-	}
-	return callID, nil
+	return s.appendSyntheticAskQuestion(ctx, rootID,
+		fanoutQuestionPreamble(run, asked, total), questions, fanoutAskIDPrefix)
 }
 
 func fanoutQuestionPreamble(run FanoutRun, asked []blockerQuestion, total int) string {
@@ -244,12 +285,12 @@ func dedupeStages(stages []string) []string {
 // toolCallID is not a fan-out question, leaving the ordinary resume path to it.
 func (s *ChatService) resumeFanoutFromAnswers(
 	ctx context.Context,
-	decomposeID uuid.UUID,
+	rootID uuid.UUID,
 	toolCallID string,
 	questions []domain.Question,
 	answers []string,
 ) (bool, error) {
-	run, found, err := s.ReadFanoutRun(decomposeID)
+	run, found, err := s.ReadFanoutRun(rootID)
 	if err != nil || !found || run.PendingAskID == "" || run.PendingAskID != toolCallID {
 		return false, nil
 	}
@@ -261,7 +302,7 @@ func (s *ChatService) resumeFanoutFromAnswers(
 		}
 	}
 
-	updated, err := s.updateFanoutRun(decomposeID, func(r *FanoutRun) {
+	updated, err := s.updateFanoutRun(rootID, func(r *FanoutRun) {
 		for i := range r.Blockers {
 			key := strings.ToLower(strings.Join(strings.Fields(r.Blockers[i].Question), " "))
 			if answer, ok := answerFor[key]; ok {
@@ -275,7 +316,7 @@ func (s *ChatService) resumeFanoutFromAnswers(
 		return false, err
 	}
 
-	if _, err := s.StartPlanFanout(ctx, decomposeID, FanoutTargets{
+	if _, err := s.StartPlanFanout(ctx, rootID, FanoutTargets{
 		Stages: updated.PendingStages,
 		// The rollback undoes whatever the stages end up saying, so a replanned
 		// stage leaves it stale even when the answer was never about it.

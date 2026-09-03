@@ -114,7 +114,7 @@ type storedActionCheck struct {
 
 func (s *ChatService) getActionListHandler(dialogID uuid.UUID) localToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		planID, err := s.resolveActionPlanDialogID(ctx, dialogID)
+		planID, err := s.resolveRootDialogID(ctx, dialogID)
 		if err != nil {
 			return "", err
 		}
@@ -158,18 +158,43 @@ func (s *ChatService) getActionListHandler(dialogID uuid.UUID) localToolHandler 
 	}
 }
 
-func (s *ChatService) resolveActionPlanDialogID(ctx context.Context, dialogID uuid.UUID) (uuid.UUID, error) {
+// maxDialogAncestorDepth bounds the parent walk. Real lineage is one hop -- every
+// subagent is parented straight to the plan root -- and the cap exists because
+// parent_id carries no constraint against a cycle, so a self- or mutually-parented
+// row would otherwise spin forever.
+const maxDialogAncestorDepth = 8
+
+// resolveRootDialogID walks parent_id up to the dialog that owns the plan
+// artifacts. It walks rather than taking one hop because the orchestrator is the
+// root now: a single hop from a plan stage subagent would land on the root only
+// as long as nothing is ever parented two deep, and the walk costs one query
+// for a dialog that is already the root.
+func (s *ChatService) resolveRootDialogID(ctx context.Context, dialogID uuid.UUID) (uuid.UUID, error) {
 	if s.dialogRepo == nil {
 		return dialogID, nil
 	}
-	d, err := s.dialogRepo.GetDialog(ctx, dialogID)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("get dialog: %w", err)
+	seen := make(map[uuid.UUID]struct{}, maxDialogAncestorDepth)
+	current := dialogID
+	for i := 0; i < maxDialogAncestorDepth; i++ {
+		if _, dup := seen[current]; dup {
+			slog.Warn("dialog lineage has a cycle, treating this dialog as the plan root",
+				"dialog_id", dialogID, "at", current)
+			return current, nil
+		}
+		seen[current] = struct{}{}
+
+		d, err := s.dialogRepo.GetDialog(ctx, current)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("get dialog: %w", err)
+		}
+		if d.ParentID == nil {
+			return current, nil
+		}
+		current = *d.ParentID
 	}
-	if d.ParentID != nil {
-		return *d.ParentID, nil
-	}
-	return dialogID, nil
+	slog.Warn("dialog lineage deeper than the ancestor cap, treating this dialog as the plan root",
+		"dialog_id", dialogID, "depth", maxDialogAncestorDepth)
+	return current, nil
 }
 
 func buildActionListResponse(plan storedActionPlan, checked map[string]struct{}, execRuns ActionExecRuns) actionListResponse {

@@ -19,7 +19,6 @@ type DialogRepository interface {
 	SearchDialogs(ctx context.Context, mode, query string, limit, offset int) ([]domain.Dialog, error)
 	CountDialogsSearch(ctx context.Context, mode, query string) (int, error)
 	ListChildren(ctx context.Context, parentID uuid.UUID) ([]domain.Dialog, error)
-	ListPlanChildren(ctx context.Context, parentIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 	GetDialog(ctx context.Context, id uuid.UUID) (domain.Dialog, error)
 	UpdateTitle(ctx context.Context, id uuid.UUID, title string) error
 	SetDialogTaskID(ctx context.Context, id uuid.UUID, taskID *string) error

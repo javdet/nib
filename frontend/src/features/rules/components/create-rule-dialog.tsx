@@ -10,17 +10,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { buildContent } from '@/lib/frontmatter'
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
-
-const DEFAULT_RULE_TEMPLATE = `---
-name: rule name
-description: short description
----
-
-- Rule item 1
-- Rule item 2
-`
 
 interface CreateRuleDialogProps {
 	open: boolean
@@ -63,7 +55,12 @@ export function CreateRuleDialog({
 			setValidationError('A rule with this name already exists')
 			return
 		}
-		onCreate(trimmed, DEFAULT_RULE_TEMPLATE)
+		const content = buildContent({
+			name: trimmed,
+			description: 'short description',
+			body: '- Rule item 1\n- Rule item 2',
+		})
+		onCreate(trimmed, content)
 	}
 
 	return (
@@ -83,9 +80,9 @@ export function CreateRuleDialog({
 				</DialogHeader>
 
 				<div className="space-y-2">
-					<Label htmlFor="rule-name">Name</Label>
+					<Label htmlFor="rule-file-name">File name</Label>
 					<Input
-						id="rule-name"
+						id="rule-file-name"
 						value={name}
 						disabled={creating}
 						onChange={(e) => {

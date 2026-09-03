@@ -26,10 +26,6 @@ func (r *mapDialogRepo) ListChildren(_ context.Context, _ uuid.UUID) ([]domain.D
 	return nil, nil
 }
 
-func (r *mapDialogRepo) ListPlanChildren(_ context.Context, _ []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	return map[uuid.UUID]uuid.UUID{}, nil
-}
-
 func (r *mapDialogRepo) ListRecentDialogs(_ context.Context, _, _ int) ([]domain.Dialog, error) {
 	return nil, nil
 }

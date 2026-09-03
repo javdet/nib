@@ -1,0 +1,10 @@
+{
+  "allow_tools": [
+    "run_subagent",
+    "stop_execution",
+    "ask_question",
+    "get_action_list",
+    "knowledge_search",
+    "get_skill"
+  ]
+}

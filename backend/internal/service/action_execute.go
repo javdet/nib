@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
@@ -100,10 +101,36 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 		return domain.Dialog{}, executor.ActionRunResult{}, err
 	}
 
+	// Every precondition is settled by now, so the lease is taken here: a code
+	// action refused for a missing repository or an unconfigured secret must not
+	// block the one execution slot on its way out.
+	lease, ok := s.acquireExecutionLease(ExecutionLease{
+		PlanID:    planDialogID,
+		Key:       key,
+		Number:    actionPlanNumberForKey(key),
+		Kind:      ExecutionKindContainer,
+		StartedAt: time.Now().Unix(),
+	})
+	if !ok {
+		return domain.Dialog{}, executor.ActionRunResult{}, newExecutionBusyError(lease)
+	}
+	// Anything that goes wrong from here has to hand the lease back: the
+	// container's webhook is what normally releases it, and a launch that never
+	// happened has no webhook coming.
+	launched := false
+	defer func() {
+		if !launched {
+			s.releaseExecutionLease(lease.token)
+		}
+	}()
+
 	dialog, err := s.dialogRepo.CreateDialog(ctx, executeDialogMode, buildExecuteDialogTitle(step), &planDialogID)
 	if err != nil {
 		return domain.Dialog{}, executor.ActionRunResult{}, fmt.Errorf("execute code action: create dialog: %w", err)
 	}
+	s.stampExecutionLease(lease.token, func(l *ExecutionLease) {
+		l.DialogID = dialog.ID
+	})
 
 	if err := s.recordActionPlanRun(planDialogID, key, dialog.ID); err != nil {
 		return dialog, executor.ActionRunResult{}, err
@@ -139,6 +166,15 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 	if err != nil {
 		return dialog, executor.ActionRunResult{}, fmt.Errorf("execute code action: %w", err)
 	}
+
+	// The container is the only thing that can be stopped now, so the lease has
+	// to carry the way to reach it: nothing else records the job name.
+	launched = true
+	s.stampExecutionLease(lease.token, func(l *ExecutionLease) {
+		l.JobName = result.JobName
+		l.ContainerID = result.ContainerID
+		l.Namespace = result.Namespace
+	})
 
 	return dialog, result, nil
 }

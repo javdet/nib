@@ -231,32 +231,6 @@ func (r *DialogRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]do
 	return dialogs, rows.Err()
 }
 
-func (r *DialogRepo) ListPlanChildren(ctx context.Context, parentIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	if len(parentIDs) == 0 {
-		return map[uuid.UUID]uuid.UUID{}, nil
-	}
-
-	rows, err := r.pool.Query(ctx,
-		`SELECT parent_id, id
-		 FROM chat_dialogs
-		 WHERE parent_id = ANY($1) AND mode = 'plan'`,
-		parentIDs)
-	if err != nil {
-		return nil, fmt.Errorf("list plan children: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[uuid.UUID]uuid.UUID)
-	for rows.Next() {
-		var parentID, id uuid.UUID
-		if err := rows.Scan(&parentID, &id); err != nil {
-			return nil, fmt.Errorf("scan plan child: %w", err)
-		}
-		result[parentID] = id
-	}
-	return result, rows.Err()
-}
-
 func (r *DialogRepo) GetDialog(ctx context.Context, id uuid.UUID) (domain.Dialog, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT `+dialogColumns+`

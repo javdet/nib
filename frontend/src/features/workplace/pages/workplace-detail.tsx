@@ -20,6 +20,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { MarkdownMessage } from '@/components/markdown-message'
+import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
 import {
 	getActionPlanExecRuns,
@@ -32,6 +33,8 @@ import {
 	getPlanFanout,
 	startPlanFanout,
 	cancelPlanFanout,
+	stopExecution,
+	listDialogChildren,
 	openDialogActivity,
 	updateActionPlan,
 	updateActionPlanChecks,
@@ -69,6 +72,11 @@ import {
 	executeActionMessage,
 	restartActionMessage,
 } from '../lib/execute-action-message'
+import {
+	planStageMessage,
+	processPlanMessage,
+	replanAllStagesMessage,
+} from '../lib/plan-message'
 
 // commandActionTypes are the step types executed by copying commands into a
 // terminal, so their command field is offered for editing.
@@ -144,6 +152,9 @@ export function WorkplaceDetail() {
 	const [summaryContent, setSummaryContent] = useState<string | null>(null)
 	const [dagContent, setDagContent] = useState<string | null>(null)
 	const [fanoutRun, setFanoutRun] = useState<FanoutRun | null>(null)
+	// The plan's decompose transcript, when it has one. Only an orchestrator plan
+	// does; a legacy decompose root is its own.
+	const [decomposeDialogId, setDecomposeDialogId] = useState<string | null>(null)
 	const [actionPlan, setActionPlan] = useState<ActionPlan | null>(null)
 	const [actionPlanChecked, setActionPlanChecked] = useState<string[]>([])
 	const [actionPlanComments, setActionPlanComments] = useState<
@@ -809,6 +820,38 @@ export function WorkplaceDetail() {
 		[id, savingSchedule, planScheduledAt, planStatus],
 	)
 
+	// The decompose sub-agent's transcript is where the research behind the
+	// summary and the DAG lives. Nothing else links to it, so the Summary card
+	// does.
+	useEffect(() => {
+		if (!id || dialog?.mode !== 'main') {
+			setDecomposeDialogId(null)
+			return
+		}
+
+		let cancelled = false
+		void listDialogChildren(id)
+			.then((children) => {
+				if (cancelled) return
+				const child = children.find((c) => c.mode === 'decompose')
+				setDecomposeDialogId(child?.id ?? null)
+			})
+			.catch(() => {
+				// A missing transcript costs a link, not the page.
+				if (!cancelled) setDecomposeDialogId(null)
+			})
+
+		return () => {
+			cancelled = true
+		}
+	}, [id, dialog?.mode, summaryContent])
+
+	const handleOpenDecomposeDialog = useCallback(() => {
+		if (!decomposeDialogId) return
+		selectMode('decompose')
+		setActiveDialogId(decomposeDialogId)
+	}, [decomposeDialogId, selectMode, setActiveDialogId])
+
 	const handleOpenStageDialog = useCallback(
 		(stageDialogId: string) => {
 			selectMode('plan')
@@ -817,24 +860,72 @@ export function WorkplaceDetail() {
 		[selectMode, setActiveDialogId],
 	)
 
-	// Every DAG stage is planned by its own subagent, in parallel. The call
-	// returns as soon as the run is recorded; stages then appear one at a time.
+	// Planning is driven from the main chat, the same way execution is: the
+	// button sends the sentence an operator could have typed and the orchestrator
+	// launches the plan sub-agent, which fans the DAG out to one agent per stage.
+	//
+	// A plan whose root is a legacy decompose dialog has no orchestrator to send
+	// it to, so it keeps the endpoint that used to drive this button.
 	const handleProcessPlan = useCallback(async () => {
 		if (!id) return
 
-		setProcessingPlan(true)
+		if (dialog?.mode === 'decompose') {
+			setProcessingPlan(true)
+			setError(null)
+			try {
+				setFanoutRun(await startPlanFanout(id))
+				bumpDialogsVersion()
+			} catch (err) {
+				setError(
+					err instanceof Error ? err.message : 'Failed to start planning',
+				)
+			} finally {
+				setProcessingPlan(false)
+			}
+			return
+		}
+
+		enqueuePendingMessage({
+			dialogId: id,
+			text: actionPlan ? replanAllStagesMessage() : processPlanMessage(),
+		})
+		setActiveDialogId(id)
+	}, [
+		id,
+		dialog?.mode,
+		actionPlan,
+		enqueuePendingMessage,
+		setActiveDialogId,
+		bumpDialogsVersion,
+	])
+
+	// Replanning one stage is the "let's work on stage 2" request, sent as the
+	// sentence rather than as a targeted endpoint call for the same reason.
+	const handleReplanStage = useCallback(
+		(stageTitle: string) => {
+			if (!id) return
+			enqueuePendingMessage({ dialogId: id, text: planStageMessage(stageTitle) })
+			setActiveDialogId(id)
+		},
+		[id, enqueuePendingMessage, setActiveDialogId],
+	)
+
+	// A force stop is an endpoint rather than a chat message: it has to work
+	// while the agent loop holding the execution is wedged, which is exactly when
+	// it is reached for.
+	const handleStopExecution = useCallback(async () => {
+		if (!id) return
+
 		setError(null)
 		try {
-			setFanoutRun(await startPlanFanout(id))
-			bumpDialogsVersion()
+			await stopExecution()
+			setExecRuns(await getActionPlanExecRuns(id))
 		} catch (err) {
 			setError(
-				err instanceof Error ? err.message : 'Failed to start planning',
+				err instanceof Error ? err.message : 'Failed to stop the execution',
 			)
-		} finally {
-			setProcessingPlan(false)
 		}
-	}, [id, bumpDialogsVersion])
+	}, [id])
 
 	const handleCancelFanout = useCallback(async () => {
 		if (!id) return
@@ -1018,11 +1109,29 @@ export function WorkplaceDetail() {
 							<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 						)}
 						<CardTitle>Summary</CardTitle>
+						{decomposeDialogId && !isEditingSummary && (
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="ml-auto shrink-0 text-muted-foreground"
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={(e) => {
+									e.stopPropagation()
+									handleOpenDecomposeDialog()
+								}}
+							>
+								Decomposition chat
+							</Button>
+						)}
 						{!isEditingSummary && (
 							<IconButton
 								type="button"
 								variant="ghost"
-								className="ml-auto h-8 w-8 shrink-0 text-muted-foreground"
+								className={cn(
+									'h-8 w-8 shrink-0 text-muted-foreground',
+									!decomposeDialogId && 'ml-auto',
+								)}
 								onMouseDown={(e) => e.preventDefault()}
 								onClick={(e) => {
 									e.stopPropagation()
@@ -1251,6 +1360,18 @@ export function WorkplaceDetail() {
 														Open
 													</Button>
 												)}
+												{stage.kind !== 'rollback' &&
+													!fanoutRunning &&
+													dialog.mode === 'main' && (
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															onClick={() => handleReplanStage(stage.title)}
+														>
+															Replan
+														</Button>
+													)}
 											</span>
 										</div>
 									))}
@@ -1275,6 +1396,7 @@ export function WorkplaceDetail() {
 							onEdit={handleOpenEditAction}
 							onExecute={handleExecuteAction}
 							onRestart={handleRestartAction}
+							onStop={() => void handleStopExecution()}
 							execRuns={execRuns}
 							onReorder={(scope, stage, from, to) =>
 								void handleReorder(scope, stage, from, to)

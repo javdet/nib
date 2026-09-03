@@ -8,13 +8,17 @@ import (
 // toolBinding carries everything a local tool registrar needs beyond the catalog
 // and the allow set.
 //
-// dialogID and planID are the same for an ordinary turn, and differ only for a
-// plan stage subagent: its transcript lives in its own dialog while the action
-// plan it writes belongs to the decompose dialog that spawned the fan-out.
+// dialogID and planID are the same for a root turn and differ for a subagent:
+// its transcript lives in its own dialog while every plan artifact -- the
+// summary, the DAG, the stage contract, the subjects, the categories and the
+// action plan -- belongs to the root dialog that spawned it.
+//
+// The two matching is also what marks a turn as the orchestrator's own, which is
+// how the tools that launch and stop subagents stay off a subagent's transcript.
 type toolBinding struct {
 	// dialogID owns the transcript: chat_name, ask_question and attachments.
 	dialogID uuid.UUID
-	// planID owns the action plan and the DAG it must match.
+	// planID owns every plan artifact and the DAG the plan must match.
 	planID uuid.UUID
 	// stage locks update_action_plan to a single DAG stage. Empty for an
 	// ordinary turn, which may write any stage.
@@ -72,6 +76,8 @@ func init() {
 		registerExecuteActionTool,
 		registerGetKBDocumentTool,
 		registerUpdateKBTool,
+		registerRunSubagentTool,
+		registerStopExecutionTool,
 	}
 }
 
@@ -161,18 +167,18 @@ func registerAskQuestionTool(s *ChatService, catalog *toolCatalog, b toolBinding
 }
 
 func registerCreateDAGTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.dialogID == uuid.Nil || !localToolAllowed(allow, CreateDAGToolName) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, CreateDAGToolName) {
 		return
 	}
-	catalog.localHandlers[CreateDAGToolName] = s.createDAGHandler(b.dialogID)
+	catalog.localHandlers[CreateDAGToolName] = s.createDAGHandler(b.planID)
 	catalog.tools = append(catalog.tools, CreateDAGToolDef())
 }
 
 func registerCreateSummaryTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.dialogID == uuid.Nil || !localToolAllowed(allow, CreateSummaryToolName) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, CreateSummaryToolName) {
 		return
 	}
-	catalog.localHandlers[CreateSummaryToolName] = s.createSummaryHandler(b.dialogID)
+	catalog.localHandlers[CreateSummaryToolName] = s.createSummaryHandler(b.planID)
 	catalog.tools = append(catalog.tools, CreateSummaryToolDef())
 }
 
@@ -185,18 +191,18 @@ func registerCreateTableTool(s *ChatService, catalog *toolCatalog, b toolBinding
 }
 
 func registerCreateSubjectsTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.dialogID == uuid.Nil || !localToolAllowed(allow, CreateSubjectsToolName) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, CreateSubjectsToolName) {
 		return
 	}
-	catalog.localHandlers[CreateSubjectsToolName] = s.createSubjectsHandler(b.dialogID)
+	catalog.localHandlers[CreateSubjectsToolName] = s.createSubjectsHandler(b.planID)
 	catalog.tools = append(catalog.tools, CreateSubjectsToolDef())
 }
 
 func registerSetCategoryTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.dialogID == uuid.Nil || s.toolCategorySvc == nil || !localToolAllowed(allow, SetCategoryToolName) {
+	if b.planID == uuid.Nil || s.toolCategorySvc == nil || !localToolAllowed(allow, SetCategoryToolName) {
 		return
 	}
-	catalog.localHandlers[SetCategoryToolName] = s.setCategoryHandler(b.dialogID)
+	catalog.localHandlers[SetCategoryToolName] = s.setCategoryHandler(b.planID)
 	catalog.tools = append(catalog.tools, SetCategoryToolDef(b.categoryNames))
 }
 
@@ -260,10 +266,10 @@ func registerExecuteActionTool(s *ChatService, catalog *toolCatalog, b toolBindi
 }
 
 func registerCreatePlanContractTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
-	if b.dialogID == uuid.Nil || !localToolAllowed(allow, CreatePlanContractToolName) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, CreatePlanContractToolName) {
 		return
 	}
-	catalog.localHandlers[CreatePlanContractToolName] = s.createPlanContractHandler(b.dialogID)
+	catalog.localHandlers[CreatePlanContractToolName] = s.createPlanContractHandler(b.planID)
 	catalog.tools = append(catalog.tools, CreatePlanContractToolDef())
 }
 
@@ -275,4 +281,31 @@ func registerReportBlockerTool(s *ChatService, catalog *toolCatalog, b toolBindi
 	}
 	catalog.localHandlers[ReportBlockerToolName] = s.reportBlockerHandler(b.planID, b.stage, b.kind)
 	catalog.tools = append(catalog.tools, ReportBlockerToolDef())
+}
+
+// registerRunSubagentTool is the orchestrator's alone.
+//
+// The binding is the recursion guard: a sub-agent runs with dialogID != planID
+// -- its transcript is its own while the plan belongs to the root -- so only a
+// root turn ever sees this tool. stripSubagentTools is the second guard, for the
+// day some sub-agent runs on a root dialog.
+func registerRunSubagentTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || b.planID != b.dialogID || s.dialogRepo == nil {
+		return
+	}
+	if !localToolAllowed(allow, RunSubagentToolName) {
+		return
+	}
+	catalog.localHandlers[RunSubagentToolName] = s.runSubagentHandler(b)
+	catalog.tools = append(catalog.tools, RunSubagentToolDef())
+}
+
+// registerStopExecutionTool is global, like the lease it releases: bound to no
+// plan, and offered only on a root turn so a sub-agent cannot stop itself.
+func registerStopExecutionTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || b.planID != b.dialogID || !localToolAllowed(allow, StopExecutionToolName) {
+		return
+	}
+	catalog.localHandlers[StopExecutionToolName] = s.stopExecutionHandler()
+	catalog.tools = append(catalog.tools, StopExecutionToolDef())
 }

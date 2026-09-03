@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
 
@@ -18,6 +19,10 @@ const (
 	actionRunAllowedTools   = "Read,Write,Edit,Grep,Glob,Bash"
 	actionRunPermissionMode = "acceptEdits"
 	actionRunTimeoutSeconds = "1500"
+	// actionRunStopGraceSeconds is how long a force-stopped container gets to
+	// exit before docker kills it. Short on purpose: the operator pressed stop
+	// because the run is in the way.
+	actionRunStopGraceSeconds = 5
 )
 
 // ActionRunRequest is the input for launching an agent-runner container for a
@@ -252,4 +257,76 @@ func buildJobName() (string, error) {
 		return "", fmt.Errorf("generate job name: %w", err)
 	}
 	return fmt.Sprintf("nib-%08d", n.Int64()+10000000), nil
+}
+
+// StopActionRequest identifies a running action container. Either identifier is
+// enough: a local run names its container after the job, and a remote run is a
+// Job of that name.
+type StopActionRequest struct {
+	JobName     string
+	ContainerID string
+	// Namespace overrides the configured one, for a run started before the
+	// setting changed.
+	Namespace string
+}
+
+// StopAction kills the agent-runner started for an action run.
+//
+// A container that is already gone is not an error: the point of the call is
+// that nothing is left running, and a force stop is reached exactly when the
+// state of the run is in doubt.
+func (s *Service) StopAction(ctx context.Context, req StopActionRequest) error {
+	if strings.TrimSpace(req.JobName) == "" && strings.TrimSpace(req.ContainerID) == "" {
+		return ErrStopTargetRequired
+	}
+
+	cfg, err := s.config.Get()
+	if err != nil {
+		return err
+	}
+
+	switch cfg.Type {
+	case TypeDisabled:
+		return ErrExecutorDisabled
+	case TypeLocal:
+		return stopActionLocal(ctx, req)
+	case TypeRemote:
+		switch cfg.Platform {
+		case PlatformKubernetes:
+			return s.stopActionKubernetes(ctx, cfg, req)
+		default:
+			return fmt.Errorf("%w: remote %s", ErrNotImplemented, cfg.Platform)
+		}
+	default:
+		return ErrInvalidType
+	}
+}
+
+func stopActionLocal(ctx context.Context, req StopActionRequest) error {
+	target := strings.TrimSpace(req.ContainerID)
+	if target == "" {
+		target = strings.TrimSpace(req.JobName)
+	}
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("create docker client: %w", err)
+	}
+	defer cli.Close()
+
+	timeout := actionRunStopGraceSeconds
+	if err := cli.ContainerStop(ctx, target, container.StopOptions{Timeout: &timeout}); err != nil {
+		if client.IsErrNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("stop container %q: %w", target, err)
+	}
+
+	// Action runs deliberately leave AutoRemove off, so the container logs
+	// survive the run. A force stop has to remove it explicitly or every stop
+	// leaves a dead container behind.
+	if err := cli.ContainerRemove(ctx, target, container.RemoveOptions{Force: true}); err != nil && !client.IsErrNotFound(err) {
+		slog.Warn("remove stopped action container", "container", target, "error", err)
+	}
+	return nil
 }

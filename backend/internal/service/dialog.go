@@ -202,14 +202,6 @@ func (s *DialogService) ListChildren(ctx context.Context, parentID uuid.UUID) ([
 	return dialogs, nil
 }
 
-func (s *DialogService) ListPlanChildren(ctx context.Context, parentIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	children, err := s.repo.ListPlanChildren(ctx, parentIDs)
-	if err != nil {
-		return nil, fmt.Errorf("list plan children: %w", err)
-	}
-	return children, nil
-}
-
 func (s *DialogService) GetMessages(ctx context.Context, dialogID uuid.UUID) ([]domain.DialogMessage, error) {
 	msgs, err := s.repo.ListMessages(ctx, dialogID)
 	if err != nil {
