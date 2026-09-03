@@ -104,7 +104,7 @@ func init() {
 			Params:   []string{"task"},
 			Required: []string{"task"},
 			Description: "Works a task out into stages: finds it in the task tracker, decides the " +
-				"subjects, the action and the location, writes the summary, the DAG and the " +
+				"action and the location, writes the summary, the DAG and the " +
 				"cross-stage contract, and picks the tool categories the plan will need. Launch it " +
 				"when the operator asks to plan a task or to work on one, and again for every " +
 				"change to the DAG afterwards. It runs to completion inside this call, and may come " +

@@ -17,7 +17,6 @@ export interface Dialog {
 	title: string
 	mode: string
 	parentId?: string
-	subjects?: string[]
 	categories?: string[]
 	pinned: boolean
 	planStatus?: PlanStatus
@@ -167,11 +166,6 @@ export interface PlanState {
 	scheduledAt: number
 }
 
-export interface DialogRule {
-	name: string
-	content: string
-}
-
 export function listDialogs(): Promise<Dialog[]> {
 	return api.get<Dialog[]>('/dialogs')
 }
@@ -223,15 +217,6 @@ export function getDialog(id: string): Promise<Dialog> {
 
 export function updateDialogTitle(id: string, title: string): Promise<Dialog> {
 	return api.put<Dialog>(`/dialogs/${encodeURIComponent(id)}/title`, { title })
-}
-
-export function updateDialogSubjects(
-	id: string,
-	subjects: string[],
-): Promise<Dialog> {
-	return api.put<Dialog>(`/dialogs/${encodeURIComponent(id)}/subjects`, {
-		subjects,
-	})
 }
 
 export function updateDialogCategories(
@@ -363,16 +348,6 @@ export function updateDialogSummary(
 			summary: content,
 		})
 		.then((r) => r.content)
-}
-
-export function getDialogRules(id: string): Promise<DialogRule[]> {
-	return api
-		.get<{ rules: DialogRule[] }>(`/dialogs/${encodeURIComponent(id)}/rules`)
-		.then((r) => r.rules ?? [])
-		.catch((err) => {
-			if (err instanceof ApiError && err.status === 404) return []
-			throw err
-		})
 }
 
 export function getDialogActionPlan(

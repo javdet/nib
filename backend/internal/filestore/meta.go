@@ -1,16 +1,19 @@
-package skills
+package filestore
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
-// Meta holds parsed frontmatter metadata for a skill.
+// Meta holds parsed frontmatter metadata for a markdown document.
 type Meta struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
-// ParseFrontmatter extracts name and description from skill file content.
+// ParseFrontmatter extracts name and description from markdown file content.
 func ParseFrontmatter(content string) Meta {
 	var result Meta
 
@@ -88,4 +91,26 @@ func unquoteYAMLValue(value string) string {
 		}
 	}
 	return value
+}
+
+// ListMeta returns the frontmatter metadata of every document, sorted by name.
+// Name is always the basename on disk, whatever the frontmatter claims.
+func (s *MarkdownStore) ListMeta() ([]Meta, error) {
+	names, err := s.ListNames()
+	if err != nil {
+		return nil, err
+	}
+	metas := make([]Meta, 0, len(names))
+	for _, name := range names {
+		path := filepath.Join(s.Dir(), name+mdSuffix)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read %s %s: %w", s.entityLabel, name, err)
+		}
+		metas = append(metas, Meta{
+			Name:        name,
+			Description: ParseFrontmatter(string(data)).Description,
+		})
+	}
+	return metas, nil
 }

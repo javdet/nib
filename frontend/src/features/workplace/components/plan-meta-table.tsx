@@ -18,10 +18,8 @@ interface PlanMetaTableProps {
 	onScheduleChange: (nextUnix: number) => void
 	scheduleDisabled?: boolean
 	showSchedulingHint?: boolean
-	components: string[]
-	rules: string[]
-	onComponentsChange: (next: string[]) => void
-	onRulesChange: (next: string[]) => void
+	categories: string[]
+	onCategoriesChange: (next: string[]) => void
 	disabled?: boolean
 }
 
@@ -31,10 +29,8 @@ export function PlanMetaTable({
 	onScheduleChange,
 	scheduleDisabled = false,
 	showSchedulingHint = false,
-	components,
-	rules,
-	onComponentsChange,
-	onRulesChange,
+	categories,
+	onCategoriesChange,
 	disabled = false,
 }: PlanMetaTableProps) {
 	return (
@@ -66,28 +62,15 @@ export function PlanMetaTable({
 					</TableCell>
 				</TableRow>
 				<TableRow className="hover:bg-transparent">
-					<TableCell className={LABEL_CLASS}>Components</TableCell>
+					<TableCell className={LABEL_CLASS}>Tool categories</TableCell>
 					<TableCell className="py-2">
 						<TagInput
-							value={components}
-							onChange={onComponentsChange}
-							variant="secondary"
-							placeholder="Type a component and press Enter"
-							disabled={disabled}
-							aria-label="Components"
-						/>
-					</TableCell>
-				</TableRow>
-				<TableRow className="hover:bg-transparent">
-					<TableCell className={LABEL_CLASS}>Rules</TableCell>
-					<TableCell className="py-2">
-						<TagInput
-							value={rules}
-							onChange={onRulesChange}
+							value={categories}
+							onChange={onCategoriesChange}
 							variant="outline"
-							placeholder="Type a rule and press Enter"
+							placeholder="Type a category and press Enter"
 							disabled={disabled}
-							aria-label="Rules"
+							aria-label="Tool categories"
 						/>
 					</TableCell>
 				</TableRow>

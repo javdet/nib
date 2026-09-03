@@ -178,7 +178,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		fail(err)
 		return
 	}
-	seed, err := s.buildActionSeed(ctx, planID, key, number, step)
+	seed, err := s.buildActionSeed(planID, key, number, step)
 	if err != nil {
 		fail(err)
 		return

@@ -324,7 +324,7 @@ func (s *ChatService) runPlanStage(ctx context.Context, rootID uuid.UUID, title 
 		fail(err)
 		return
 	}
-	seed, err := s.buildStageSeed(ctx, rootID, title)
+	seed, err := s.buildStageSeed(rootID, title)
 	if err != nil {
 		fail(err)
 		return

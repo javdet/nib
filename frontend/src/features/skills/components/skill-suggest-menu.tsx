@@ -32,8 +32,22 @@ export function SkillSuggestMenu({
 	const listRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
-		// `nearest` and no smooth behaviour: a held arrow key must not lag behind.
-		listRef.current?.children[activeIndex]?.scrollIntoView({ block: 'nearest' })
+		const list = listRef.current
+		if (!list) return
+		const option = list.children[activeIndex] as HTMLElement | undefined
+		if (!option) return
+
+		// Scroll only the listbox — scrollIntoView can steal focus from the textarea
+		// and scroll overflow-hidden ancestors.
+		const optionTop = option.offsetTop
+		const optionBottom = optionTop + option.offsetHeight
+		const viewTop = list.scrollTop
+		const viewBottom = viewTop + list.clientHeight
+		if (optionTop < viewTop) {
+			list.scrollTop = optionTop
+		} else if (optionBottom > viewBottom) {
+			list.scrollTop = optionBottom - list.clientHeight
+		}
 	}, [activeIndex])
 
 	return (

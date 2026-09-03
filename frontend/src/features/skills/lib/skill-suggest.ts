@@ -20,6 +20,29 @@ export function parseSkillQuery(draft: string): string | null {
 	return match[1] ?? ''
 }
 
+/** Active slash query, or null when the menu is dismissed or the draft is not a token. */
+export function skillMenuQuery(
+	draft: string,
+	dismissed: boolean,
+): string | null {
+	if (dismissed) return null
+	return parseSkillQuery(draft)
+}
+
+/**
+ * Whether a draft edit should clear the dismiss flag.
+ *
+ * Re-arms when the slash token disappears (so Escape-then-delete works) and when
+ * the draft newly becomes a token (so blur-then-type-slash works).
+ */
+export function shouldRearmSkillMenu(prev: string, next: string): boolean {
+	if (!next.startsWith('/')) return true
+	if (parseSkillQuery(prev) === null && parseSkillQuery(next) !== null) {
+		return true
+	}
+	return false
+}
+
 /** `build-knowledge-base` -> ['build', 'knowledge', 'base'] for word-prefix hits. */
 function segmentsOf(name: string): string[] {
 	return name.split(/[._-]+/).filter(Boolean)

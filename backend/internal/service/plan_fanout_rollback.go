@@ -99,7 +99,7 @@ func (s *ChatService) runRollbackAgent(ctx context.Context, rootID uuid.UUID) {
 		fail(err)
 		return
 	}
-	seed, err := s.buildRollbackSeed(ctx, rootID, stages)
+	seed, err := s.buildRollbackSeed(rootID, stages)
 	if err != nil {
 		fail(err)
 		return
@@ -194,11 +194,10 @@ func (s *ChatService) plannedStages(rootID uuid.UUID) ([]storedActionStage, erro
 // same shared context every stage subagent got, plus the plan those subagents
 // actually wrote.
 func (s *ChatService) buildRollbackSeed(
-	ctx context.Context,
 	rootID uuid.UUID,
 	stages []storedActionStage,
 ) (string, error) {
-	parts, contract, err := s.sharedSeedSections(ctx, rootID)
+	parts, contract, err := s.sharedSeedSections(rootID)
 	if err != nil {
 		return "", err
 	}

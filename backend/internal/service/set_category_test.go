@@ -45,9 +45,7 @@ func (r *setCategoryDialogRepo) UpdateTitle(context.Context, uuid.UUID, string) 
 func (r *setCategoryDialogRepo) SetDialogTaskID(context.Context, uuid.UUID, *string) error {
 	return nil
 }
-func (r *setCategoryDialogRepo) SetDialogSubjects(context.Context, uuid.UUID, []string) error {
-	return nil
-}
+
 func (r *setCategoryDialogRepo) SetDialogCategories(_ context.Context, _ uuid.UUID, categories []string) error {
 	r.categories = categories
 	return nil

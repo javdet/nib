@@ -1,22 +1,18 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/repository"
-	"github.com/javdet/nib/internal/rules"
 )
 
 // sharedSeedSections composes the context every fan-out subagent gets, whichever
 // part of the plan it owns, and hands back the contract so the caller can render
 // the slice of it that is its own.
-func (s *ChatService) sharedSeedSections(ctx context.Context, rootID uuid.UUID) ([]string, PlanContract, error) {
+func (s *ChatService) sharedSeedSections(rootID uuid.UUID) ([]string, PlanContract, error) {
 	var parts []string
 
 	summary, found, err := s.ReadSummary(rootID)
@@ -35,14 +31,6 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, rootID uuid.UUID) 
 		parts = append(parts, "## DAG\n\n"+strings.TrimSpace(dag))
 	}
 
-	rulesSection, err := s.matchedRulesSection(ctx, rootID)
-	if err != nil {
-		return nil, PlanContract{}, err
-	}
-	if rulesSection != "" {
-		parts = append(parts, "## Rules\n\n"+rulesSection)
-	}
-
 	contract, _, err := s.ReadPlanContract(rootID)
 	if err != nil {
 		slog.Warn("fanout seed: read contract", "dialog_id", rootID, "error", err)
@@ -53,8 +41,8 @@ func (s *ChatService) sharedSeedSections(ctx context.Context, rootID uuid.UUID) 
 // buildStageSeed composes the first user message of a stage subagent: the shared
 // context every stage gets, the stage it owns, and -- when the contract said this
 // stage could not be planned without them -- the upstream stages already written.
-func (s *ChatService) buildStageSeed(ctx context.Context, rootID uuid.UUID, title string) (string, error) {
-	parts, contract, err := s.sharedSeedSections(ctx, rootID)
+func (s *ChatService) buildStageSeed(rootID uuid.UUID, title string) (string, error) {
+	parts, contract, err := s.sharedSeedSections(rootID)
 	if err != nil {
 		return "", err
 	}
@@ -72,40 +60,6 @@ func (s *ChatService) buildStageSeed(ctx context.Context, rootID uuid.UUID, titl
 	}
 
 	return strings.Join(parts, "\n\n"), nil
-}
-
-// matchedRulesSection renders the rules attached to the plan's subjects, the same
-// set the workplace view shows. Rules are per subject, not per stage, so every
-// stage subagent gets all of them.
-func (s *ChatService) matchedRulesSection(ctx context.Context, rootID uuid.UUID) (string, error) {
-	if s.rulesSvc == nil {
-		return "", nil
-	}
-	d, err := s.dialogRepo.GetDialog(ctx, rootID)
-	if err != nil {
-		return "", fmt.Errorf("get dialog: %w", err)
-	}
-
-	var sections []string
-	for _, subject := range d.Subjects {
-		name := strings.TrimSpace(subject)
-		if name == "" {
-			continue
-		}
-		rule, err := s.rulesSvc.Get(name)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) || errors.Is(err, rules.ErrInvalidName) {
-				continue
-			}
-			return "", fmt.Errorf("get rule %q: %w", name, err)
-		}
-		rendered, err := RenderTemplateVariables(ctx, rule.Content, s.variableRepo, s.selection)
-		if err != nil {
-			return "", fmt.Errorf("render rule %q: %w", name, err)
-		}
-		sections = append(sections, "### "+rule.Name+"\n\n"+rendered)
-	}
-	return strings.Join(sections, "\n\n"), nil
 }
 
 // stageContractSection gives the subagent the whole shared vocabulary plus its own

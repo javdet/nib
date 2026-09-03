@@ -71,10 +71,6 @@ func (r *actionListDialogRepo) SetDialogTaskID(_ context.Context, _ uuid.UUID, _
 	return nil
 }
 
-func (r *actionListDialogRepo) SetDialogSubjects(_ context.Context, _ uuid.UUID, _ []string) error {
-	return nil
-}
-
 func (r *actionListDialogRepo) SetDialogCategories(_ context.Context, _ uuid.UUID, _ []string) error {
 	return nil
 }

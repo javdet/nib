@@ -111,7 +111,7 @@ func TestService_ListExistingRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(got.Rules) != 2 || got.Rules[0] != "github" || got.Rules[1] != "postgres" {
+	if len(got.Rules) != 2 || got.Rules[0].Name != "github" || got.Rules[1].Name != "postgres" {
 		t.Fatalf("Rules = %v, want [github postgres]", got.Rules)
 	}
 }
@@ -163,7 +163,29 @@ func TestService_SkipsHiddenFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(got.Rules) != 1 || got.Rules[0] != "visible" {
+	if len(got.Rules) != 1 || got.Rules[0].Name != "visible" {
 		t.Fatalf("Rules = %v, want [visible]", got.Rules)
+	}
+}
+
+func TestService_ListReadsDescriptionsFromFrontmatter(t *testing.T) {
+	svc := newTestServiceWithRules(t, map[string]string{
+		"postgres": "---\nname: postgres\ndescription: How we run Postgres.\n---\n\nbody",
+		"github":   "no frontmatter here",
+	})
+
+	got, err := svc.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got.Rules) != 2 {
+		t.Fatalf("Rules = %v, want two entries", got.Rules)
+	}
+	// A rule without frontmatter still lists, it just has no description.
+	if got.Rules[0].Name != "github" || got.Rules[0].Description != "" {
+		t.Fatalf("Rules[0] = %+v, want github with no description", got.Rules[0])
+	}
+	if got.Rules[1].Name != "postgres" || got.Rules[1].Description != "How we run Postgres." {
+		t.Fatalf("Rules[1] = %+v, want postgres with its description", got.Rules[1])
 	}
 }

@@ -21,7 +21,7 @@ export function useSkills() {
 		try {
 			const result = await listSkills()
 			if (cancelledRef.current) return
-			setSkills(result.skills)
+			setSkills(result.skills ?? [])
 			loadedAtRef.current = Date.now()
 		} catch {
 			// Keep whatever was loaded before; the menu degrades to nothing.

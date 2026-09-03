@@ -22,7 +22,6 @@ type DialogRepository interface {
 	GetDialog(ctx context.Context, id uuid.UUID) (domain.Dialog, error)
 	UpdateTitle(ctx context.Context, id uuid.UUID, title string) error
 	SetDialogTaskID(ctx context.Context, id uuid.UUID, taskID *string) error
-	SetDialogSubjects(ctx context.Context, id uuid.UUID, subjects []string) error
 	SetDialogCategories(ctx context.Context, id uuid.UUID, categories []string) error
 	SetDialogPinned(ctx context.Context, id uuid.UUID, pinned bool) error
 	ListPinnedDialogs(ctx context.Context) ([]domain.Dialog, error)

@@ -5,8 +5,13 @@ export interface Rule {
 	content: string
 }
 
+export interface RuleMeta {
+	name: string
+	description: string
+}
+
 export interface RuleList {
-	rules: string[]
+	rules: RuleMeta[]
 }
 
 export function listRules(): Promise<RuleList> {

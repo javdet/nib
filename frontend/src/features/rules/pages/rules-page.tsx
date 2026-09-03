@@ -18,7 +18,7 @@ export function RulesPage() {
 		() => ({
 			list: async () => {
 				const result = await listRules()
-				return { names: result.rules }
+				return { names: result.rules.map((rule) => rule.name) }
 			},
 			get: async (name: string) => {
 				const rule = await getRule(name)

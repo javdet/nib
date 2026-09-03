@@ -1,14 +1,13 @@
 package skills
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-
 	"github.com/javdet/nib/internal/filestore"
 )
 
 const mdSuffix = ".md"
+
+// Meta holds parsed frontmatter metadata for a skill.
+type Meta = filestore.Meta
 
 // Skill holds a single skill file.
 type Skill struct {
@@ -42,7 +41,7 @@ func (s *Service) Dir() string {
 
 // List returns skill metadata sorted alphabetically by name.
 func (s *Service) List() (ListResult, error) {
-	metas, err := s.listSkillMeta()
+	metas, err := s.store.ListMeta()
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -76,25 +75,4 @@ func (s *Service) Rename(oldName, newName, content string) error {
 // Delete removes a skill file.
 func (s *Service) Delete(name string) error {
 	return s.store.Delete(name)
-}
-
-func (s *Service) listSkillMeta() ([]Meta, error) {
-	names, err := s.store.ListNames()
-	if err != nil {
-		return nil, err
-	}
-	metas := make([]Meta, 0, len(names))
-	for _, name := range names {
-		path := filepath.Join(s.store.Dir(), name+mdSuffix)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read skill %s: %w", name, err)
-		}
-		parsed := ParseFrontmatter(string(data))
-		metas = append(metas, Meta{
-			Name:        name,
-			Description: parsed.Description,
-		})
-	}
-	return metas, nil
 }

@@ -14,7 +14,6 @@ import (
 type fakeDialogRepo struct {
 	title    string
 	taskID   *string
-	subjects []string
 	err      error
 }
 
@@ -75,14 +74,6 @@ func (f *fakeDialogRepo) SetDialogTaskID(_ context.Context, _ uuid.UUID, taskID 
 		return f.err
 	}
 	f.taskID = taskID
-	return nil
-}
-
-func (f *fakeDialogRepo) SetDialogSubjects(_ context.Context, _ uuid.UUID, subjects []string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.subjects = subjects
 	return nil
 }
 

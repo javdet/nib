@@ -28,7 +28,6 @@ var localSystemToolNames = []string{
 	CreatePlanContractToolName,
 	CreateSummaryToolName,
 	CreateTableToolName,
-	CreateSubjectsToolName,
 	CreateActionPlanToolName,
 	UpdateActionPlanToolName,
 	UpdateRollbackPlanToolName,
