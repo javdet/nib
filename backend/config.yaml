@@ -61,9 +61,12 @@ agent:
   stageMaxIterations: 15
   # Deadline for a whole fan-out run. It outlives the request that starts it.
   planFanoutTimeoutMinutes: 60
-  # Action execution: one subagent per plan action, run from the planning chat.
-  # How many action subagents may execute at once, across every plan.
-  actionExecConcurrency: 4
+  # Action execution: one subagent per plan action, launched by the orchestrator.
+  # Retained so an existing config still loads, and clamped to 1: one execution
+  # at a time is a policy, not a capacity limit. Two agents changing the same
+  # infrastructure can undo each other's work, and an operator watching one chat
+  # cannot follow two. Use the Stop button, or ask in the chat, to free the slot.
+  actionExecConcurrency: 1
   # Completion round budget for a single action subagent. It carries out one
   # action rather than planning a stage, so it needs fewer rounds than a plan
   # but more than a stage: executing tends to mean several tool calls in a row.

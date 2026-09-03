@@ -17,6 +17,7 @@ import {
 	Pencil,
 	Play,
 	RotateCcw,
+	Square,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -102,6 +103,10 @@ interface ActionPlanViewProps {
 	onComment: (key: string) => void
 	onEdit: (key: string) => void
 	onExecute: (step: ActionStep, key: string) => void
+	// onStop force-stops the execution running right now. It is the way out of a
+	// run that is wedged, so it is offered on every running row rather than only
+	// on the one the operator started.
+	onStop: () => void
 	// onRestart abandons whatever is running on a row and starts a fresh
 	// sub-agent. Only offered once a row has a run to restart.
 	onRestart: (key: string) => void
@@ -492,6 +497,7 @@ interface ExecutableActionRowProps {
 	onEdit: () => void
 	onExecute: () => void
 	onRestart: () => void
+	onStop: () => void
 	execRun?: ActionExecRun
 	executeDisabled?: boolean
 	executeDisabledReason?: string
@@ -512,6 +518,7 @@ function ExecutableActionRow({
 	onEdit,
 	onExecute,
 	onRestart,
+	onStop,
 	execRun,
 	executeDisabled = false,
 	executeDisabledReason,
@@ -550,6 +557,15 @@ function ExecutableActionRow({
 							</TooltipTrigger>
 							<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
 						</Tooltip>
+					)}
+					{execRun?.status === 'running' && (
+						<HeaderButton
+							label="Stop execution"
+							tooltip="Force-stop this execution and free the slot"
+							onClick={onStop}
+						>
+							<Square className="h-4 w-4" />
+						</HeaderButton>
 					)}
 					{execRun && execRun.status !== 'running' && (
 						<HeaderButton
@@ -664,6 +680,7 @@ export function ActionPlanView({
 	onEdit,
 	onExecute,
 	onRestart,
+	onStop,
 	execRuns,
 	onReorder,
 	reordering = false,
@@ -828,6 +845,7 @@ export function ActionPlanView({
 											onEdit={() => onEdit(key)}
 											onExecute={() => onExecute(step, key)}
 											onRestart={() => onRestart(key)}
+											onStop={onStop}
 											execRun={execRuns[key]}
 											executeDisabled={
 												executorDisabled && isCodeStep(step)
@@ -921,6 +939,7 @@ export function ActionPlanView({
 										onEdit={() => onEdit(key)}
 										onExecute={() => onExecute(step, key)}
 										onRestart={() => onRestart(key)}
+										onStop={onStop}
 										execRun={execRuns[key]}
 										executeDisabled={
 											executorDisabled && isCodeStep(step)

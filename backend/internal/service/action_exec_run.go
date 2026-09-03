@@ -45,6 +45,17 @@ type ActionExecRun struct {
 	FinishedAt int64            `json:"finishedAt,omitempty"`
 	Error      string           `json:"error,omitempty"`
 	Attempt    int              `json:"attempt"`
+	// Kind separates a sub-agent run from a container run: the two are stopped
+	// in completely different ways.
+	Kind ExecutionKind `json:"kind,omitempty"`
+	// JobName, ContainerID and Namespace identify a code action's agent-runner
+	// container. They are here because there is nowhere else: the container
+	// outlives the process that started it, and before this the job name only
+	// ever appeared in the sentence the tool returned to the model -- which is
+	// exactly why a code action could not be stopped.
+	JobName     string `json:"jobName,omitempty"`
+	ContainerID string `json:"containerId,omitempty"`
+	Namespace   string `json:"namespace,omitempty"`
 }
 
 // Active reports whether a run still holds its row.
@@ -134,6 +145,7 @@ func (s *ChatService) startActionExecRun(planID uuid.UUID, key string) (ActionEx
 			Status:    ActionExecRunning,
 			StartedAt: time.Now().Unix(),
 			Attempt:   attempt,
+			Kind:      ExecutionKindSubagent,
 		}
 	})
 }

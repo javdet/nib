@@ -72,12 +72,22 @@ func NewRouter(
 	selection := NewSelectionHandler(selectionStore)
 	toolCategories := NewToolCategoriesHandler(toolCategorySvc)
 	agentWebhook := NewAgentWebhookHandler(chatSvc, agentWebhookToken)
+	execution := NewExecutionHandler(chatSvc)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", HealthCheck())
 		r.Get("/version", VersionInfo())
 		r.Get("/modes", ListModes())
 		r.Get("/system/tools", systemTools.List())
+
+		// The execution routes deliberately take no write deadline: a force stop
+		// is a docker or kubernetes call, not an agent run, and it has to work
+		// while the agent loop holding the lease is wedged -- which is exactly
+		// when it is reached for.
+		r.Route("/execution", func(r chi.Router) {
+			r.Get("/", execution.Get())
+			r.Delete("/", execution.Stop())
+		})
 		r.Post("/agent-runner/webhook", agentWebhook.Receive())
 
 		r.Route("/selection", func(r chi.Router) {

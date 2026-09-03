@@ -145,7 +145,7 @@ func (s *ChatService) SyncPlanStatusForChecks(
 	actionPlanDialogID uuid.UUID,
 	checked []string,
 ) (ActionPlanStatus, error) {
-	planID, err := s.resolveActionPlanDialogID(ctx, actionPlanDialogID)
+	planID, err := s.resolveRootDialogID(ctx, actionPlanDialogID)
 	if err != nil {
 		return "", err
 	}

@@ -38,9 +38,6 @@ func (r *setCategoryDialogRepo) CountDialogsSearch(context.Context, string, stri
 func (r *setCategoryDialogRepo) ListChildren(context.Context, uuid.UUID) ([]domain.Dialog, error) {
 	return nil, nil
 }
-func (r *setCategoryDialogRepo) ListPlanChildren(context.Context, []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
-	return map[uuid.UUID]uuid.UUID{}, nil
-}
 func (r *setCategoryDialogRepo) GetDialog(context.Context, uuid.UUID) (domain.Dialog, error) {
 	return domain.Dialog{}, nil
 }

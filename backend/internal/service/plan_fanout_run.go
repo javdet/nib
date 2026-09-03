@@ -75,7 +75,7 @@ type PlanBlocker struct {
 	Answer     string          `json:"answer,omitempty"`
 }
 
-// FanoutRun is the record of one plan fan-out over a decompose dialog's DAG. It
+// FanoutRun is the record of one plan fan-out over a plan's DAG. It
 // is persisted rather than held in memory so the browser can re-attach after a
 // reload, which is also why the fan-out needs no database migration.
 type FanoutRun struct {

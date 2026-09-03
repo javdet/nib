@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -119,4 +120,40 @@ func (s *Service) loadTokenKubeConfig(ctx context.Context, cfg Config) (*rest.Co
 		BearerToken: token,
 		TLSClientConfig: tlsCfg,
 	}, nil
+}
+func (s *Service) stopActionKubernetes(ctx context.Context, cfg Config, req StopActionRequest) error {
+	if strings.TrimSpace(req.JobName) == "" {
+		// A remote run is reached by Job name; the container id is the Job UID,
+		// which the API cannot be queried by.
+		return ErrStopTargetRequired
+	}
+
+	restCfg, err := s.loadKubernetesConfig(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	clientset, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		return fmt.Errorf("%w: create clientset: %v", ErrKubernetesConfigLoad, err)
+	}
+
+	namespace := strings.TrimSpace(req.Namespace)
+	if namespace == "" {
+		namespace = cfg.Namespace
+	}
+
+	// Background propagation so the Job's pods go with it. Deleting the Job
+	// alone would leave the agent running to completion.
+	policy := metav1.DeletePropagationBackground
+	err = clientset.BatchV1().Jobs(namespace).Delete(ctx, req.JobName, metav1.DeleteOptions{
+		PropagationPolicy: &policy,
+	})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKubernetesJobDelete, err)
+	}
+	return nil
 }

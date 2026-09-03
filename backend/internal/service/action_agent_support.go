@@ -67,7 +67,7 @@ func (s *ChatService) actionAgentAllowSet(ctx context.Context, planID uuid.UUID)
 	// against an operator's edit to the execute allow list rather than against
 	// inheritance -- but the cost of being wrong here is a subagent rewriting
 	// the plan it was asked to carry out one line of.
-	delete(allow, ExecuteActionToolName)
+	stripSubagentTools(allow)
 	delete(allow, AskQuestionToolName)
 	delete(allow, CreateActionPlanToolName)
 	delete(allow, UpdateActionPlanToolName)

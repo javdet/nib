@@ -44,84 +44,112 @@ func ExecuteActionToolDef() llm.ToolDef {
 }
 
 // executeActionHandler runs an action of the plan the dialog is bound to.
-//
-// Everything an operator or a model can get wrong comes back as tool output with
-// a nil error, so a mistyped number costs a sentence rather than the turn.
 func (s *ChatService) executeActionHandler(b toolBinding) localToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		raw := strings.TrimSpace(argString(args["number"]))
-		if raw == "" {
-			return "number is required: name the action as the web interface does, for example 1.1", nil
-		}
-
-		key, ok := parseActionPlanNumber(raw)
-		if !ok {
-			return fmt.Sprintf("%q is not a plan item number; use 1.1 for an action, 1.C1 for a check or R1 for a rollback entry", raw), nil
-		}
-
-		planID, err := s.resolveActionPlanDialogID(ctx, b.planID)
-		if err != nil {
-			return "", err
-		}
-
-		number := actionPlanNumberForKey(key)
-		if number == "" {
-			number = raw
-		}
-
-		// A check is a verification the operator ticks, not work to hand out.
-		if strings.Contains(key, ".check") {
-			return fmt.Sprintf("%s is a verification check, not an action; carry out the check yourself and report what you found", number), nil
-		}
-
-		step, err := s.readActionPlanStep(planID, key)
-		if err != nil {
-			if errors.Is(err, ErrActionNotFound) {
-				return fmt.Sprintf("the plan has no action %s; call get_action_list to see the numbers it does have", number), nil
-			}
-			return "", err
-		}
-
-		rerun := argBool(args["rerun"])
-
-		// A code action is built by the coding agent in a container of its own,
-		// which reports back through the agent-runner webhook rather than a
-		// sub-agent turn.
-		if strings.EqualFold(strings.TrimSpace(step.Type), actionTypeCode) {
-			return s.executeCodeActionFromTool(ctx, planID, key, number)
-		}
-
-		if _, err := s.StartActionAgent(ctx, planID, key, rerun); err != nil {
-			if errors.Is(err, ErrActionAlreadyRunning) {
-				return fmt.Sprintf("%s is already running; ask to restart it if you want a fresh attempt", number), nil
-			}
-			return "", err
-		}
-		return fmt.Sprintf("started a sub-agent for %s; its result will be posted in this chat when it finishes", number), nil
+		text, _, err := s.executePlanItem(ctx, b.planID, argString(args["number"]), argBool(args["rerun"]))
+		return text, err
 	}
+}
+
+// executePlanItem carries out one item of the plan owned by planOwnerID, named
+// as the operator sees it. A code action goes to the coding agent in a container;
+// anything else goes to a sub-agent of its own.
+//
+// It reports whether the work actually started, so a caller can tell a refusal
+// from a launch. Everything an operator or a model can get wrong comes back as
+// text with a nil error, so a mistyped number costs a sentence rather than the
+// turn.
+func (s *ChatService) executePlanItem(
+	ctx context.Context,
+	planOwnerID uuid.UUID,
+	number string,
+	rerun bool,
+) (string, bool, error) {
+	raw := strings.TrimSpace(number)
+	if raw == "" {
+		return "number is required: name the action as the web interface does, for example 1.1", false, nil
+	}
+
+	key, ok := parseActionPlanNumber(raw)
+	if !ok {
+		return fmt.Sprintf("%q is not a plan item number; use 1.1 for an action, 1.C1 for a check or R1 for a rollback entry", raw), false, nil
+	}
+
+	planID, err := s.resolveRootDialogID(ctx, planOwnerID)
+	if err != nil {
+		return "", false, err
+	}
+
+	display := actionPlanNumberForKey(key)
+	if display == "" {
+		display = raw
+	}
+
+	// A check is a verification the operator ticks, not work to hand out.
+	if strings.Contains(key, ".check") {
+		return fmt.Sprintf("%s is a verification check, not an action; carry out the check yourself and report what you found", display), false, nil
+	}
+
+	step, err := s.readActionPlanStep(planID, key)
+	if err != nil {
+		if errors.Is(err, ErrActionNotFound) {
+			return fmt.Sprintf("the plan has no action %s; read the action list to see the numbers it does have", display), false, nil
+		}
+		return "", false, err
+	}
+
+	// A code action is built by the coding agent in a container of its own,
+	// which reports back through the agent-runner webhook rather than a
+	// sub-agent turn.
+	if strings.EqualFold(strings.TrimSpace(step.Type), actionTypeCode) {
+		text, started, err := s.executeCodeActionFromTool(ctx, planID, key, display)
+		return text, started, err
+	}
+
+	if _, err := s.StartActionAgent(ctx, planID, key, rerun); err != nil {
+		switch {
+		case errors.Is(err, ErrActionAlreadyRunning):
+			return fmt.Sprintf("%s is already running; ask to restart it if you want a fresh attempt", display), false, nil
+		case errors.Is(err, ErrExecutionBusy):
+			// The error already names what holds the slot.
+			return executionBusyMessage(err), false, nil
+		}
+		return "", false, err
+	}
+	return fmt.Sprintf("started a sub-agent for %s; its result will be posted in the chat when it finishes", display), true, nil
 }
 
 // executeCodeActionFromTool adapts ExecuteCodeAction's failures into tool output.
 // Its preconditions -- an enabled executor, a repository on the step, configured
 // secrets -- are all things the operator fixes in the web interface, so the agent
 // has to be able to say which one is missing.
-func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid.UUID, key, number string) (string, error) {
+func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid.UUID, key, number string) (string, bool, error) {
 	dialog, run, err := s.ExecuteCodeAction(ctx, planID, key)
 	switch {
 	case err == nil:
 	case errors.Is(err, executor.ErrExecutorDisabled):
-		return fmt.Sprintf("%s is a code action, but the executor is disabled; switch it on in executor settings to run code actions", number), nil
+		return fmt.Sprintf("%s is a code action, but the executor is disabled; switch it on in executor settings to run code actions", number), false, nil
 	case errors.Is(err, ErrActionRepositoryRequired):
-		return fmt.Sprintf("%s is a code action with no repository set; add one to the plan first", number), nil
+		return fmt.Sprintf("%s is a code action with no repository set; add one to the plan first", number), false, nil
 	case errors.Is(err, ErrExecutorTokenSecretRequired), errors.Is(err, ErrExecutorSecretMissing):
-		return fmt.Sprintf("%s could not start: %s", number, err.Error()), nil
+		return fmt.Sprintf("%s could not start: %s", number, err.Error()), false, nil
+	case errors.Is(err, ErrExecutionBusy):
+		return executionBusyMessage(err), false, nil
 	default:
-		return "", err
+		return "", false, err
 	}
 
 	if _, recErr := s.updateActionPlanExecRun(planID, key, func(r *ActionExecRun) {
 		attempt := r.Attempt + 1
-		*r = ActionExecRun{Status: ActionExecRunning, StartedAt: time.Now().Unix(), Attempt: attempt}
+		*r = ActionExecRun{
+			Status:      ActionExecRunning,
+			StartedAt:   time.Now().Unix(),
+			Attempt:     attempt,
+			Kind:        ExecutionKindContainer,
+			JobName:     run.JobName,
+			ContainerID: run.ContainerID,
+			Namespace:   run.Namespace,
+		}
 	}); recErr != nil {
 		// The container is already building; a missing status row is a cosmetic
 		// loss, not a reason to tell the agent the action failed.
@@ -131,5 +159,5 @@ func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid
 	return fmt.Sprintf(
 		"handed %s to the coding agent (job %s, branch %s); the pull request will be attached to the action when it finishes, and its progress is in chat %s",
 		number, run.JobName, run.TargetBranch, dialog.ID,
-	), nil
+	), true, nil
 }

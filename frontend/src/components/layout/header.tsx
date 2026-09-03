@@ -22,8 +22,14 @@ import { useCloud } from '@/features/projects/cloud-context'
 import { useLocation } from '@/features/projects/location-context'
 import { useMode } from '@/features/modes/mode-context'
 
+// MODE_LABELS names the modes whose own name does not say what the chat does.
+// "Main" on its own tells an operator nothing; the rest are self-describing.
+const MODE_LABELS: Record<string, string> = {
+	main: 'Orchestrator',
+}
+
 function formatModeLabel(mode: string): string {
-	return mode.charAt(0).toUpperCase() + mode.slice(1)
+	return MODE_LABELS[mode] ?? mode.charAt(0).toUpperCase() + mode.slice(1)
 }
 
 function formatSelectionLabel(name: string | undefined): string {

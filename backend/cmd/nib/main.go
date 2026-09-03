@@ -297,6 +297,22 @@ func run() error {
 			TimeoutMinutes: cfg.Agent.ActionExecTimeoutMinutes,
 		},
 	)
+	if cfg.Agent.ActionExecConcurrency > 1 {
+		slog.Warn("agent.actionExecConcurrency is clamped to 1; one execution runs at a time",
+			"configured", cfg.Agent.ActionExecConcurrency)
+	}
+
+	// A run interrupted by a restart has nothing left to close it: its goroutine
+	// died with the previous process and a container's webhook has nowhere to
+	// land. Sweeping them here is what keeps a restart from permanently
+	// blocking the one execution slot.
+	if rec, err := chatSvc.ReconcileStuckRuns(); err != nil {
+		slog.Warn("reconcile stuck runs", "error", err)
+	} else if rec.Actions > 0 || rec.Fanouts > 0 {
+		slog.Info("closed runs left behind by a previous process",
+			"actions", rec.Actions, "fanouts", rec.Fanouts)
+	}
+
 	// Both mcp.json edits and secret rotations change what a resolved MCP server
 	// looks like, so either has to drop the cached routes and reindex.
 	refreshMCPTools := func(reason string) func() {
