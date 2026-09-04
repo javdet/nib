@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Save, Server, X } from 'lucide-react'
+import {
+	ChevronLeft,
+	ChevronRight,
+	ChevronsLeft,
+	ChevronsRight,
+	Save,
+	Server,
+	X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -18,36 +27,14 @@ import {
 	listCatalogTools,
 	type CatalogTool,
 } from '../api/included-tools'
+import {
+	formatServerLabel,
+	groupByServer,
+	matchesFilter,
+	type ToolEntry,
+	unknownServer,
+} from '../lib/group-tools'
 import { summarizeToolDescription } from '../lib/tool-description'
-
-type ToolEntry = {
-	name: string
-	server: string
-	description: string
-}
-
-const unknownServer = ''
-
-function groupByServer(tools: ToolEntry[]): Map<string, ToolEntry[]> {
-	const groups = new Map<string, ToolEntry[]>()
-	for (const tool of tools) {
-		const list = groups.get(tool.server) ?? []
-		list.push(tool)
-		groups.set(tool.server, list)
-	}
-	for (const [, list] of groups) {
-		list.sort((a, b) => a.name.localeCompare(b.name))
-	}
-	return new Map([...groups.entries()].sort(([a], [b]) => {
-		if (a === unknownServer) {
-			return 1
-		}
-		if (b === unknownServer) {
-			return -1
-		}
-		return a.localeCompare(b)
-	}))
-}
 
 function ToolName({
 	name,
@@ -83,25 +70,15 @@ function ToolName({
 	)
 }
 
-function matchesFilter(tool: ToolEntry, filter: string): boolean {
-	if (!filter) {
-		return true
-	}
-	const q = filter.toLowerCase()
-	return (
-		tool.name.toLowerCase().includes(q) ||
-		tool.server.toLowerCase().includes(q) ||
-		tool.description.toLowerCase().includes(q)
-	)
-}
-
 function ToolListPanel({
 	title,
 	helpText,
 	tools,
 	filter,
 	onMove,
+	onMoveMany,
 	moveLabel,
+	moveAllLabel,
 	direction,
 }: {
 	title: string
@@ -109,7 +86,9 @@ function ToolListPanel({
 	tools: ToolEntry[]
 	filter: string
 	onMove: (name: string) => void
+	onMoveMany: (names: string[]) => void
 	moveLabel: string
+	moveAllLabel: string
 	direction: 'left' | 'right'
 }) {
 	const grouped = useMemo(() => groupByServer(tools), [tools])
@@ -121,15 +100,42 @@ function ToolListPanel({
 		() => new Set(filtered.map((t) => t.name)),
 		[filtered],
 	)
+	const MoveAllIcon = direction === 'right' ? ChevronsRight : ChevronsLeft
+	const MoveServerIcon = direction === 'right' ? ChevronRight : ChevronLeft
+
+	const handleMoveAll = () => {
+		onMoveMany(filtered.map((t) => t.name))
+	}
+
+	const handleMoveServer = (serverTools: ToolEntry[]) => {
+		const visible = serverTools.filter((t) => filteredNames.has(t.name))
+		onMoveMany(visible.map((t) => t.name))
+	}
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col rounded-lg border">
 			<div className="border-b px-3 py-2">
-				<h3 className="text-sm font-medium">{title}</h3>
-				<p className="text-xs text-muted-foreground">{helpText}</p>
-				<p className="mt-1 text-xs text-muted-foreground">
-					{filtered.length} tool{filtered.length === 1 ? '' : 's'}
-				</p>
+				<div className="flex items-start justify-between gap-2">
+					<div className="min-w-0">
+						<h3 className="text-sm font-medium">{title}</h3>
+						<p className="text-xs text-muted-foreground">{helpText}</p>
+						<p className="mt-1 text-xs text-muted-foreground">
+							{filtered.length} tool{filtered.length === 1 ? '' : 's'}
+						</p>
+					</div>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={handleMoveAll}
+						disabled={filtered.length === 0}
+						aria-label={`${moveAllLabel} ${title.toLowerCase()} tools`}
+						className="shrink-0"
+					>
+						<MoveAllIcon className="h-4 w-4" />
+						{moveAllLabel}
+					</Button>
+				</div>
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto p-2">
 				{filtered.length === 0 ? (
@@ -137,53 +143,78 @@ function ToolListPanel({
 						No tools in this list.
 					</p>
 				) : (
-					[...grouped.entries()].map(([server, serverTools]) => {
-						const visible = serverTools.filter((t) =>
-							filteredNames.has(t.name),
-						)
-						if (visible.length === 0) {
-							return null
-						}
-						return (
-							<div key={server || 'unknown'} className="mb-3 last:mb-0">
-								{server && (
-									<div className="mb-1 flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
-										<Server className="h-3 w-3" />
-										{server}
+					<div className="space-y-3">
+						{[...grouped.entries()].map(([server, serverTools]) => {
+							const visible = serverTools.filter((t) =>
+								filteredNames.has(t.name),
+							)
+							if (visible.length === 0) {
+								return null
+							}
+							const serverLabel = formatServerLabel(server)
+							return (
+								<section
+									key={server || 'unknown'}
+									className="overflow-hidden rounded-md border border-border/60 bg-muted/20"
+								>
+									<div
+										className={cn(
+											'sticky top-0 z-10 flex items-center gap-2',
+											'border-b border-border/50 bg-card/95 px-2 py-1.5',
+											'backdrop-blur supports-[backdrop-filter]:bg-card/80',
+										)}
+									>
+										<Server className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+										<span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+											{serverLabel}
+										</span>
+										<Badge variant="secondary" className="shrink-0">
+											{visible.length}
+										</Badge>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-sm"
+											onClick={() => handleMoveServer(serverTools)}
+											aria-label={`${moveAllLabel} all ${serverLabel} tools`}
+											className="shrink-0"
+										>
+											<MoveServerIcon className="h-4 w-4" />
+										</Button>
 									</div>
-								)}
-								<ul className="space-y-1">
-									{visible.map((tool) => (
-										<li key={tool.name}>
-											<button
-												type="button"
-												aria-label={`${moveLabel} ${tool.name}`}
-												onClick={() => onMove(tool.name)}
-												className={cn(
-												'flex w-full cursor-pointer items-center justify-between',
-												'gap-2 rounded-md border border-border/60 px-2 py-1.5',
-												'text-left text-sm transition-colors focus-ring',
-												'duration-[var(--dur-fast)] hover:border-ring/40',
-												'hover:bg-foreground/[0.05]',
-											)}
-											>
-												{direction === 'left' && (
-													<ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
-												)}
-												<ToolName
-													name={tool.name}
-													description={tool.description}
-												/>
-												{direction === 'right' && (
-													<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-												)}
-											</button>
-										</li>
-									))}
-								</ul>
-							</div>
-						)
-					})
+									<ul className="space-y-1 p-2">
+										{visible.map((tool) => (
+											<li key={tool.name}>
+												<button
+													type="button"
+													aria-label={`${moveLabel} ${tool.name}`}
+													onClick={() => onMove(tool.name)}
+													className={cn(
+														'flex w-full cursor-pointer items-center justify-between',
+														'gap-2 rounded-md border border-border/60 px-2 py-1.5',
+														'text-left text-sm transition-colors focus-ring',
+														'duration-[var(--dur-fast)] hover:border-ring/40',
+														'hover:bg-foreground/[0.05]',
+													)}
+												>
+													{direction === 'left' && (
+														<ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
+													)}
+													<ToolName
+														name={tool.name}
+														description={tool.description}
+													/>
+													{direction === 'right' && (
+														<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+													)}
+												</button>
+											</li>
+										))}
+									</ul>
+								</section>
+							)
+						})}
+					</div>
 				)}
 			</div>
 		</div>
@@ -373,6 +404,32 @@ export function IncludedToolsCard() {
 		})
 	}, [])
 
+	const includeTools = useCallback((names: string[]) => {
+		if (names.length === 0) {
+			return
+		}
+		setIncluded((prev) => {
+			const next = new Set(prev)
+			for (const name of names) {
+				next.add(name)
+			}
+			return next
+		})
+	}, [])
+
+	const excludeTools = useCallback((names: string[]) => {
+		if (names.length === 0) {
+			return
+		}
+		setIncluded((prev) => {
+			const next = new Set(prev)
+			for (const name of names) {
+				next.delete(name)
+			}
+			return next
+		})
+	}, [])
+
 	const handleSave = useCallback(async () => {
 		if (!selectedMode) {
 			return
@@ -502,7 +559,9 @@ export function IncludedToolsCard() {
 							tools={notIncludedTools}
 							filter={filter}
 							onMove={includeTool}
+							onMoveMany={includeTools}
 							moveLabel="Include"
+							moveAllLabel="Include all"
 							direction="right"
 						/>
 						<ToolListPanel
@@ -511,7 +570,9 @@ export function IncludedToolsCard() {
 							tools={includedTools}
 							filter={filter}
 							onMove={excludeTool}
+							onMoveMany={excludeTools}
 							moveLabel="Exclude"
+							moveAllLabel="Exclude all"
 							direction="left"
 						/>
 					</div>
