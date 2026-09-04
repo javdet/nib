@@ -1,0 +1,43 @@
+{{- /*
+Guarded on the API being present as well as the value, so a chart installed with
+serviceMonitor.enabled=true on a cluster without prometheus-operator renders
+nothing instead of failing on an unknown kind.
+*/ -}}
+{{- if and .Values.backend.enabled .Values.backend.metrics.enabled .Values.backend.metrics.serviceMonitor.enabled }}
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
+{{- $ctx := dict "component" "backend" "Chart" .Chart "Release" .Release "Values" .Values "Template" .Template }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nib.backend.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.backend.metrics.serviceMonitor.namespace }}
+  labels:
+    {{- include "nib.componentLabels" $ctx | nindent 4 }}
+    {{- with .Values.backend.metrics.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nib.componentSelectorLabels" $ctx | nindent 6 }}
+  {{- if .Values.backend.metrics.serviceMonitor.namespace }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  {{- end }}
+  endpoints:
+    - port: metrics
+      path: {{ .Values.backend.metrics.path }}
+      interval: {{ .Values.backend.metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.backend.metrics.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      {{- with .Values.backend.metrics.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.metrics.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

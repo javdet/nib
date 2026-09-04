@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/javdet/nib/internal/metrics"
 )
 
 // Service orchestrates agent-runner container launches.
@@ -29,7 +32,27 @@ func (s *Service) ConfigStore() *ConfigStore {
 }
 
 // Run launches an agent-runner task using the configured executor type.
+// Run launches a single-use agent container for the run_executor tool.
 func (s *Service) Run(ctx context.Context, req RunRequest) (RunResult, error) {
+	start := time.Now()
+	res, err := s.run(ctx, req)
+	s.recordRun(metrics.ExecutorEntrypointRun, err, time.Since(start))
+	return res, err
+}
+
+// recordRun labels a launch with the executor settings it used. The config is
+// re-read rather than threaded out of the dispatch below, because it is an
+// in-memory store read and every branch there would otherwise have to return it.
+func (s *Service) recordRun(entrypoint string, err error, d time.Duration) {
+	execType, platform := "unknown", "unknown"
+	if cfg, cfgErr := s.config.Get(); cfgErr == nil {
+		execType = string(cfg.Type)
+		platform = string(cfg.Platform)
+	}
+	metrics.RecordExecutorRun(entrypoint, execType, platform, err, d)
+}
+
+func (s *Service) run(ctx context.Context, req RunRequest) (RunResult, error) {
 	if err := validateRunRequest(req); err != nil {
 		return RunResult{}, err
 	}

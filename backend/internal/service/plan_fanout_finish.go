@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 // blockerQuestion is one question after folding together the stages that raised it.
@@ -135,6 +136,12 @@ func (s *ChatService) closeFanoutRun(rootID uuid.UUID, status FanoutRunStatus, e
 		r.FinishedAt = time.Now().Unix()
 		r.Error = errMsg
 	})
+	var ran time.Duration
+	if run.StartedAt > 0 && run.FinishedAt > 0 {
+		ran = time.Duration(run.FinishedAt-run.StartedAt) * time.Second
+	}
+	metrics.RecordFanoutFinished(string(status), ran)
+	metrics.AddFanoutBlockers(len(run.Blockers))
 	if err != nil {
 		slog.Error("plan fanout: close run", "dialog_id", rootID, "error", err)
 	}

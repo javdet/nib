@@ -3,8 +3,10 @@ package handler
 import (
 	"crypto/subtle"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/service"
 	"github.com/google/uuid"
 )
@@ -61,22 +63,26 @@ type usageInfo struct {
 func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !h.authorize(r) {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookUnauthorized)
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
 		var req agentWebhookPayload
 		if !decodeJSON(w, r, &req) {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
 			return
 		}
 
 		chatID := strings.TrimSpace(req.ChatID)
 		if chatID == "" {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
 			writeError(w, http.StatusBadRequest, "chat_id is required")
 			return
 		}
 		dialogID, err := uuid.Parse(chatID)
 		if err != nil {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
 			writeError(w, http.StatusBadRequest, "chat_id must be a valid UUID")
 			return
 		}
@@ -104,9 +110,21 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 			SessionID:    req.Usage.SessionID,
 		})
 		if err != nil {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookError)
 			handleServiceError(w, err)
 			return
 		}
+
+		metrics.RecordAgentRunnerWebhook(metrics.WebhookAccepted)
+		// The status a container reports is free text off the network, so it is
+		// mapped onto a known set before it becomes a label.
+		metrics.RecordAgentRunnerResult(
+			metrics.NormalizeAgentRunnerStatus(strings.TrimSpace(req.Status)),
+			strconv.FormatBool(req.Repo.Pushed),
+			req.Usage.DurationMS,
+			req.Usage.NumTurns,
+			req.Usage.TotalCostUSD,
+		)
 
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "ok"})
 	}

@@ -25,6 +25,10 @@ func (f *fakeDialogRepo) ListChildren(_ context.Context, _ uuid.UUID) ([]domain.
 	return nil, nil
 }
 
+func (f *fakeDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (f *fakeDialogRepo) ListRecentDialogs(_ context.Context, _, _ int) ([]domain.Dialog, error) {
 	return nil, nil
 }

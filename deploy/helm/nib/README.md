@@ -102,6 +102,37 @@ When ingress is enabled, `OAUTH_CALLBACK_BASE_URL` and `FRONTEND_BASE_URL` defau
 
 Set `ingress.routeApiToBackend: true` to route `/api` directly to the backend Service (bypassing frontend nginx).
 
+### Metrics
+
+The backend serves Prometheus metrics on a separate port (9090 by default), so they stay off the
+ingress -- which routes only `/api` to the backend. The endpoint is unauthenticated, like the rest
+of the API.
+
+```yaml
+backend:
+  metrics:
+    enabled: true
+    port: 9090
+    path: /metrics
+    serviceMonitor:
+      enabled: true       # requires prometheus-operator
+      interval: 30s
+```
+
+The ServiceMonitor is only rendered when the cluster actually has the `monitoring.coreos.com/v1`
+API, so enabling it without prometheus-operator installed is a no-op rather than an error. For an
+annotation-based scraper instead:
+
+```yaml
+backend:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+```
+
+Metric names and queries: [docs/metrics.md](../../../docs/metrics.md).
+
 ### Backend data volume
 
 Runtime state is stored at `/app/data` on a PVC:

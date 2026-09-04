@@ -363,6 +363,9 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 	reminders := 0
 	toolFailures := 0
 
+	turn := beginAgentTurn(modeName)
+	defer turn.finish()
+
 	// The lock is taken per round rather than for the whole turn, so a sub-agent
 	// result lands between rounds instead of waiting out the entire turn. One
 	// deferred release covers every early return inside the locked stretch.
@@ -378,6 +381,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 	for round := 0; round < cfg.maxIterations; round++ {
 		roundNum := round + 1
 		roundLog := logCtx.withRound(roundNum)
+		turn.round(roundNum)
 
 		logAgentRoundStart(roundNum, len(messages), len(catalog.tools), logCtx)
 
@@ -416,6 +420,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			}); err != nil {
 				return domain.ChatResponse{}, fmt.Errorf("append final assistant round %d: %w", roundNum, err)
 			}
+			turn.succeeded()
 			return domain.ChatResponse{
 				Response:          asst.Content,
 				ActionPlanUpdated: actionPlanUpdated,
@@ -423,6 +428,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 		}
 
 		if round+1 >= cfg.maxIterations {
+			turn.hitMaxIterations()
 			logMaxIterationsWithPendingTools(cfg.maxIterations, roundNum, logCtx)
 			return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exceeded with pending tool_calls", cfg.maxIterations)
 		}
@@ -485,6 +491,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				}
 				out = toolErrorPayload(tc.Name, err)
 				toolFailures++
+				turn.toolFailed()
 			} else {
 				logCallToolResult(tc.ID, out, roundLog)
 				switch tc.Name {
@@ -506,6 +513,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				ToolCallID: tc.ID,
 			})
 			if toolFailures > maxToolFailuresPerTurn {
+				turn.hitToolFailureLimit()
 				return domain.ChatResponse{}, fmt.Errorf("round %d: %w", roundNum, ErrTooManyToolFailures)
 			}
 		}
@@ -534,6 +542,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			if modeName == mainDialogMode {
 				s.bindSubagentPause(dialogID, pendingAsk.ID, questions)
 			}
+			turn.awaitingInput()
 			return domain.ChatResponse{
 				Status:            "awaiting_input",
 				ToolCallID:        pendingAsk.ID,
@@ -542,6 +551,7 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 			}, nil
 		}
 	}
+	turn.hitMaxIterations()
 	return domain.ChatResponse{}, fmt.Errorf("max iterations (%d) exhausted without final assistant message", cfg.maxIterations)
 }
 

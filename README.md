@@ -25,6 +25,12 @@ The backend talks to a single OpenAI-compatible endpoint - for both chat and emb
 Choosing a provider, switching between `/v1/chat/completions` and `/v1/responses`, and
 falling back to OpenRouter are described in [docs/llm-providers.md](docs/llm-providers.md).
 
+### Metrics
+The backend exposes Prometheus metrics on a listener of its own (`:9090/metrics` by default),
+covering HTTP traffic, the Go runtime, plans by status, the agent loop, LLM calls, the execution
+lease and agent containers. Metric names, configuration and useful queries are in
+[docs/metrics.md](docs/metrics.md).
+
 ### Knowledge base
 The knowledge base is backed by pgvector.
 Each project's document follows a skeleton that ships with the image; the agent reads the current

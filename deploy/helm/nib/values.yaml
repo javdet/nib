@@ -39,6 +39,36 @@ backend:
     type: ClusterIP
     port: 8080
 
+  ## Prometheus metrics.
+  ##
+  ## Served on a port of its own rather than a route on the API: the ingress
+  ## below routes only the /api prefix to the backend, so this endpoint is not
+  ## reachable from the public host. It is unauthenticated, like the rest of the
+  ## API, and its metric names alone reveal plan counts, the configured model and
+  ## cumulative LLM cost -- so anything that can reach the pod can read those.
+  metrics:
+    enabled: true
+    port: 9090
+    path: /metrics
+
+    ## Add the metrics port to the backend Service. Needed for a ServiceMonitor
+    ## and for any scraper that targets the Service rather than the pod.
+    service:
+      enabled: true
+
+    ## ServiceMonitor for prometheus-operator. Off by default, and rendered only
+    ## when the monitoring.coreos.com/v1 API is actually present in the cluster.
+    serviceMonitor:
+      enabled: false
+      ## Namespace to create it in. Empty means the release namespace.
+      namespace: ""
+      interval: 30s
+      scrapeTimeout: 10s
+      ## Extra labels, for a Prometheus whose serviceMonitorSelector needs them.
+      additionalLabels: {}
+      relabelings: []
+      metricRelabelings: []
+
   ## Application config (rendered into config.yaml ConfigMap).
   ## knowledge_base.uri is omitted by default; DB connection uses DB_* env from Secret.
   config:
@@ -101,6 +131,10 @@ backend:
   dockerSocket:
     enabled: false
 
+  ## For an annotation-based scraper, instead of the ServiceMonitor above:
+  ##   prometheus.io/scrape: "true"
+  ##   prometheus.io/port: "9090"
+  ##   prometheus.io/path: "/metrics"
   podAnnotations: {}
   podLabels: {}
   podSecurityContext: {}
