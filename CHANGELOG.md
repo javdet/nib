@@ -4,6 +4,13 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.7.8] - 2026-09-04
+
+### Added
+- Action plans can now declare a `categories` property to scope which tool categories an action requires; unknown categories are dropped and logged, and each action's tool access during execution is restricted to its declared categories.
+- The backend now exposes a Prometheus metrics endpoint on port `9090`, configurable via environment variables and YAML settings, with execution and performance metrics recorded across backend services.
+- The included-tools panel gained "move all" and "move all from server" controls, so entire filtered lists or a whole server's tools can be included or excluded in one click instead of moving tools one at a time.
+
 ## [v0.7.7] - 2026-09-04
 
 ### Added
