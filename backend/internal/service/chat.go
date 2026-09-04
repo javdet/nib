@@ -39,9 +39,10 @@ const (
 
 type localToolHandler func(ctx context.Context, args map[string]any) (string, error)
 
-type toolCategoryLister interface {
+type toolCategoryService interface {
 	List(ctx context.Context) ([]toolcatalog.CategoryWithPatterns, error)
 	ListToolsByCategory(ctx context.Context, name string) ([]toolcatalog.CatalogTool, error)
+	SetPatterns(ctx context.Context, name string, patterns []string) (toolcatalog.CategoryWithPatterns, error)
 }
 
 type toolRoute struct {
@@ -106,7 +107,7 @@ type ChatService struct {
 	includedToolsSvc *includedtools.Service
 	knowledgeSvc     *KnowledgeService
 	toolSearchSvc    *ToolSearchService
-	toolCategorySvc  toolCategoryLister
+	toolCategorySvc  toolCategoryService
 	secretSvc        *SecretService
 	executorSvc      *executor.Service
 	skillsSvc        *skills.Service
@@ -180,7 +181,7 @@ func NewChatService(
 	includedToolsSvc *includedtools.Service,
 	knowledgeSvc *KnowledgeService,
 	toolSearchSvc *ToolSearchService,
-	toolCategorySvc toolCategoryLister,
+	toolCategorySvc toolCategoryService,
 	secretSvc *SecretService,
 	executorSvc *executor.Service,
 	skillsSvc *skills.Service,
@@ -247,7 +248,9 @@ func (s *ChatService) Send(ctx context.Context, message, modeName string) (domai
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send: load allow-tools: %w", err)
 		}
-		catalog, err = s.buildToolCatalog(ctx, allow, newToolBinding(uuid.Nil))
+		b := newToolBinding(uuid.Nil)
+		b.mode = modeName
+		catalog, err = s.buildToolCatalog(ctx, allow, b)
 		if err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send: %w", err)
 		}
@@ -340,31 +343,97 @@ func (s *ChatService) resolveAllowSet(modeName string) (map[string]struct{}, err
 		}
 	}
 
+	enforceModeToolLimits(modeName, out)
 	return out, nil
 }
 
-// resolveDialogAllowSet returns the mode allow set plus, for plan dialogs, every
-// tool belonging to the categories chosen during decomposition.
+// enforceModeToolLimits withdraws the tools a mode must not have whatever its
+// allow list says. SeedAllowLists never removes a name from a list already on
+// disk and an operator can add any name through the UI, so a tool scoped to a
+// single mode has to be taken away here rather than trusted to the file.
+func enforceModeToolLimits(modeName string, allow map[string]struct{}) {
+	if modeName != discussDialogMode {
+		delete(allow, UpdateToolCategoryToolName)
+	}
+}
+
+// resolveDialogAllowSet returns the mode allow set plus the tools of whichever
+// categories the dialog is entitled to: for a plan dialog the ones chosen during
+// decomposition, for an execute dialog the ones the plan put on its action.
+//
+// Every other mode gets the plain mode allow set. Categories are the only way an
+// agent reaches an MCP tool the mode list does not name, because the catalog is
+// fixed when the turn starts and cannot be widened from inside it.
 func (s *ChatService) resolveDialogAllowSet(ctx context.Context, d domain.Dialog) (map[string]struct{}, error) {
 	allow, err := s.resolveAllowSet(d.Mode)
 	if err != nil {
 		return nil, err
 	}
-	if d.Mode != "plan" || s.toolCategorySvc == nil {
+	if s.toolCategorySvc == nil {
 		return allow, nil
 	}
 
-	for _, name := range s.planDialogCategories(ctx, d) {
+	switch d.Mode {
+	case "plan":
+		s.addCategoryTools(ctx, allow, s.planDialogCategories(ctx, d), "plan allow set")
+	case executeDialogMode:
+		// An execute dialog belongs to one action, and its tools were chosen
+		// from that action's categories. Without this a follow-up the operator
+		// types into a finished sub-agent's transcript would rebuild the
+		// catalog without them, and the tools it was using a moment ago would
+		// be gone.
+		s.addCategoryTools(ctx, allow, s.executeDialogCategories(ctx, d), "execute allow set")
+	}
+	return allow, nil
+}
+
+// addCategoryTools adds every tool of the named categories to allow.
+//
+// A category that cannot be read is warned about and skipped rather than
+// failing the caller: losing one category costs the agent a capability, while
+// failing the turn costs it every one.
+func (s *ChatService) addCategoryTools(ctx context.Context, allow map[string]struct{}, categories []string, label string) {
+	if s.toolCategorySvc == nil {
+		return
+	}
+	for _, name := range categories {
 		tools, err := s.toolCategorySvc.ListToolsByCategory(ctx, name)
 		if err != nil {
-			slog.Warn("plan allow set: list tools by category", "category", name, "error", err)
+			slog.Warn(label+": list tools by category", "category", name, "error", err)
 			continue
 		}
 		for _, t := range tools {
 			allow[t.Name] = struct{}{}
 		}
 	}
-	return allow, nil
+}
+
+// executeDialogCategories returns the categories of the action an execute dialog
+// was started for. The dialog does not name its action, so it is resolved the
+// way the pull-request webhook resolves it: runs.json is the one key -> dialog
+// map, read backwards.
+func (s *ChatService) executeDialogCategories(ctx context.Context, d domain.Dialog) []string {
+	if d.ParentID == nil {
+		return nil
+	}
+	planID := *d.ParentID
+
+	runs, err := s.ReadActionPlanRuns(planID)
+	if err != nil {
+		slog.Warn("execute allow set: read runs", "plan_id", planID, "error", err)
+		return nil
+	}
+	key := findRunKeyByExecID(runs, d.ID)
+	if key == "" {
+		return nil
+	}
+
+	step, err := s.readActionPlanStep(planID, key)
+	if err != nil {
+		slog.Warn("execute allow set: read action", "plan_id", planID, "key", key, "error", err)
+		return nil
+	}
+	return step.Categories
 }
 
 func (s *ChatService) planDialogCategories(ctx context.Context, d domain.Dialog) []string {
@@ -398,15 +467,18 @@ func (s *ChatService) planDialogCategories(ctx context.Context, d domain.Dialog)
 // the subagent's id. It is also what keeps the orchestrator's own tools off a
 // subagent transcript: they are registered only when the two match.
 func (s *ChatService) dialogToolBinding(ctx context.Context, d domain.Dialog) toolBinding {
+	b := newToolBinding(d.ID)
+	b.mode = d.Mode
 	if d.ParentID == nil || s.dialogRepo == nil {
-		return newToolBinding(d.ID)
+		return b
 	}
 	rootID, err := s.resolveRootDialogID(ctx, d.ID)
 	if err != nil {
 		slog.Warn("tool binding: resolve plan root", "dialog_id", d.ID, "error", err)
-		return newToolBinding(d.ID)
+		return b
 	}
-	return toolBinding{dialogID: d.ID, planID: rootID}
+	b.planID = rootID
+	return b
 }
 
 func (s *ChatService) cachedToolCategoryNames(ctx context.Context) []string {

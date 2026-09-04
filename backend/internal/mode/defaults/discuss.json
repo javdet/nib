@@ -6,6 +6,7 @@
     "list_variables",
     "get_kb_document",
     "create_table",
-    "update_kb"
+    "update_kb",
+    "update_tool_category"
   ]
 }

@@ -146,9 +146,10 @@ var defaultCreateActionPlanParameters = json.RawMessage(`{
                     "command": { "type": "string" },
                     "repository": { "type": "string" },
                     "pr_title": { "type": "string" },
-                    "comment": { "type": "string" }
+                    "comment": { "type": "string" },
+                    "categories": { "type": "array", "items": { "type": "string" } }
                   },
-                  "required": ["type", "action"]
+                  "required": ["type", "action", "categories"]
                 }
               },
               "checks": {
@@ -176,9 +177,10 @@ var defaultCreateActionPlanParameters = json.RawMessage(`{
               "command": { "type": "string" },
               "repository": { "type": "string" },
               "pr_title": { "type": "string" },
-              "comment": { "type": "string" }
+              "comment": { "type": "string" },
+              "categories": { "type": "array", "items": { "type": "string" } }
             },
-            "required": ["type", "action"]
+            "required": ["type", "action", "categories"]
           }
         }
       },
@@ -188,12 +190,14 @@ var defaultCreateActionPlanParameters = json.RawMessage(`{
   "required": ["plan"]
 }`)
 
-// CreateActionPlanToolDef returns the LLM tool definition for persisting an action plan.
-func CreateActionPlanToolDef(allowToolsDir string) llm.ToolDef {
+// CreateActionPlanToolDef returns the LLM tool definition for persisting an
+// action plan. categoryNames constrains the per-action tool categories, which
+// are stamped onto the schema rather than kept in the file it is loaded from.
+func CreateActionPlanToolDef(allowToolsDir string, categoryNames []string) llm.ToolDef {
 	return llm.ToolDef{
 		Name:        CreateActionPlanToolName,
 		Description: "Save a detailed action plan for the current conversation. The plan is stored for rendering in the web interface.",
-		Parameters:  loadCreateActionPlanParameters(allowToolsDir),
+		Parameters:  withStepCategories(loadCreateActionPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 
@@ -225,6 +229,12 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 			return "plan is required", nil
 		}
 
+		// The categories decide the MCP tools of the sub-agent that will execute
+		// each action, so a name the catalog does not know is dropped here rather
+		// than stored and quietly ignored at execution time.
+		valid := s.cachedToolCategoryNames(ctx)
+		unknown := normalizeActionPlanCategories(raw, valid)
+
 		data, err := json.Marshal(raw)
 		if err != nil {
 			return "plan must be a valid JSON object", nil
@@ -248,7 +258,7 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 		execPath := actionPlanExecPath(s.actionPlansDir, dialogID)
 		_ = os.Remove(execPath)
 
-		return "Action plan saved to " + relPath, nil
+		return "Action plan saved to " + relPath + unknownCategoryNote(unknown, valid), nil
 	}
 }
 

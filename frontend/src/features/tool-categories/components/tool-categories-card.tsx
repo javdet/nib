@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api-client'
+import { useMode } from '@/features/modes/mode-context'
+import { useDialog } from '@/features/dialogs/dialog-context'
+import { createDialog } from '@/features/dialogs/api/dialogs'
 import {
 	listToolCategories,
 	listCategoryTools,
@@ -17,10 +20,15 @@ import {
 	type ToolCategory,
 	type CategorizedTool,
 } from '../api/tool-categories'
+import { buildCategorizeToolsRequest } from '../lib/build-categorize-request'
 
 type Selection = { kind: 'category'; name: string } | { kind: 'uncategorized' }
 
 export function ToolCategoriesCard() {
+	const { selectMode } = useMode()
+	const { setActiveDialogId, bumpDialogsVersion, enqueuePendingMessage } =
+		useDialog()
+
 	const [categories, setCategories] = useState<ToolCategory[]>([])
 	const [selection, setSelection] = useState<Selection | null>(null)
 	const [tools, setTools] = useState<CategorizedTool[]>([])
@@ -29,6 +37,7 @@ export function ToolCategoriesCard() {
 	const [loading, setLoading] = useState(true)
 	const [toolsLoading, setToolsLoading] = useState(false)
 	const [saving, setSaving] = useState(false)
+	const [filling, setFilling] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
 	const patternDirty = patternText !== savedPatternText
@@ -114,10 +123,63 @@ export function ToolCategoriesCard() {
 		}
 	}
 
+	const handleAutoFill = useCallback(async () => {
+		setFilling(true)
+		setError(null)
+		try {
+			// Read the bucket fresh rather than reusing the selection's `tools`:
+			// the panel on the right holds whatever category is selected, and the
+			// skill is only ever given the tools that still have no category.
+			const uncategorized = await listUncategorizedTools()
+			if (uncategorized.length === 0) {
+				setError('No uncategorized tools - every tool already has a category.')
+				return
+			}
+
+			// Only discuss carries the skills list and the update_tool_category
+			// tool, and the system prompt is frozen on a dialog's first message -
+			// so the mode has to be settled before anything is sent.
+			selectMode('discuss')
+			const dialog = await createDialog({
+				mode: 'discuss',
+				title: 'Tool categories: auto-fill',
+			})
+			// The chat panel picks this up once it has loaded the (empty)
+			// transcript for the newly active dialog and sends it for us.
+			enqueuePendingMessage({
+				dialogId: dialog.id,
+				text: buildCategorizeToolsRequest(categories, uncategorized),
+			})
+			setActiveDialogId(dialog.id)
+			bumpDialogsVersion()
+		} catch (err) {
+			setError(extractErrorMessage(err))
+		} finally {
+			setFilling(false)
+		}
+	}, [
+		categories,
+		selectMode,
+		enqueuePendingMessage,
+		setActiveDialogId,
+		bumpDialogsVersion,
+	])
+
 	return (
 		<Card>
 			<CardHeader className="pb-3">
-				<CardTitle className="text-base">Tool categories</CardTitle>
+				<div className="flex items-start justify-between gap-4">
+					<CardTitle className="text-base">Tool categories</CardTitle>
+					<Button
+						size="sm"
+						variant="outline"
+						className="shrink-0"
+						onClick={() => void handleAutoFill()}
+						disabled={filling || loading || categories.length === 0}
+					>
+						{filling ? 'Opening chat...' : 'Auto-fill with AI'}
+					</Button>
+				</div>
 				<p className="text-sm text-muted-foreground">
 					Assign tools to categories using exact names or prefix patterns
 					(e.g. <span className="font-mono">kubernetes_*</span>). Category
@@ -126,6 +188,12 @@ export function ToolCategoriesCard() {
 						toolCategories
 					</Link>{' '}
 					variable on the Variables page.
+				</p>
+				<p className="text-sm text-muted-foreground">
+					Auto-fill opens a discuss chat that sorts the uncategorized tools
+					into these categories. It <strong>replaces</strong> the patterns of
+					every category it assigns tools to, so patterns written by hand in
+					those categories are dropped.
 				</p>
 			</CardHeader>
 			<CardContent>

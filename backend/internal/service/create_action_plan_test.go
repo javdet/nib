@@ -13,7 +13,7 @@ import (
 
 func TestCreateActionPlanToolDef(t *testing.T) {
 	t.Parallel()
-	def := CreateActionPlanToolDef(t.TempDir())
+	def := CreateActionPlanToolDef(t.TempDir(), nil)
 	if def.Name != CreateActionPlanToolName {
 		t.Fatalf("name = %q, want %q", def.Name, CreateActionPlanToolName)
 	}

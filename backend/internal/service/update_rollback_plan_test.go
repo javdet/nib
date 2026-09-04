@@ -13,7 +13,7 @@ import (
 
 func TestUpdateRollbackPlanToolDef(t *testing.T) {
 	t.Parallel()
-	def := UpdateRollbackPlanToolDef(t.TempDir())
+	def := UpdateRollbackPlanToolDef(t.TempDir(), nil)
 	if def.Name != UpdateRollbackPlanToolName {
 		t.Fatalf("name = %q, want %q", def.Name, UpdateRollbackPlanToolName)
 	}

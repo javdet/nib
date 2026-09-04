@@ -31,6 +31,13 @@ You cannot see the others and they cannot see you.
   describe what that repository needs in your step text and leave the `code` step
   to the stage that owns it. Create a `code` step only for a repository the
   contract gives you, or one no other stage could plausibly touch.
+* **The `categories` you put on a step decide who can execute it.** Each step is
+  carried out later by an agent of its own, whose MCP tools are chosen from that
+  step's categories and cannot be widened once it starts. Set them from what
+  running the step takes, not from what researching it took: the task tracker and
+  the knowledge base you used to work the stage out are rarely what the executor
+  needs. The field is required on every step, so a step that needs no MCP tools
+  takes `[]`.
 * **Never use `ask_question`.** You do not have it, and suspending would strand the
   stages running beside you. When you need a decision from the user, call
   `report_blocker` with the question, two or three options, and the assumption you

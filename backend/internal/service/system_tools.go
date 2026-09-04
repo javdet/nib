@@ -14,10 +14,14 @@ import (
 var systemToolsDialogID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 // systemToolsBinding also carries a placeholder stage, so tools that exist only
-// for a plan stage subagent still appear in the catalog an operator browses.
-func systemToolsBinding() toolBinding {
+// for a plan stage subagent still appear in the catalog an operator browses. For
+// the same reason the whole-catalog listing passes the mode of the tools scoped
+// to one mode: without it they would be missing from the catalog entirely, and
+// their real availability comes from the allow lists.
+func systemToolsBinding(modeName string) toolBinding {
 	b := newToolBinding(systemToolsDialogID)
 	b.stage = "placeholder"
+	b.mode = modeName
 	return b
 }
 
@@ -36,7 +40,7 @@ func (s *ChatService) SystemToolDefs() ([]SystemToolDef, error) {
 		mcpRoutes:     make(map[string]toolRoute),
 		localHandlers: make(map[string]localToolHandler),
 	}
-	s.addLocalTools(&catalog, nil, systemToolsBinding())
+	s.addLocalTools(&catalog, nil, systemToolsBinding(discussDialogMode))
 
 	modeAllowLists, err := s.loadModeAllowLists()
 	if err != nil {
@@ -72,12 +76,13 @@ func (s *ChatService) SystemToolsForMode(modeName string) ([]SystemToolDef, erro
 	if err != nil {
 		return nil, err
 	}
+	enforceModeToolLimits(modeName, allow)
 
 	catalog := toolCatalog{
 		mcpRoutes:     make(map[string]toolRoute),
 		localHandlers: make(map[string]localToolHandler),
 	}
-	s.addLocalTools(&catalog, allow, systemToolsBinding())
+	s.addLocalTools(&catalog, allow, systemToolsBinding(modeName))
 
 	result := make([]SystemToolDef, 0, len(catalog.tools))
 	for _, tool := range catalog.tools {
@@ -105,6 +110,10 @@ func (s *ChatService) loadModeAllowLists() (map[string]map[string]struct{}, erro
 		if err != nil {
 			return nil, fmt.Errorf("load allow list for mode %q: %w", m, err)
 		}
+		// The catalog must show what a mode really gets, not what its file
+		// happens to list, so the same withdrawals the agent loop applies run
+		// here too.
+		enforceModeToolLimits(m, allow)
 		out[m] = allow
 	}
 	return out, nil

@@ -133,6 +133,11 @@ export interface ActionStep {
 	pr_title?: string
 	pr_url?: string
 	comment?: string
+	// categories names the tool categories the sub-agent that executes this step
+	// is given MCP tools from. Nothing renders it: it is declared only so an edit
+	// that rebuilds a step keeps it, since dropping it would silently strip the
+	// executor's tools.
+	categories?: string[]
 }
 
 export interface ActionCheck {
