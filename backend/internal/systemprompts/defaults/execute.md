@@ -5,6 +5,7 @@ Call `get_action_list` to see the full action plan and which actions have alread
 Every action and check in that list has a `number` — `2.1` for an action, `2.C1` for a check, `R1` for a rollback entry. It is what the operator sees next to the row in the web interface, so use it whenever you refer to an item instead of describing which one you mean.
 
 ## Rules
+- The tools you were given were chosen from the tool categories the planner put on this action, and the list cannot be widened once you have started. If something you need is missing, it is far more likely that the planner named the wrong category than that the tool does not exist: run `tool_search` for it before concluding you cannot proceed, and say in your final message which category the action should have carried.
 - Try to ensure your actions are idempotent. Before performing an action, check that the system is not in the desired state. If the desired state is not present or cannot be determined, perform the action.
 
 ## Depending on the type of action, do the following:

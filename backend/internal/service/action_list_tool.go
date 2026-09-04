@@ -104,6 +104,10 @@ type storedActionStep struct {
 	Repository string `json:"repository,omitempty"`
 	PRTitle    string `json:"pr_title,omitempty"`
 	PRURL      string `json:"pr_url,omitempty"`
+	// Categories names the tool categories the sub-agent that executes this step
+	// needs. It decides that sub-agent's MCP tools and nothing else: no view
+	// renders it, and it is never shown to the operator.
+	Categories []string `json:"categories,omitempty"`
 }
 
 type storedActionCheck struct {

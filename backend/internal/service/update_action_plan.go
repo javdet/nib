@@ -43,9 +43,10 @@ var defaultUpdateActionPlanParameters = json.RawMessage(`{
               "command": { "type": "string" },
               "repository": { "type": "string" },
               "pr_title": { "type": "string" },
-              "comment": { "type": "string" }
+              "comment": { "type": "string" },
+              "categories": { "type": "array", "items": { "type": "string" } }
             },
-            "required": ["type", "action"]
+            "required": ["type", "action", "categories"]
           }
         },
         "checks": {
@@ -70,13 +71,13 @@ var updateActionPlanParamsCache sync.Map
 
 // UpdateActionPlanToolDef returns the LLM tool definition for writing one stage
 // of the action plan.
-func UpdateActionPlanToolDef(allowToolsDir string) llm.ToolDef {
+func UpdateActionPlanToolDef(allowToolsDir string, categoryNames []string) llm.ToolDef {
 	return llm.ToolDef{
 		Name: UpdateActionPlanToolName,
 		Description: "Save a single stage of the action plan for the current conversation, leaving the other stages and the rollback untouched. " +
 			"The stage name must be one of the stages of the DAG built during decomposition; an existing stage of that name is replaced. " +
 			"The stage appears in the web interface as soon as the call returns, so call it once per stage while planning instead of waiting for the whole plan.",
-		Parameters: loadUpdateActionPlanParameters(allowToolsDir),
+		Parameters: withStepCategories(loadUpdateActionPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 
@@ -130,6 +131,12 @@ func (s *ChatService) updateActionPlanHandler(planID uuid.UUID, stage string) lo
 			return fmt.Sprintf("you are planning stage %q and may not write stage %q", stage, title), nil
 		}
 
+		// The categories decide the MCP tools of the sub-agent that will execute
+		// each step, so a name the catalog does not know is dropped here rather
+		// than stored and quietly ignored at execution time.
+		valid := s.cachedToolCategoryNames(ctx)
+		unknown := normalizeActionPlanCategories(content, valid)
+
 		stageIdx, total, err := s.writeActionPlanStage(planID, titles, title, content)
 		if err != nil {
 			return "", err
@@ -143,7 +150,8 @@ func (s *ChatService) updateActionPlanHandler(planID uuid.UUID, stage string) lo
 		})
 
 		relPath := filepath.Join("action_plans", planID.String()+".json")
-		return fmt.Sprintf("Stage %q saved to %s as stage %d of %d", title, relPath, stageIdx+1, total), nil
+		return fmt.Sprintf("Stage %q saved to %s as stage %d of %d", title, relPath, stageIdx+1, total) +
+			unknownCategoryNote(unknown, valid), nil
 	}
 }
 

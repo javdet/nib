@@ -358,6 +358,7 @@ func (s *ChatService) runPlanStage(ctx context.Context, rootID uuid.UUID, title 
 		dialogID: stageDialog.ID,
 		planID:   rootID,
 		stage:    title,
+		mode:     stagePlanMode,
 	}
 	catalog, err := s.buildToolCatalog(ctx, allow, binding)
 	if err != nil {
@@ -436,16 +437,7 @@ func (s *ChatService) planFanoutAllowSet(ctx context.Context, rootID uuid.UUID) 
 		if err != nil {
 			return nil, err
 		}
-		for _, name := range d.Categories {
-			tools, err := s.toolCategorySvc.ListToolsByCategory(ctx, name)
-			if err != nil {
-				slog.Warn("stage allow set: list tools by category", "category", name, "error", err)
-				continue
-			}
-			for _, t := range tools {
-				allow[t.Name] = struct{}{}
-			}
-		}
+		s.addCategoryTools(ctx, allow, d.Categories, "stage allow set")
 	}
 
 	stripSubagentTools(allow)

@@ -220,3 +220,141 @@ func TestResolveDialogAllowSet_ListToolsErrorIsNonFatal(t *testing.T) {
 		t.Fatalf("expected base allow tool to remain, got %v", allow)
 	}
 }
+
+// An action subagent gets the categories of the one action it owns, not the ones
+// decomposition chose for the plan, and an action carrying none gets no MCP
+// tools at all.
+func TestActionAgentAllowSet_UsesStepCategories(t *testing.T) {
+	allowDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(allowDir, "execute.json"),
+		[]byte(`{"allow_tools":["tool_search","execute_command"]}`), 0o644); err != nil {
+		t.Fatalf("write execute allow list: %v", err)
+	}
+
+	lister := &stubToolCategoryLister{
+		byCategory: map[string][]toolcatalog.CatalogTool{
+			"kubernetes":    {{Name: "kubernetes_resources_get"}},
+			"issue-tracker": {{Name: "jira_search"}},
+		},
+	}
+	svc := &ChatService{toolCategorySvc: lister, allowToolsDir: allowDir}
+
+	tests := []struct {
+		name       string
+		categories []string
+		want       []string
+		notWant    []string
+	}{
+		{
+			name:       "only the action's own categories",
+			categories: []string{"kubernetes"},
+			want:       []string{"tool_search", "execute_command", "kubernetes_resources_get"},
+			notWant:    []string{"jira_search"},
+		},
+		{
+			name:       "no categories means no category tools",
+			categories: nil,
+			want:       []string{"tool_search", "execute_command"},
+			notWant:    []string{"kubernetes_resources_get", "jira_search"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allow, err := svc.actionAgentAllowSet(context.Background(), tt.categories)
+			if err != nil {
+				t.Fatalf("actionAgentAllowSet: %v", err)
+			}
+			for _, name := range tt.want {
+				if _, ok := allow[name]; !ok {
+					t.Fatalf("expected %q in allow set, got %v", name, allow)
+				}
+			}
+			for _, name := range tt.notWant {
+				if _, ok := allow[name]; ok {
+					t.Fatalf("did not expect %q in allow set, got %v", name, allow)
+				}
+			}
+		})
+	}
+}
+
+// A follow-up the operator types into a finished action subagent's transcript
+// has to rebuild the same catalog the subagent had, which means resolving the
+// dialog back to its action through runs.json.
+func TestResolveDialogAllowSet_ExecuteDialogResolvesItsAction(t *testing.T) {
+	allowDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(allowDir, "execute.json"),
+		[]byte(`{"allow_tools":["tool_search"]}`), 0o644); err != nil {
+		t.Fatalf("write execute allow list: %v", err)
+	}
+
+	planID := uuid.New()
+	execID := uuid.New()
+
+	plansDir := t.TempDir()
+	plan := `{"stages":[{"title":"Deploy","steps":[
+		{"type":"shell","action":"restart","categories":["kubernetes"]}
+	],"checks":[]}],"rollback":[]}`
+	if err := os.WriteFile(filepath.Join(plansDir, planID.String()+".json"), []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	runs := `{"s0.step0":"` + execID.String() + `"}`
+	if err := os.WriteFile(filepath.Join(plansDir, planID.String()+".runs.json"), []byte(runs), 0o644); err != nil {
+		t.Fatalf("write runs: %v", err)
+	}
+
+	lister := &stubToolCategoryLister{
+		byCategory: map[string][]toolcatalog.CatalogTool{
+			"kubernetes": {{Name: "kubernetes_resources_get"}},
+		},
+	}
+	svc := &ChatService{
+		toolCategorySvc: lister,
+		allowToolsDir:   allowDir,
+		actionPlansDir:  plansDir,
+	}
+
+	allow, err := svc.resolveDialogAllowSet(context.Background(), domain.Dialog{
+		ID:       execID,
+		Mode:     "execute",
+		ParentID: &planID,
+	})
+	if err != nil {
+		t.Fatalf("resolveDialogAllowSet: %v", err)
+	}
+	for _, name := range []string{"tool_search", "kubernetes_resources_get"} {
+		if _, ok := allow[name]; !ok {
+			t.Fatalf("expected %q in allow set, got %v", name, allow)
+		}
+	}
+}
+
+// An execute dialog nothing registered in runs.json -- one an operator opened
+// themselves -- must not fail the turn, it just gets no category tools.
+func TestResolveDialogAllowSet_ExecuteDialogWithoutRun(t *testing.T) {
+	allowDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(allowDir, "execute.json"),
+		[]byte(`{"allow_tools":["tool_search"]}`), 0o644); err != nil {
+		t.Fatalf("write execute allow list: %v", err)
+	}
+
+	planID := uuid.New()
+	svc := &ChatService{
+		toolCategorySvc: &stubToolCategoryLister{},
+		allowToolsDir:   allowDir,
+		actionPlansDir:  t.TempDir(),
+	}
+
+	allow, err := svc.resolveDialogAllowSet(context.Background(), domain.Dialog{
+		ID:       uuid.New(),
+		Mode:     "execute",
+		ParentID: &planID,
+	})
+	if err != nil {
+		t.Fatalf("resolveDialogAllowSet: %v", err)
+	}
+	if len(allow) != 1 {
+		t.Fatalf("expected only the mode allow list, got %v", allow)
+	}
+}

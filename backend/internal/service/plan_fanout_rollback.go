@@ -130,6 +130,7 @@ func (s *ChatService) runRollbackAgent(ctx context.Context, rootID uuid.UUID) {
 		planID:   rootID,
 		stage:    rollbackStageTitle,
 		kind:     FanoutStageKindRollback,
+		mode:     stagePlanMode,
 	})
 	if err != nil {
 		fail(fmt.Errorf("build rollback catalog: %w", err))

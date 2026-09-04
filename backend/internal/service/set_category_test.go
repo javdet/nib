@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -70,10 +71,13 @@ func (r *setCategoryDialogRepo) DeleteMessagesAfterSeq(context.Context, uuid.UUI
 }
 
 type stubToolCategoryLister struct {
-	categories []toolcatalog.CategoryWithPatterns
-	byCategory map[string][]toolcatalog.CatalogTool
-	listErr    error
-	toolsErr   error
+	categories  []toolcatalog.CategoryWithPatterns
+	byCategory  map[string][]toolcatalog.CatalogTool
+	listErr     error
+	toolsErr    error
+	setName     string
+	setPatterns []string
+	setErr      error
 }
 
 func (s *stubToolCategoryLister) List(_ context.Context) ([]toolcatalog.CategoryWithPatterns, error) {
@@ -91,6 +95,23 @@ func (s *stubToolCategoryLister) ListToolsByCategory(_ context.Context, name str
 		return nil, nil
 	}
 	return s.byCategory[name], nil
+}
+
+func (s *stubToolCategoryLister) SetPatterns(_ context.Context, name string, patterns []string) (toolcatalog.CategoryWithPatterns, error) {
+	s.setName = name
+	s.setPatterns = patterns
+	if s.setErr != nil {
+		return toolcatalog.CategoryWithPatterns{}, s.setErr
+	}
+	for i, cat := range s.categories {
+		if cat.Name != name {
+			continue
+		}
+		s.categories[i].Patterns = patterns
+		s.categories[i].ToolCount = len(patterns)
+		return s.categories[i], nil
+	}
+	return toolcatalog.CategoryWithPatterns{}, fmt.Errorf("unknown category %q", name)
 }
 
 func TestSetCategoryHandler_SavesNormalizedCategories(t *testing.T) {

@@ -86,6 +86,15 @@ A `code` step is handed to a coding agent that clones the repository once, makes
 * Only exception: a second `code` step for the same repository is allowed when its content cannot be known until a non-code action of an earlier stage produces a value (for example, an ID issued by a cloud provider). State that dependency explicitly in the `action`.
 * The same grouping applies to `rollback`: one `code` rollback entry per repository, describing the full revert for that repository.
 
+## Tool categories
+Every step and every rollback entry carries `categories`: the tool categories the agent that **executes** that action is given MCP tools from. Pick from {{ range $i, $c := .global.toolCategories }}{{ if $i }}, {{ end }}{{ $c }}{{ end }}.
+* **Choose from what carrying the action out takes, not from what researching it took.** A step whose `command` is one `kubectl apply` needs `kubernetes`; the task tracker you read the ticket from has no part in running it.
+* **A category you leave off is a tool the executor will not have.** Its tools are fixed before it starts and it cannot ask for more mid-run: its only recourse is `tool_search`, which costs it a round and may not find what you meant.
+* **Do not pad the list either.** Every category you add puts all of its tools into that agent's context whether it calls them or not, which is the whole reason the field exists.
+* **Send `[]` when the action needs no MCP tools**, for example a `web` step an operator performs by hand or a `shell` step `execute_command` runs. The field is required, so an action that needs nothing has to say so rather than leave it out.
+* **A `code` step also takes `[]`.** It is built by a coding agent in a container with its own fixed tools, so categories on a `code` step change nothing.
+* Nothing renders `categories`. The operator never sees it; it exists only to size the executing agent's tool list.
+
 ## Github MCP rules
 - Don't use `get_repository_tree` from root recursively. Always try to read README.md in root repo first. 
 
@@ -108,10 +117,12 @@ Call `create_action_plan` with a `plan` object matching this schema:
                     "type": "code",
                     "repository": "helm-charts",
                     "pr_title": "chore: bump chart version for api",
+                    "categories": [],
                     "action": "All changes for this repository in one pull request.\n\n- `charts/api/Chart.yaml`: bump `version` to `1.4.0`\n- `charts/api/values.yaml`: set `image.tag` to `1.4.0` and `resources.limits.memory` to `512Mi`\n- `charts/api/templates/deployment.yaml`: add the `READ_TIMEOUT` env var\n- `values/prod.yaml` and `values/stage.yaml`: set `replicaCount` to `3`"
                 },
                 {
                     "type": "shell",
+                    "categories": ["kubernetes"],
                     "action": "Roll the api deployment to the new image and wait for the rollout to finish. Run it only after the chart pull request is merged and the release pipeline reports success.",
                     "command": "kubectl --context <KUBE_CONTEXT> -n prod set image deployment/api api=registry.local.net/api:1.4.0\nkubectl --context <KUBE_CONTEXT> -n prod rollout status deployment/api --timeout=180s"
                 }
@@ -134,10 +145,12 @@ Call `create_action_plan` with a `plan` object matching this schema:
             "steps": [
                 {
                     "type": "web",
+                    "categories": [],
                     "action": "Detailed web actions explanation"
                 },
                 {
                     "type": "curl",
+                    "categories": [],
                     "action": "Read the service health endpoint to confirm the new revision serves traffic. The token is stored in the api-readonly secret.",
                     "command": "curl -sS -X GET https://api.local.net/v1/health -H \"Authorization: Bearer <API_TOKEN>\""
                 }
@@ -158,21 +171,25 @@ Call `create_action_plan` with a `plan` object matching this schema:
     "rollback": [
         {
             "type": "curl",
+            "categories": [],
             "action": "Disable the feature flag that the new revision enables, so traffic falls back to the previous behaviour.",
             "command": "curl -sS -X POST https://api.local.net/v1/flags/new-api -H \"Authorization: Bearer <API_TOKEN>\" -d '{\"enabled\":false}'"
         },
         {
             "type": "web",
+            "categories": [],
             "action": "rollback web action"
         },
         {
             "type": "code",
             "repository": "helm-charts",
             "pr_title": "chore: revert chart version bump",
+            "categories": [],
             "action": "Full revert for this repository in one pull request.\n\n- `charts/api/Chart.yaml`: restore the previous `version`\n- `charts/api/values.yaml`: restore the previous `image.tag` and `resources.limits.memory`\n- `charts/api/templates/deployment.yaml`: remove the `READ_TIMEOUT` env var\n- `values/prod.yaml` and `values/stage.yaml`: restore the previous `replicaCount`"
         },
         {
             "type": "shell",
+            "categories": ["kubernetes"],
             "action": "Roll the api deployment back to the previous revision and wait for it to become ready.",
             "command": "kubectl --context <KUBE_CONTEXT> -n prod rollout undo deployment/api\nkubectl --context <KUBE_CONTEXT> -n prod rollout status deployment/api --timeout=180s"
         }

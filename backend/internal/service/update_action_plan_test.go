@@ -16,7 +16,7 @@ import (
 
 func TestUpdateActionPlanToolDef(t *testing.T) {
 	t.Parallel()
-	def := UpdateActionPlanToolDef(t.TempDir())
+	def := UpdateActionPlanToolDef(t.TempDir(), nil)
 	if def.Name != UpdateActionPlanToolName {
 		t.Fatalf("name = %q, want %q", def.Name, UpdateActionPlanToolName)
 	}

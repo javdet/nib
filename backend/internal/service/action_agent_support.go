@@ -40,32 +40,27 @@ func (s *ChatService) actionAgentSystemPrompt(ctx context.Context) (string, erro
 // one row of somebody else's plan, so every tool that could rewrite the plan,
 // suspend the turn, spawn another subagent, or start work with nowhere to report
 // back comes out.
-func (s *ChatService) actionAgentAllowSet(ctx context.Context, planID uuid.UUID) (map[string]struct{}, error) {
+//
+// categories are the ones the plan agent put on that one action, not the ones
+// decomposition chose for the plan as a whole: an action that runs a single
+// kubectl command has no use for the task tracker its siblings needed, and the
+// catalog cannot be narrowed once the turn has started.
+//
+// An action carrying no categories gets no MCP tools beyond what the execute
+// mode list and the operator's included list already name. tool_search is what
+// such a subagent -- an action of a plan written before the field existed, say
+// -- has to reach the rest of the catalog with.
+func (s *ChatService) actionAgentAllowSet(ctx context.Context, categories []string) (map[string]struct{}, error) {
 	allow, err := s.resolveAllowSet(executeDialogMode)
 	if err != nil {
 		return nil, err
 	}
 
-	if s.toolCategorySvc != nil && s.dialogRepo != nil {
-		d, err := s.dialogRepo.GetDialog(ctx, planID)
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range d.Categories {
-			tools, err := s.toolCategorySvc.ListToolsByCategory(ctx, name)
-			if err != nil {
-				slog.Warn("action agent allow set: list tools by category", "category", name, "error", err)
-				continue
-			}
-			for _, t := range tools {
-				allow[t.Name] = struct{}{}
-			}
-		}
-	}
+	s.addCategoryTools(ctx, allow, categories, "action agent allow set")
 
-	// Category inheritance only ever adds MCP tools, so these deletes guard
-	// against an operator's edit to the execute allow list rather than against
-	// inheritance -- but the cost of being wrong here is a subagent rewriting
+	// The categories only ever add MCP tools, so these deletes guard against an
+	// operator's edit to the execute allow list rather than against the
+	// categories -- but the cost of being wrong here is a subagent rewriting
 	// the plan it was asked to carry out one line of.
 	stripSubagentTools(allow)
 	delete(allow, AskQuestionToolName)

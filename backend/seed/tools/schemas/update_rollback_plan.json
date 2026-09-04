@@ -31,9 +31,17 @@
           "comment": {
             "type": "string",
             "description": "Optional note for the operator running the rollback."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Tool category name (e.g. kubernetes, monitoring, code-repository)."
+            },
+            "description": "Tool categories the sub-agent that executes this action will need. They decide which MCP tools that sub-agent is given, so name every surface the action touches and send an empty array when it needs none. A category left out is a tool the executor will not have."
           }
         },
-        "required": ["type", "action"]
+        "required": ["type", "action", "categories"]
       }
     }
   },

@@ -34,9 +34,10 @@ var defaultUpdateRollbackPlanParameters = json.RawMessage(`{
           "command": { "type": "string" },
           "repository": { "type": "string" },
           "pr_title": { "type": "string" },
-          "comment": { "type": "string" }
+          "comment": { "type": "string" },
+          "categories": { "type": "array", "items": { "type": "string" } }
         },
-        "required": ["type", "action"]
+        "required": ["type", "action", "categories"]
       }
     }
   },
@@ -47,14 +48,14 @@ var updateRollbackPlanParamsCache sync.Map
 
 // UpdateRollbackPlanToolDef returns the LLM tool definition for writing the
 // rollback list of the action plan.
-func UpdateRollbackPlanToolDef(allowToolsDir string) llm.ToolDef {
+func UpdateRollbackPlanToolDef(allowToolsDir string, categoryNames []string) llm.ToolDef {
 	return llm.ToolDef{
 		Name: UpdateRollbackPlanToolName,
 		Description: "Save the rollback list of the action plan for the current conversation, leaving every stage untouched. " +
 			"The rollback is one flat list for the whole plan, so the call replaces it as a whole and must carry every entry. " +
 			"This is how a plan assembled stage by stage gets its rollback, and how the rollback of an existing plan is redone " +
 			"without discarding the operator's checkboxes, comments and action runs.",
-		Parameters: loadUpdateRollbackPlanParameters(allowToolsDir),
+		Parameters: withStepCategories(loadUpdateRollbackPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 
@@ -92,6 +93,12 @@ func (s *ChatService) updateRollbackPlanHandler(planID uuid.UUID) localToolHandl
 			}
 		}
 
+		// The categories decide the MCP tools of the sub-agent that will execute
+		// each entry, so a name the catalog does not know is dropped here rather
+		// than stored and quietly ignored at execution time.
+		valid := s.cachedToolCategoryNames(ctx)
+		unknown := normalizeActionPlanCategories(entries, valid)
+
 		count, changed, err := s.writeActionPlanRollback(planID, entries)
 		if err != nil {
 			return "", err
@@ -108,9 +115,10 @@ func (s *ChatService) updateRollbackPlanHandler(planID uuid.UUID) localToolHandl
 		relPath := filepath.Join("action_plans", planID.String()+".json")
 		if !changed {
 			return fmt.Sprintf("Rollback unchanged: the %d entries you sent match the stored list, so %s and the operator's checkboxes are left as they are",
-				count, relPath), nil
+				count, relPath) + unknownCategoryNote(unknown, valid), nil
 		}
-		return fmt.Sprintf("Rollback saved to %s as %d entries, numbered R1 to R%d", relPath, count, count), nil
+		return fmt.Sprintf("Rollback saved to %s as %d entries, numbered R1 to R%d", relPath, count, count) +
+			unknownCategoryNote(unknown, valid), nil
 	}
 }
 

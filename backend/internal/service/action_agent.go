@@ -199,7 +199,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 
-	allow, err := s.actionAgentAllowSet(ctx, planID)
+	allow, err := s.actionAgentAllowSet(ctx, step.Categories)
 	if err != nil {
 		fail(fmt.Errorf("action agent allow set: %w", err))
 		return
@@ -207,6 +207,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 	catalog, err := s.buildToolCatalog(ctx, allow, toolBinding{
 		dialogID: dialog.ID,
 		planID:   planID,
+		mode:     executeDialogMode,
 	})
 	if err != nil {
 		fail(fmt.Errorf("build action catalog: %w", err))

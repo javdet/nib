@@ -146,7 +146,11 @@ func (s *ChatService) runDecomposeSubagentTurn(ctx context.Context, rootID, deco
 	// The transcript is the sub-agent's; every plan artifact belongs to the
 	// root. That split is what puts the DAG and the summary on the operator's
 	// plan rather than on this transcript.
-	catalog, err := s.buildToolCatalog(ctx, allow, toolBinding{dialogID: decomposeID, planID: rootID})
+	catalog, err := s.buildToolCatalog(ctx, allow, toolBinding{
+		dialogID: decomposeID,
+		planID:   rootID,
+		mode:     decomposeSubagentMode,
+	})
 	if err != nil {
 		return SubagentResult{}, fmt.Errorf("build decompose catalog: %w", err)
 	}

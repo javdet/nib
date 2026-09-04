@@ -30,6 +30,10 @@ type toolBinding struct {
 	// It is passed per call rather than read from ChatService so concurrent
 	// catalog builds cannot race on shared state.
 	categoryNames []string
+	// mode is the chat mode the turn runs in. It scopes the tools a single mode
+	// owns, so an operator adding one of them to another mode's allow list
+	// cannot hand it out.
+	mode string
 }
 
 // newToolBinding returns a binding for an ordinary turn, where the dialog that
@@ -79,6 +83,7 @@ func init() {
 		registerUpdateKBTool,
 		registerRunSubagentTool,
 		registerStopExecutionTool,
+		registerUpdateToolCategoryTool,
 	}
 }
 
@@ -212,7 +217,7 @@ func registerCreateActionPlanTool(s *ChatService, catalog *toolCatalog, b toolBi
 		return
 	}
 	catalog.localHandlers[CreateActionPlanToolName] = s.createActionPlanHandler(b.planID)
-	catalog.tools = append(catalog.tools, CreateActionPlanToolDef(s.allowToolsDir))
+	catalog.tools = append(catalog.tools, CreateActionPlanToolDef(s.allowToolsDir, b.categoryNames))
 }
 
 func registerUpdateActionPlanTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
@@ -220,7 +225,7 @@ func registerUpdateActionPlanTool(s *ChatService, catalog *toolCatalog, b toolBi
 		return
 	}
 	catalog.localHandlers[UpdateActionPlanToolName] = s.updateActionPlanHandler(b.planID, b.stage)
-	catalog.tools = append(catalog.tools, UpdateActionPlanToolDef(s.allowToolsDir))
+	catalog.tools = append(catalog.tools, UpdateActionPlanToolDef(s.allowToolsDir, b.categoryNames))
 }
 
 func registerUpdateRollbackPlanTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
@@ -228,7 +233,7 @@ func registerUpdateRollbackPlanTool(s *ChatService, catalog *toolCatalog, b tool
 		return
 	}
 	catalog.localHandlers[UpdateRollbackPlanToolName] = s.updateRollbackPlanHandler(b.planID)
-	catalog.tools = append(catalog.tools, UpdateRollbackPlanToolDef(s.allowToolsDir))
+	catalog.tools = append(catalog.tools, UpdateRollbackPlanToolDef(s.allowToolsDir, b.categoryNames))
 }
 
 func registerGetActionListTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
@@ -317,4 +322,19 @@ func registerStopExecutionTool(s *ChatService, catalog *toolCatalog, b toolBindi
 	}
 	catalog.localHandlers[StopExecutionToolName] = s.stopExecutionHandler()
 	catalog.tools = append(catalog.tools, StopExecutionToolDef())
+}
+
+// registerUpdateToolCategoryTool is discuss mode's alone. The binding is the
+// first guard and enforceModeToolLimits, which drops the name from every other
+// mode's allow set, is the second: SeedAllowLists never takes a tool out of a
+// list on disk, so a list that once carried it would keep offering it.
+func registerUpdateToolCategoryTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.mode != discussDialogMode || s.toolCategorySvc == nil {
+		return
+	}
+	if !localToolAllowed(allow, UpdateToolCategoryToolName) {
+		return
+	}
+	catalog.localHandlers[UpdateToolCategoryToolName] = s.updateToolCategoryHandler()
+	catalog.tools = append(catalog.tools, UpdateToolCategoryToolDef(b.categoryNames))
 }
