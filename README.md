@@ -41,7 +41,10 @@ There is a set of predefined variables that cannot be deleted. Filling them in i
 
 ### Tools
 Connections to remote MCP servers are supported. This can be done through data/mcp.json or the web interface.
-The number of tools available to the agent can be limited per mode. The remaining tools stay reachable through search.
+Every tool a server exposes is switched on for every mode as soon as it is indexed, so a newly added MCP server
+is usable right away; deleting a server takes its tools back out of every mode.
+The number of tools available to the agent can then be limited per mode on Tools -> Included tools - a tool taken
+out there stays out, and the remaining tools stay reachable through search.
 Tools can be sorted into different categories.
 
 Any value in an MCP server entry may use a reference of the form `${NAME}` - for example `"Authorization": "Bearer ${MCP_GITHUB_TOKEN}"`.

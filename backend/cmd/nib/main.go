@@ -258,6 +258,30 @@ func run() error {
 			return &http.Client{Timeout: t}
 		}(),
 	)
+	// Every MCP tool the catalog holds is on in every mode by default, so a
+	// server added through the UI is usable without a trip to the Included
+	// tools tab and a deleted one leaves no orphan names behind. Reconciling
+	// here rather than at chat time keeps the per-turn allow set a file read.
+	toolCatalogIndexer.SetAfterIndex(func(ctx context.Context) {
+		tools, err := toolCatalogStore.ListTools(ctx)
+		if err != nil {
+			slog.Warn("sync included tools: list catalog tools", "error", err)
+			return
+		}
+		names := make([]string, 0, len(tools))
+		for _, t := range tools {
+			names = append(names, t.Name)
+		}
+		res, err := includedToolsSvc.SyncCatalog(names)
+		if err != nil {
+			slog.Warn("sync included tools", "error", err)
+			return
+		}
+		if res.Changed() {
+			slog.Info("included tools synced with tool catalog",
+				"added", res.Added, "removed", res.Removed)
+		}
+	})
 	go func() {
 		if err := toolCatalogIndexer.ReindexAll(ctx); err != nil {
 			slog.Warn("tool catalog startup reindex", "error", err)
@@ -344,7 +368,10 @@ func run() error {
 		"seeded", skillSeeding.Created,
 		"alreadyPresent", skillSeeding.Skipped)
 	slog.Info("mcp config configured", "path", mcpConfigSvc.Path())
-	slog.Info("included tools configured", "systemDir", resolvedToolsDir, "mcpFile", includedToolsSvc.Path())
+	slog.Info("included tools configured",
+		"systemDir", resolvedToolsDir,
+		"mcpFile", includedToolsSvc.Path(),
+		"knownFile", includedToolsSvc.KnownPath())
 	slog.Info("llm provider configured",
 		"llmEndpoint", cfg.LLM.BaseURL,
 		"api", cfg.LLM.API,

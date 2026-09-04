@@ -291,3 +291,45 @@ func TestIndexer_listServersError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestIndexer_afterIndexHookRunsOnSuccess(t *testing.T) {
+	ctx := context.Background()
+	s := newTestCatalogStore(ctx, t)
+	truncateCatalogTables(ctx, t, s)
+
+	lister := &fakeServerLister{
+		servers: []mcpconfig.Server{
+			{Name: "srv", ServerEntry: mcpconfig.ServerEntry{URL: "https://srv/mcp"}},
+		},
+	}
+	indexer := NewIndexer(lister, s, nil, "", &http.Client{})
+	indexer.discoverTools = func(_ context.Context, _ string, _ map[string]string, _ *http.Client) ([]mcpclient.ToolInfo, error) {
+		return []mcpclient.ToolInfo{{Name: "ok_tool", Description: "works"}}, nil
+	}
+
+	calls := 0
+	indexer.SetAfterIndex(func(context.Context) { calls++ })
+
+	if err := indexer.ReindexAll(ctx); err != nil {
+		t.Fatalf("ReindexAll: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("afterIndex calls = %d, want 1", calls)
+	}
+}
+
+func TestIndexer_afterIndexHookSkippedOnFailure(t *testing.T) {
+	ctx := context.Background()
+	s := newTestCatalogStore(ctx, t)
+
+	indexer := NewIndexer(&fakeServerLister{err: errors.New("list failed")}, s, nil, "", &http.Client{})
+	called := false
+	indexer.SetAfterIndex(func(context.Context) { called = true })
+
+	if err := indexer.ReindexAll(ctx); err == nil {
+		t.Fatal("expected reindex error")
+	}
+	if called {
+		t.Fatal("afterIndex must not run when the reindex failed")
+	}
+}
