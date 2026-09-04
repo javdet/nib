@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 // Fixed agent-runner settings for action runs. They are not exposed in the
@@ -64,7 +66,15 @@ type ActionRunResult struct {
 // environment contract of the claude-code agent entrypoint (PROMPT,
 // TARGET_BRANCH, GITHUB_TOKEN, ...). BASE_BRANCH is deliberately omitted so the
 // agent clones the repository default branch and opens the pull request against it.
+// RunAction launches an agent container for a code action an operator ran.
 func (s *Service) RunAction(ctx context.Context, req ActionRunRequest) (ActionRunResult, error) {
+	start := time.Now()
+	res, err := s.runAction(ctx, req)
+	s.recordRun(metrics.ExecutorEntrypointAction, err, time.Since(start))
+	return res, err
+}
+
+func (s *Service) runAction(ctx context.Context, req ActionRunRequest) (ActionRunResult, error) {
 	cfg, err := s.config.Get()
 	if err != nil {
 		return ActionRunResult{}, err
@@ -275,7 +285,14 @@ type StopActionRequest struct {
 // A container that is already gone is not an error: the point of the call is
 // that nothing is left running, and a force stop is reached exactly when the
 // state of the run is in doubt.
+// StopAction stops a running agent container.
 func (s *Service) StopAction(ctx context.Context, req StopActionRequest) error {
+	err := s.stopAction(ctx, req)
+	metrics.RecordExecutorStop(err)
+	return err
+}
+
+func (s *Service) stopAction(ctx context.Context, req StopActionRequest) error {
 	if strings.TrimSpace(req.JobName) == "" && strings.TrimSpace(req.ContainerID) == "" {
 		return ErrStopTargetRequired
 	}

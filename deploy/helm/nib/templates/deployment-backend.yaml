@@ -87,6 +87,11 @@ spec:
             - name: http
               containerPort: {{ .Values.backend.service.port }}
               protocol: TCP
+            {{- if .Values.backend.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.backend.metrics.port }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: SERVER_HOST
               value: "0.0.0.0"
@@ -159,6 +164,14 @@ spec:
                   key: SECRETS_ENCRYPTION_KEY
             - name: APP_VERSION
               value: {{ .Chart.AppVersion | quote }}
+            - name: METRICS_ENABLED
+              value: {{ .Values.backend.metrics.enabled | quote }}
+            {{- if .Values.backend.metrics.enabled }}
+            - name: METRICS_PORT
+              value: {{ .Values.backend.metrics.port | quote }}
+            - name: METRICS_PATH
+              value: {{ .Values.backend.metrics.path | quote }}
+            {{- end }}
             {{- if .Values.backend.dockerSocket.enabled }}
             - name: DOCKER_HOST
               value: unix:///var/run/docker.sock

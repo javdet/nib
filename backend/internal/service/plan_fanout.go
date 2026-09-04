@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 const (
@@ -143,12 +144,14 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	}
 	titles := dagStageTitles(dag)
 	if !found || len(titles) == 0 {
+		metrics.RecordFanoutRejected("no_dag_stages")
 		return FanoutRun{}, ErrNoDAGStages
 	}
 
 	if existing, found, err := s.ReadFanoutRun(rootID); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: read run: %w", err)
 	} else if found && existing.Active() {
+		metrics.RecordFanoutRejected("in_progress")
 		return FanoutRun{}, ErrFanoutInProgress
 	}
 
@@ -181,6 +184,7 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	if err := s.writeFanoutRun(rootID, run); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
+	metrics.RecordFanoutStarted()
 
 	// The run outlives the request that started it, so it gets a deadline of its
 	// own rather than inheriting one that is about to be cancelled.

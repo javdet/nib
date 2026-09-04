@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/google/uuid"
 )
 
@@ -34,6 +35,7 @@ func (b *ActivityBroker) Subscribe(dialogID uuid.UUID) (<-chan domain.AgentActiv
 		b.subscribers[dialogID] = make(map[uint64]chan domain.AgentActivity)
 	}
 	b.subscribers[dialogID][id] = ch
+	metrics.IncSSESubscribers()
 
 	unsubscribe := func() {
 		b.mu.Lock()
@@ -46,6 +48,10 @@ func (b *ActivityBroker) Subscribe(dialogID uuid.UUID) (<-chan domain.AgentActiv
 		if c, exists := subs[id]; exists {
 			delete(subs, id)
 			close(c)
+			// Decremented inside the existence check, not at the top: the
+			// closure is idempotent by design and Events defers it, so counting
+			// unconditionally would drive the gauge negative.
+			metrics.DecSSESubscribers()
 		}
 		if len(subs) == 0 {
 			delete(b.subscribers, dialogID)
@@ -67,7 +73,9 @@ func (b *ActivityBroker) Publish(dialogID uuid.UUID, ev domain.AgentActivity) {
 	for _, ch := range channels {
 		select {
 		case ch <- ev:
+			metrics.RecordSSEEvent(string(ev.Kind))
 		default:
+			metrics.RecordSSEEventDropped(string(ev.Kind))
 			slog.Warn("activity event dropped, slow subscriber", "dialog_id", dialogID, "kind", ev.Kind)
 		}
 	}

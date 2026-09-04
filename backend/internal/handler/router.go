@@ -46,6 +46,7 @@ func NewRouter(
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
+	r.Use(httpMetrics)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware(allowedOrigins))
 

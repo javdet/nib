@@ -29,6 +29,10 @@ func (r *retryDialogRepo) ListChildren(_ context.Context, _ uuid.UUID) ([]domain
 	return nil, nil
 }
 
+func (r *retryDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (r *retryDialogRepo) ListRecentDialogs(_ context.Context, _, _ int) ([]domain.Dialog, error) {
 	return nil, nil
 }

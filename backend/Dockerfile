@@ -72,6 +72,9 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV SERVER_HOST=0.0.0.0 \
 	SERVER_PORT=8080 \
+	METRICS_HOST=0.0.0.0 \
+	METRICS_PORT=9090 \
+	METRICS_PATH=/metrics \
 	MIGRATIONS_PATH=/app/migrations \
 	DATA_DIR=/app/data \
 	SEED_DIR=/app/seed
@@ -81,7 +84,8 @@ ENV SERVER_HOST=0.0.0.0 \
 # Helm chart both override this with a named volume / PVC.
 VOLUME ["/app/data"]
 
-EXPOSE 8080
+# 8080 is the API; 9090 serves Prometheus metrics only.
+EXPOSE 8080 9090
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=10 \
 	CMD curl -sf http://localhost:8080/api/v1/health || exit 1

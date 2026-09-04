@@ -38,6 +38,10 @@ func (s *stubDialogRepo) CountDialogsSearch(context.Context, string, string) (in
 func (s *stubDialogRepo) ListChildren(context.Context, uuid.UUID) ([]domain.Dialog, error) {
 	return nil, nil
 }
+
+func (s *stubDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
 func (s *stubDialogRepo) GetDialog(context.Context, uuid.UUID) (domain.Dialog, error) {
 	return s.dialog, nil
 }

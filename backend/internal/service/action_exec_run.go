@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 // ActionExecStatus is where a per-action sub-agent run ended up.
@@ -147,6 +148,7 @@ func (s *ChatService) startActionExecRun(planID uuid.UUID, key string) (ActionEx
 			Attempt:   attempt,
 			Kind:      ExecutionKindSubagent,
 		}
+		metrics.RecordActionExecStarted(string(ExecutionKindSubagent))
 	})
 }
 
@@ -161,6 +163,13 @@ func (s *ChatService) finishActionExecRun(planID uuid.UUID, key string, status A
 		run.Status = status
 		run.FinishedAt = time.Now().Unix()
 		run.Error = errMsg
+		// Recorded inside the closure, past the Active guard: a run something
+		// else already closed must not be counted a second time.
+		var ran time.Duration
+		if run.StartedAt > 0 {
+			ran = time.Duration(run.FinishedAt-run.StartedAt) * time.Second
+		}
+		metrics.RecordActionExecFinished(string(status), ran)
 	})
 	if err != nil {
 		// The sub-agent has already done its work; failing to record the

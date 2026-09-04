@@ -11,6 +11,7 @@ import (
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/textutil"
 	"github.com/google/uuid"
@@ -170,6 +171,7 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 	// The container is the only thing that can be stopped now, so the lease has
 	// to carry the way to reach it: nothing else records the job name.
 	launched = true
+	metrics.RecordActionExecStarted(string(ExecutionKindContainer))
 	s.stampExecutionLease(lease.token, func(l *ExecutionLease) {
 		l.JobName = result.JobName
 		l.ContainerID = result.ContainerID

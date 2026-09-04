@@ -61,6 +61,10 @@ func (r *multiDialogRepo) ListChildren(_ context.Context, parentID uuid.UUID) ([
 	return out, nil
 }
 
+func (r *multiDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (r *multiDialogRepo) ListMessages(_ context.Context, dialogID uuid.UUID) ([]domain.DialogMessage, error) {
 	return append([]domain.DialogMessage(nil), r.messages[dialogID]...), nil
 }

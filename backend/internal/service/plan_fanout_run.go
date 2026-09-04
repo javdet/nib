@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/atomicfile"
 )
 
@@ -172,6 +173,7 @@ func (s *ChatService) setFanoutStage(dialogID uuid.UUID, title string, apply fun
 			}
 			if normalizeStageTitle(run.Stages[i].Title) == normalizeStageTitle(title) {
 				apply(&run.Stages[i])
+				recordFanoutStage(run.Stages[i])
 				return
 			}
 		}
@@ -186,9 +188,26 @@ func (s *ChatService) setFanoutRollback(dialogID uuid.UUID, apply func(*FanoutSt
 		for i := range run.Stages {
 			if run.Stages[i].Kind == FanoutStageKindRollback {
 				apply(&run.Stages[i])
+				recordFanoutStage(run.Stages[i])
 				return
 			}
 		}
 	})
 	return err
+}
+
+// recordFanoutStage counts a stage that has reached a terminal status. pending
+// and running are skipped: a stage passes through them on the way, and counting
+// them would make the totals a multiple of the stages rather than a count.
+func recordFanoutStage(st FanoutStage) {
+	switch st.Status {
+	case FanoutStageDone, FanoutStageFailed:
+	default:
+		return
+	}
+	kind := "stage"
+	if st.Kind == FanoutStageKindRollback {
+		kind = "rollback"
+	}
+	metrics.RecordFanoutStage(kind, string(st.Status))
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,6 +30,7 @@ type Config struct {
 	Prompts          PromptsConfig
 	IncludedTools    IncludedToolsConfig
 	MCP              MCPConfig
+	Metrics          MetricsConfig
 	Executor             ExecutorConfig
 	SecretsEncryptionKey []byte
 }
@@ -91,6 +93,47 @@ type LogConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	File    string `yaml:"file"`
 	Level   string `yaml:"level"`
+}
+
+// MetricsConfig controls the Prometheus endpoint.
+//
+// The endpoint gets a listener of its own rather than a route on the API
+// server: both the Helm ingress and the frontend nginx route only the /api
+// prefix to the backend, so a separate port is never reachable from the public
+// host while an in-cluster scraper on the pod port still gets it.
+type MetricsConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
+	Path    string `yaml:"path"`
+	// RefreshSeconds is how often plans-by-status and the database health probe
+	// are recomputed. They are not done at scrape time: counting plans is one
+	// Postgres query plus one plan_state file read per plan.
+	RefreshSeconds int `yaml:"refreshSeconds"`
+}
+
+// fileMetricsConfig mirrors MetricsConfig for YAML.
+//
+// Enabled is a pointer because the default is true, which a bool zero value
+// cannot distinguish from an explicit "enabled: false".
+type fileMetricsConfig struct {
+	Enabled        *bool  `yaml:"enabled"`
+	Host           string `yaml:"host"`
+	Port           int    `yaml:"port"`
+	Path           string `yaml:"path"`
+	RefreshSeconds int    `yaml:"refreshSeconds"`
+}
+
+const (
+	defaultMetricsHost           = "0.0.0.0"
+	defaultMetricsPort           = 9090
+	defaultMetricsPath           = "/metrics"
+	defaultMetricsRefreshSeconds = 30
+)
+
+// RefreshInterval is the metrics refresh interval as a duration.
+func (m MetricsConfig) RefreshInterval() time.Duration {
+	return time.Duration(m.RefreshSeconds) * time.Second
 }
 
 // SkillsConfig holds the skills directory path from YAML.
@@ -235,6 +278,7 @@ type fileConfig struct {
 	Prompts       PromptsConfig       `yaml:"prompts"`
 	IncludedTools IncludedToolsConfig `yaml:"includedTools"`
 	MCP           MCPConfig           `yaml:"mcp"`
+	Metrics       fileMetricsConfig   `yaml:"metrics"`
 	Executor      ExecutorConfig      `yaml:"executor"`
 	Project       ProjectConfig       `yaml:"project"`
 	Projects      []ProjectConfig     `yaml:"projects"`
@@ -311,6 +355,7 @@ func Load(path string) (Config, error) {
 	applyFileLLMConfig(&cfg.LLM, fc.LLM)
 	applyLLMDefaults(&cfg.LLM)
 	applyFileAppConfig(&cfg, fc)
+	applyFileMetricsConfig(&cfg.Metrics, fc.Metrics)
 
 	if err := validateAppConfig(cfg); err != nil {
 		return Config{}, err
@@ -328,6 +373,28 @@ func validateAppConfig(cfg Config) error {
 	}
 	if _, err := ParseLogLevel(cfg.Log.Level); err != nil {
 		return err
+	}
+	if err := validateMetricsConfig(cfg.Metrics, cfg.Server); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateMetricsConfig(m MetricsConfig, server ServerConfig) error {
+	if !m.Enabled {
+		return nil
+	}
+	if !strings.HasPrefix(m.Path, "/") {
+		return fmt.Errorf("config: metrics.path must start with / (got %q)", m.Path)
+	}
+	if m.Port < 1 || m.Port > 65535 {
+		return fmt.Errorf("config: metrics.port must be between 1 and 65535 (got %d)", m.Port)
+	}
+	if m.Port == server.Port {
+		return fmt.Errorf("config: metrics.port %d is already the API port; metrics need a listener of their own", m.Port)
+	}
+	if m.RefreshSeconds < 1 {
+		return fmt.Errorf("config: metrics.refreshSeconds must be at least 1 (got %d)", m.RefreshSeconds)
 	}
 	return nil
 }
@@ -539,4 +606,57 @@ func envOrDefaultInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func envOrDefaultBool(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
+}
+
+// applyFileMetricsConfig resolves metrics settings as env, then YAML, then default.
+//
+// Env has to win: the Dockerfile and the Helm deployment both pass METRICS_*,
+// and a config.yaml baked into the image or left behind on a data volume must
+// not override what the deployment asked for. That is why each field checks
+// LookupEnv rather than following the log block, which overwrites itself from
+// YAML wholesale and then patches LOG_LEVEL back on top.
+func applyFileMetricsConfig(dst *MetricsConfig, fc fileMetricsConfig) {
+	dst.Enabled = true
+	if fc.Enabled != nil {
+		dst.Enabled = *fc.Enabled
+	}
+	if _, ok := os.LookupEnv("METRICS_ENABLED"); ok {
+		dst.Enabled = envOrDefaultBool("METRICS_ENABLED", dst.Enabled)
+	}
+
+	dst.Host = firstNonEmpty(os.Getenv("METRICS_HOST"), fc.Host, defaultMetricsHost)
+	dst.Path = firstNonEmpty(os.Getenv("METRICS_PATH"), fc.Path, defaultMetricsPath)
+
+	dst.Port = fc.Port
+	if dst.Port == 0 {
+		dst.Port = defaultMetricsPort
+	}
+	dst.Port = envOrDefaultInt("METRICS_PORT", dst.Port)
+
+	dst.RefreshSeconds = fc.RefreshSeconds
+	if dst.RefreshSeconds == 0 {
+		dst.RefreshSeconds = defaultMetricsRefreshSeconds
+	}
+	dst.RefreshSeconds = envOrDefaultInt("METRICS_REFRESH_SECONDS", dst.RefreshSeconds)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

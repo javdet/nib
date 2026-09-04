@@ -28,6 +28,11 @@ func NewDialogRepo(pool *pgxpool.Pool) *DialogRepo {
 
 const dialogColumns = `id, title, mode, parent_id, task_id, categories, pinned, created_at, updated_at`
 
+// planDialogPredicate is what makes a dialog a plan: a root whose mode carries
+// one. Kept as a const because the same predicate is also spelled out in Go in
+// handler.enrichDialogsWithPlanStatus, and the two have to agree.
+const planDialogPredicate = `parent_id IS NULL AND mode NOT IN ('discuss', 'incident')`
+
 const messageColumns = `id, dialog_id, seq, role, content, tool_calls, tool_call_id, name, created_at`
 
 func (r *DialogRepo) CreateDialog(ctx context.Context, mode, title string, parentID *uuid.UUID) (domain.Dialog, error) {
@@ -229,6 +234,25 @@ func (r *DialogRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]do
 		dialogs = append(dialogs, d)
 	}
 	return dialogs, rows.Err()
+}
+
+func (r *DialogRepo) ListPlanDialogIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id FROM chat_dialogs WHERE `+planDialogPredicate)
+	if err != nil {
+		return nil, fmt.Errorf("list plan dialog ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan plan dialog id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (r *DialogRepo) GetDialog(ctx context.Context, id uuid.UUID) (domain.Dialog, error) {

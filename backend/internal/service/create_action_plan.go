@@ -100,18 +100,25 @@ const (
 	ActionPlanStatusRolledBack ActionPlanStatus = "rolled_back"
 )
 
+// actionPlanStatuses is every valid status. It is the one list: validation and
+// the plans-by-status metric both derive from it, so a status cannot be added to
+// one and forgotten in the other.
+var actionPlanStatuses = []ActionPlanStatus{
+	ActionPlanStatusDraft,
+	ActionPlanStatusScheduled,
+	ActionPlanStatusInProgress,
+	ActionPlanStatusDone,
+	ActionPlanStatusReopened,
+	ActionPlanStatusRolledBack,
+}
+
 func isValidActionPlanStatus(status ActionPlanStatus) bool {
-	switch status {
-	case ActionPlanStatusDraft,
-		ActionPlanStatusScheduled,
-		ActionPlanStatusInProgress,
-		ActionPlanStatusDone,
-		ActionPlanStatusReopened,
-		ActionPlanStatusRolledBack:
-		return true
-	default:
-		return false
+	for _, s := range actionPlanStatuses {
+		if s == status {
+			return true
+		}
 	}
+	return false
 }
 
 // defaultCreateActionPlanParameters is used when the schema file is missing.

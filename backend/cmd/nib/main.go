@@ -25,6 +25,7 @@ import (
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/logging"
 	"github.com/javdet/nib/internal/mcpconfig"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/oauth"
@@ -63,11 +64,25 @@ func run() error {
 	}
 	defer cleanup()
 
+	metricsSvc, err := metrics.Setup(metrics.Config{
+		Enabled:        cfg.Metrics.Enabled,
+		Host:           cfg.Metrics.Host,
+		Port:           cfg.Metrics.Port,
+		Path:           cfg.Metrics.Path,
+		RefreshSeconds: cfg.Metrics.RefreshSeconds,
+	})
+	if err != nil {
+		return err
+	}
+
 	slog.Info("startup",
 		"log.enabled", cfg.Log.Enabled,
 		"log.file", cfg.Log.File,
 		"log.level", cfg.Log.Level,
 		"agent.maxIterations", cfg.Agent.MaxIterations,
+		"metrics.enabled", cfg.Metrics.Enabled,
+		"metrics.addr", metricsSvc.Addr(),
+		"metrics.path", cfg.Metrics.Path,
 	)
 
 	initialStore := static.NewStore(cfg.Projects)
@@ -103,6 +118,10 @@ func run() error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 	slog.Info("connected to database", "dsnSource", cfg.DatabaseDSNSource())
+
+	if err := metricsSvc.RegisterPool(metrics.PgxPoolStats(pool)); err != nil {
+		return err
+	}
 
 	migrationsPath := os.Getenv("MIGRATIONS_PATH")
 	if migrationsPath == "" {
@@ -231,6 +250,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("llm provider: %w", err)
 	}
+	// Decorating at this one seam instruments every consumer of the client:
+	// the chat service, knowledge, the tool-catalog indexer and tool search all
+	// take this same value.
+	llmProvider = llm.NewMetered(llmProvider, cfg.LLM.Model)
 	kbStore := kb.New(pool)
 	knowledgeSvc := service.NewKnowledgeService(
 		cfg.ConfigPath,
@@ -332,9 +355,12 @@ func run() error {
 	// blocking the one execution slot.
 	if rec, err := chatSvc.ReconcileStuckRuns(); err != nil {
 		slog.Warn("reconcile stuck runs", "error", err)
-	} else if rec.Actions > 0 || rec.Fanouts > 0 {
-		slog.Info("closed runs left behind by a previous process",
-			"actions", rec.Actions, "fanouts", rec.Fanouts)
+	} else {
+		metrics.AddStuckRunsReconciled(rec.Actions, rec.Fanouts)
+		if rec.Actions > 0 || rec.Fanouts > 0 {
+			slog.Info("closed runs left behind by a previous process",
+				"actions", rec.Actions, "fanouts", rec.Fanouts)
+		}
 	}
 
 	// Both mcp.json edits and secret rotations change what a resolved MCP server
@@ -380,6 +406,14 @@ func run() error {
 		"reasoningEffort", cfg.LLM.ReasoningEffort,
 	)
 
+	// Registered after `defer pool.Close()` above, so LIFO stops the refresher
+	// before the pool it pings is closed.
+	stopMetrics := metricsSvc.StartRefresher(ctx, metrics.RefreshSources{
+		Plans: chatSvc,
+		DB:    pool,
+	}, cfg.Metrics.RefreshInterval())
+	defer stopMetrics()
+
 	router := handler.NewRouter(
 		[]string{"http://localhost:5173"},
 		projectSvc,
@@ -416,6 +450,30 @@ func run() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Metrics get a listener of their own: both the ingress and the frontend
+	// nginx route only /api to the backend, so a separate port keeps /metrics
+	// off the public host while an in-cluster scraper still reaches it.
+	var metricsSrv *http.Server
+	if metricsSvc.Enabled() {
+		mux := http.NewServeMux()
+		mux.Handle(metricsSvc.Path(), metricsSvc.Handler())
+		metricsSrv = &http.Server{
+			Addr:         metricsSvc.Addr(),
+			Handler:      mux,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+		go func() {
+			slog.Info("starting metrics server", "addr", metricsSrv.Addr, "path", metricsSvc.Path())
+			// Logged rather than fatal: losing metrics must never take the API
+			// down with it.
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("metrics server", "error", err)
+			}
+		}()
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("starting HTTP server", "addr", addr)
@@ -439,6 +497,12 @@ func run() error {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
+
+	if metricsSrv != nil {
+		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("metrics server shutdown", "error", err)
+		}
+	}
 
 	slog.Info("shutting down HTTP server")
 	if err := srv.Shutdown(shutdownCtx); err != nil {

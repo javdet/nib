@@ -48,6 +48,22 @@ log:
   file: "/app/data/logs/llmchat.stderr.log"
   level: info   # info (default) | debug | warn | error
 
+# Prometheus metrics, served on a listener of their own.
+#
+# A separate port, not a route on the API server: both the Helm ingress and the
+# frontend nginx route only the /api prefix to the backend, so this endpoint
+# stays unreachable from the public host while an in-cluster scraper on the pod
+# port still gets it. It is unauthenticated, like the rest of the API.
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+  path: /metrics
+  # Plans-by-status needs one Postgres query plus one plan_state file read per
+  # plan, so it is refreshed on this interval rather than on every scrape. The
+  # database health probe behind nib_db_up rides along on the same tick.
+  refreshSeconds: 30
+
 agent:
   # Maximum number of LLM completion rounds in the agent loop.
   # Each round = one POST to the chat API; tool calls re-trigger the LLM

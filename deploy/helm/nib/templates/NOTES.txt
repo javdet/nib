@@ -24,6 +24,15 @@ Version:   {{ .Chart.AppVersion }}
 
   Service: {{ include "nib.backend.fullname" . }}:{{ .Values.backend.service.port }}
   Health:  GET /api/v1/health
+{{- if .Values.backend.metrics.enabled }}
+  Metrics: {{ include "nib.backend.fullname" . }}:{{ .Values.backend.metrics.port }}{{ .Values.backend.metrics.path }}
+{{- if not .Values.backend.metrics.serviceMonitor.enabled }}
+
+  The metrics port is not scraped yet. Either set
+  backend.metrics.serviceMonitor.enabled=true (needs prometheus-operator), or add
+  prometheus.io/scrape annotations under backend.podAnnotations.
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{- if .Values.postgresql.enabled }}

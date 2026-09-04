@@ -39,6 +39,10 @@ func (r *allowSetDialogRepo) CountDialogsSearch(context.Context, string, string)
 func (r *allowSetDialogRepo) ListChildren(context.Context, uuid.UUID) ([]domain.Dialog, error) {
 	return nil, nil
 }
+
+func (r *allowSetDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
 func (r *allowSetDialogRepo) GetDialog(_ context.Context, id uuid.UUID) (domain.Dialog, error) {
 	d, ok := r.dialogs[id]
 	if !ok {

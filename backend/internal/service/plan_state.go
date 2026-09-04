@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/javdet/nib/internal/atomicfile"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/google/uuid"
 )
 
@@ -53,6 +54,14 @@ func (s *ChatService) WritePlanState(dialogID uuid.UUID, state PlanState) error 
 	}
 	if state.ScheduledAt < 0 {
 		state.ScheduledAt = 0
+	}
+
+	// The previous status is read back rather than passed in: both callers
+	// already hold it, but recording here means a third one cannot forget to.
+	// A status write is an operator action or a checkbox change, so the extra
+	// file read is not on any hot path.
+	if previous, err := s.ReadPlanState(dialogID); err == nil {
+		metrics.RecordPlanStatusTransition(string(previous.Status), string(state.Status))
 	}
 
 	if err := os.MkdirAll(s.planStateDir, 0o755); err != nil {

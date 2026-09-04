@@ -63,6 +63,33 @@
             "port": { "type": "integer", "default": 8080 }
           }
         },
+        "metrics": {
+          "type": "object",
+          "description": "Prometheus metrics endpoint, served on a port of its own.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 9090 },
+            "path": { "type": "string", "pattern": "^/", "default": "/metrics" },
+            "service": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean", "default": true }
+              }
+            },
+            "serviceMonitor": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean", "default": false },
+                "namespace": { "type": "string" },
+                "interval": { "type": "string" },
+                "scrapeTimeout": { "type": "string" },
+                "additionalLabels": { "type": "object" },
+                "relabelings": { "type": "array" },
+                "metricRelabelings": { "type": "array" }
+              }
+            }
+          }
+        },
         "configOverride": { "type": "string" },
         "persistence": {
           "type": "object",

@@ -19,6 +19,7 @@ import (
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/mcpconfig"
+	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/rules"
@@ -546,6 +547,7 @@ func (s *ChatService) discoverMCPTools(
 			defer cancel()
 			if r.routeKey == "connectionID" {
 				tools, err := s.mcpSvc.ListTools(srcCtx, r.route.connID)
+				metrics.RecordMCPSource(r.routeValue, len(tools), err)
 				if err != nil {
 					slog.Warn("list mcp tools failed", "connectionID", r.routeValue, "error", err)
 					return
@@ -559,6 +561,7 @@ func (s *ChatService) discoverMCPTools(
 				r.route.headers,
 				discoveryClient,
 			)
+			metrics.RecordMCPSource(r.routeValue, len(tools), err)
 			if err != nil {
 				slog.Warn("list mcp.json server tools failed",
 					"server", r.routeValue, "error", redactRouteError(r.route, err))
@@ -587,7 +590,11 @@ func (s *ChatService) cachedMCPToolDiscovery(
 	}
 	s.mcpDiscoveryMu.RUnlock()
 
+	// Only the uncached passes are timed, so the rate of this metric is the
+	// cache miss rate.
+	discoveryStart := time.Now()
 	results := s.discoverMCPTools(ctx, conns, servers, 0)
+	metrics.ObserveMCPDiscovery(time.Since(discoveryStart))
 
 	s.mcpDiscoveryMu.Lock()
 	s.mcpDiscoveryCache = results
@@ -681,9 +688,13 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 	logCtx := newAgentLogCtx(nil, modeName)
 	toolFailures := 0
 
+	turn := beginAgentTurn(modeName)
+	defer turn.finish()
+
 	for round := 0; round < s.maxIterations; round++ {
 		roundNum := round + 1
 		roundLog := logCtx.withRound(roundNum)
+		turn.round(roundNum)
 
 		logAgentRoundStart(roundNum, len(messages), len(catalog.tools), logCtx)
 
@@ -697,10 +708,12 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 		logCompletionParsed(roundNum, asst.ToolCalls, logCtx)
 
 		if len(asst.ToolCalls) == 0 {
+			turn.succeeded()
 			return asst.Content, nil
 		}
 
 		if round+1 >= s.maxIterations {
+			turn.hitMaxIterations()
 			logMaxIterationsWithPendingTools(s.maxIterations, roundNum, logCtx)
 			return "", fmt.Errorf("max iterations (%d) exceeded with pending tool_calls", s.maxIterations)
 		}
@@ -724,6 +737,7 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 				}
 				out = toolErrorPayload(tc.Name, err)
 				toolFailures++
+				turn.toolFailed()
 			} else {
 				logCallToolResult(tc.ID, out, roundLog)
 			}
@@ -733,14 +747,40 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 				Content:    out,
 			})
 			if toolFailures > maxToolFailuresPerTurn {
+				turn.hitToolFailureLimit()
 				return "", fmt.Errorf("round %d: %w", roundNum, ErrTooManyToolFailures)
 			}
 		}
 	}
+	turn.hitMaxIterations()
 	return "", fmt.Errorf("max iterations (%d) exhausted without final assistant message", s.maxIterations)
 }
 
+// executeToolCall times and records one tool invocation.
+//
+// Every agent loop -- the stateless one, the persisting one, the stage planners
+// and the action executors -- funnels through here, so this is the single place
+// tool metrics need to exist.
 func (s *ChatService) executeToolCall(ctx context.Context, catalog *toolCatalog, tc llm.ToolCall) (string, error) {
+	start := time.Now()
+	source := metrics.ToolSourceUnknown
+	if catalog != nil {
+		if _, ok := catalog.localHandlers[tc.Name]; ok {
+			source = metrics.ToolSourceLocal
+		} else {
+			source = metrics.ToolSourceMCP
+		}
+	}
+
+	out, err := s.dispatchToolCall(ctx, catalog, tc)
+	// The tool name is passed for every source but recorded only for local
+	// ones: an MCP name comes from operator config and a name the model
+	// invented comes from the model, so neither may reach a label.
+	metrics.RecordToolCall(source, tc.Name, err, time.Since(start))
+	return out, err
+}
+
+func (s *ChatService) dispatchToolCall(ctx context.Context, catalog *toolCatalog, tc llm.ToolCall) (string, error) {
 	args, err := parseToolArguments(tc.Arguments)
 	if err != nil {
 		return "", err

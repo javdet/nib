@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 // ExecutionKind says what holds the lease, because the two are stopped in
@@ -80,11 +81,26 @@ func (s *ChatService) acquireExecutionLease(l ExecutionLease) (ExecutionLease, b
 	s.expireStaleContainerLeaseLocked()
 
 	if s.execLease != nil {
+		metrics.RecordLeaseRejected(string(l.Kind))
 		return *s.execLease, false
 	}
 	l.token = uuid.New()
 	s.execLease = &l
+	metrics.RecordLeaseAcquired(string(l.Kind))
 	return l, true
+}
+
+// recordLeaseReleasedLocked reports a lease being dropped. Called from every
+// path that clears s.execLease, so the held gauge cannot get stuck at 1.
+func recordLeaseReleasedLocked(l *ExecutionLease) {
+	if l == nil {
+		return
+	}
+	var held time.Duration
+	if l.StartedAt > 0 {
+		held = time.Since(time.Unix(l.StartedAt, 0))
+	}
+	metrics.RecordLeaseReleased(string(l.Kind), held)
 }
 
 // expireStaleContainerLeaseLocked drops a container lease nothing will ever
@@ -105,6 +121,8 @@ func (s *ChatService) expireStaleContainerLeaseLocked() {
 
 	expired := *s.execLease
 	s.execLease = nil
+	recordLeaseReleasedLocked(&expired)
+	metrics.RecordLeaseExpired()
 	slog.Warn("execution lease expired without a result",
 		"plan_id", expired.PlanID, "key", expired.Key, "job", expired.JobName)
 
@@ -144,6 +162,7 @@ func (s *ChatService) releaseExecutionLease(token uuid.UUID) {
 	if s.execLease == nil || s.execLease.token != token {
 		return
 	}
+	recordLeaseReleasedLocked(s.execLease)
 	s.execLease = nil
 }
 
@@ -169,6 +188,7 @@ func (s *ChatService) releaseExecutionLeaseForContainer(planID uuid.UUID, key, j
 	if jobName != "" && held.JobName != "" && held.JobName != jobName {
 		return
 	}
+	recordLeaseReleasedLocked(held)
 	s.execLease = nil
 }
 
@@ -183,6 +203,7 @@ func (s *ChatService) takeExecutionLease() (ExecutionLease, bool) {
 	}
 	held := *s.execLease
 	s.execLease = nil
+	recordLeaseReleasedLocked(&held)
 	return held, true
 }
 
@@ -285,6 +306,7 @@ func (s *ChatService) CancelExecution(ctx context.Context) (ExecutionLease, erro
 	}
 
 	stopErr := s.stopLeaseHolder(ctx, held)
+	metrics.RecordForceStop(string(held.Kind), stopErr)
 
 	run := s.finishActionExecRun(held.PlanID, held.Key, ActionExecCancelled, "stopped by the operator")
 	s.activity.Publish(held.PlanID, domain.AgentActivity{

@@ -81,9 +81,13 @@ services:
     ports:
       # Optional direct API access (debugging, OAuth without the SPA proxy).
       - "${NIB_BACKEND_PORT:-8081}:8080"
+      # /metrics is unauthenticated, so publishing it to the host is opt-in:
+      # leave NIB_METRICS_PORT unset to keep it inside the compose network.
+      - "${NIB_METRICS_PORT:-9090}:9090"
     environment:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
+      METRICS_PORT: 9090
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-nib}
