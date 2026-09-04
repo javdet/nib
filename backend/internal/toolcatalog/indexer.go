@@ -34,6 +34,7 @@ type Indexer struct {
 	embeddingModel string
 	httpClient     *http.Client
 	discoverTools  func(ctx context.Context, serverURL string, headers map[string]string, httpClient *http.Client) ([]mcpclient.ToolInfo, error)
+	afterIndex     func(ctx context.Context)
 }
 
 // NewIndexer wires dependencies for catalog synchronization.
@@ -56,6 +57,16 @@ func NewIndexer(
 	}
 }
 
+// SetAfterIndex registers a callback invoked after every successful reindex,
+// including the coalesced rerun. It reads the catalog back rather than being
+// handed this run's discoveries: a server that could not be reached is skipped,
+// so its tools stay in the catalog and must not look like they were removed.
+func (i *Indexer) SetAfterIndex(hook func(ctx context.Context)) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.afterIndex = hook
+}
+
 // ReindexAll discovers tools from every configured MCP server and upserts them into the catalog.
 // Unreachable servers are skipped with a warning. Overlapping calls coalesce via a dirty flag.
 func (i *Indexer) ReindexAll(ctx context.Context) error {
@@ -70,6 +81,7 @@ func (i *Indexer) ReindexAll(ctx context.Context) error {
 		return nil
 	}
 	i.running = true
+	afterIndex := i.afterIndex
 	i.mu.Unlock()
 
 	defer func() {
@@ -87,7 +99,13 @@ func (i *Indexer) ReindexAll(ctx context.Context) error {
 		}
 	}()
 
-	return i.reindex(ctx)
+	if err := i.reindex(ctx); err != nil {
+		return err
+	}
+	if afterIndex != nil {
+		afterIndex(ctx)
+	}
+	return nil
 }
 
 func (i *Indexer) reindex(ctx context.Context) error {
