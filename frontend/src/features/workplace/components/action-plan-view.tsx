@@ -188,7 +188,7 @@ function RowGutter({
 				id={`${id}-number`}
 				className={cn(
 					'flex h-9 shrink-0 select-none items-center justify-center',
-					'border-b font-mono text-xs tabular-nums',
+					'font-mono text-xs tabular-nums',
 					checked ? 'text-success' : 'text-muted-foreground',
 				)}
 			>
@@ -237,14 +237,14 @@ function HeaderButton({
 			{/* The button is wrapped so the tooltip still explains why it is off:
 			    a natively disabled button swallows its own pointer events. */}
 			<TooltipTrigger asChild>
-				<span className="flex h-9 w-9 shrink-0 self-stretch border-l">
+				<span className="flex h-9 w-9 shrink-0">
 					<button
 						type="button"
 						onClick={onClick}
 						disabled={disabled}
 						className={cn(
-							'flex flex-1 items-center justify-center transition-colors',
-							'duration-[var(--dur-fast)] focus-ring-inset',
+							'flex flex-1 items-center justify-center rounded-sm',
+							'transition-colors duration-[var(--dur-fast)] focus-ring-inset',
 							disabled && 'cursor-not-allowed text-muted-foreground/40',
 							!disabled && 'cursor-pointer hover:bg-foreground/[0.07]',
 							!disabled &&
@@ -546,7 +546,7 @@ function ExecutableActionRow({
 				onGripPointerUp={onGripPointerUp}
 			/>
 			<div className="flex min-w-0 flex-1 flex-col">
-				<div className="flex h-9 shrink-0 items-center border-b pl-3">
+				<div className="flex h-9 shrink-0 items-center pl-3">
 					<div className="flex min-w-0 flex-1 items-center pr-2">{header}</div>
 					{execRun && (
 						<Tooltip>

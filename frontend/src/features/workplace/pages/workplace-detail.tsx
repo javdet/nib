@@ -6,7 +6,14 @@ import {
 	type KeyboardEvent,
 } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Pencil } from 'lucide-react'
+import {
+	ArrowDown,
+	ArrowLeft,
+	ChevronDown,
+	ChevronRight,
+	Download,
+	Pencil,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -936,6 +943,10 @@ export function WorkplaceDetail() {
 	const canProcessPlan = Boolean(dagContent)
 	const fanoutRunning = fanoutRun?.status === 'running'
 	const isDecomposed = Boolean(summaryContent && dagContent)
+	const processPlanDisabled =
+		processingPlan || fanoutRunning || !canProcessPlan
+	const showProcessPlanHero =
+		!actionPlan && !processingPlan && !fanoutRunning
 
 	return (
 		<div className="space-y-6">
@@ -1227,30 +1238,54 @@ export function WorkplaceDetail() {
 				</CardHeader>
 				{actionListExpanded && (
 					<CardContent className="space-y-4">
-					<div className="flex items-center gap-2">
-						<Button
-							type="button"
-							onClick={() => void handleProcessPlan()}
-							disabled={processingPlan || fanoutRunning || !canProcessPlan}
+					{showProcessPlanHero ? (
+						<div className="flex flex-col items-center gap-3 py-2">
+							<div className="flex items-center justify-center gap-2">
+								<Button
+									type="button"
+									size="lg"
+									className={cn(
+										'h-12 min-w-[16rem] px-8 text-base font-semibold',
+										'bg-success text-success-foreground hover:bg-success/90',
+										'elev-3 shadow-[0_0_0_4px_var(--success-border)]',
+									)}
+									onClick={() => void handleProcessPlan()}
+									disabled={processPlanDisabled}
+								>
+									Process plan here
+									<ArrowDown className="h-5 w-5" />
+								</Button>
+							</div>
+						</div>
+					) : (
+						<div
+							className={cn(
+								'flex items-center gap-2',
+								(processingPlan || fanoutRunning) && 'justify-center',
+							)}
 						>
-							{fanoutRunning
-								? 'Planning stages...'
-								: processingPlan
-									? 'Starting...'
-									: actionPlan
-										? 'Replan all stages'
-										: 'Process Plan'}
-						</Button>
-						{fanoutRunning && (
 							<Button
 								type="button"
-								variant="outline"
-								onClick={() => void handleCancelFanout()}
+								onClick={() => void handleProcessPlan()}
+								disabled={processPlanDisabled}
 							>
-								Stop
+								{fanoutRunning
+									? 'Planning stages...'
+									: processingPlan
+										? 'Starting...'
+										: 'Replan all stages'}
 							</Button>
-						)}
-					</div>
+							{fanoutRunning && (
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => void handleCancelFanout()}
+								>
+									Stop
+								</Button>
+							)}
+						</div>
+					)}
 
 					{!canProcessPlan && (
 						<p className="text-sm text-muted-foreground">

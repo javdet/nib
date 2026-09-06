@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Textarea } from '@/components/ui/textarea'
+import { fieldClasses } from '@/components/ui/input'
 import {
 	Tooltip,
 	TooltipContent,
@@ -193,12 +194,21 @@ export function ChatPanel() {
 	const abortRef = useRef<AbortController | null>(null)
 	const dialogIdRef = useRef<string | null>(null)
 	const loadedDialogIdRef = useRef<string | null>(null)
+	// The dialog this panel created for a turn it is already running. Adopting
+	// its id is not a context switch, so the reset below has to skip it.
+	const selfCreatedDialogIdRef = useRef<string | null>(null)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
 	const panelRef = useRef<HTMLDivElement>(null)
+	const composerFrameRef = useRef<HTMLDivElement>(null)
 
 	// The composer grows with the draft but never past half the chat panel.
-	useAutosizeTextarea(textareaRef, panelRef, draft)
+	useAutosizeTextarea({
+		textareaRef,
+		containerRef: panelRef,
+		frameRef: composerFrameRef,
+		value: draft,
+	})
 
 	const hasPendingQuestions = pendingQuestions.length > 0
 	const inputDisabled = loading || messagesLoading || hasPendingQuestions
@@ -232,6 +242,17 @@ export function ChatPanel() {
 	}, [activeDialogId])
 
 	useEffect(() => {
+		// A first message in an empty panel creates the dialog mid-send, so this
+		// effect fires on an id that already owns the optimistic user bubble and
+		// the turn in flight. Wiping them there blanks the conversation until the
+		// answer lands. The ref is cleared only when some other dialog becomes
+		// active, so a re-run under StrictMode still skips.
+		if (activeDialogId && selfCreatedDialogIdRef.current === activeDialogId) {
+			loadedDialogIdRef.current = activeDialogId
+			return
+		}
+		selfCreatedDialogIdRef.current = null
+
 		loadedDialogIdRef.current = null
 		setMessages([])
 		setError(null)
@@ -453,6 +474,7 @@ export function ChatPanel() {
 		if (!dialogId) {
 			const created = await createDialog({ mode: selectedMode })
 			dialogId = created.id
+			selfCreatedDialogIdRef.current = created.id
 			setActiveDialogId(created.id)
 			bumpDialogsVersion()
 		}
@@ -1157,25 +1179,38 @@ export function ChatPanel() {
 						accept="image/*,text/*,.md,.txt,.csv,.json,.log,.yaml,.yml"
 						onChange={(e) => void handleFilesSelected(e)}
 					/>
-					<Textarea
-						ref={textareaRef}
-						value={draft}
-						onChange={handleDraftChange}
-						onKeyDown={handleKeyDown}
-						onFocus={handleTextareaFocus}
-						onBlur={handleTextareaBlur}
-						placeholder="Message…"
-						rows={2}
-						disabled={inputDisabled}
-						className="min-h-[72px] min-w-0 resize-none overflow-hidden"
-						role="combobox"
-						aria-autocomplete="list"
-						aria-expanded={isSkillMenuOpen}
-						aria-controls={SKILL_LISTBOX_ID}
-						aria-activedescendant={
-							isSkillMenuOpen ? skillOptionId(activeSkillIndex) : undefined
-						}
-					/>
+					{/* The frame carries the vertical padding so the textarea's own box is
+					    whole lines only — padding scrolls with the text and would show a
+					    sliver of the next line under the border once the draft overflows. */}
+					<div
+						ref={composerFrameRef}
+						className={cn(
+							fieldClasses,
+							'flex min-w-0 flex-1 flex-col py-2',
+							'focus-ring-within focus-within:border-ring/60',
+							inputDisabled && 'cursor-not-allowed bg-muted/30 opacity-60',
+						)}
+					>
+						<Textarea
+							ref={textareaRef}
+							value={draft}
+							onChange={handleDraftChange}
+							onKeyDown={handleKeyDown}
+							onFocus={handleTextareaFocus}
+							onBlur={handleTextareaBlur}
+							placeholder="Message…"
+							rows={2}
+							disabled={inputDisabled}
+							className="min-h-[60px] min-w-0 resize-none overflow-hidden rounded-none border-0 bg-transparent py-0 shadow-none hover:border-0 focus-visible:outline-none disabled:bg-transparent disabled:opacity-100"
+							role="combobox"
+							aria-autocomplete="list"
+							aria-expanded={isSkillMenuOpen}
+							aria-controls={SKILL_LISTBOX_ID}
+							aria-activedescendant={
+								isSkillMenuOpen ? skillOptionId(activeSkillIndex) : undefined
+							}
+						/>
+					</div>
 					<div className="flex shrink-0 flex-col gap-2 self-end">
 						<IconButton
 							type="button"
