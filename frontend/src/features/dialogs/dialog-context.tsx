@@ -2,6 +2,7 @@ import {
 	createContext,
 	useCallback,
 	useContext,
+	useRef,
 	useState,
 	type ReactNode,
 } from 'react'
@@ -29,6 +30,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 	const [activeDialogId, setActiveDialogId] = useState<string | null>(null)
 	const [dialogsVersion, setDialogsVersion] = useState(0)
 	const [actionPlanVersion, setActionPlanVersion] = useState(0)
+	// The queue lives in a ref, with the state only mirroring it so consumers
+	// re-render. `consumePendingMessage` has to return the message it removed,
+	// and a `useState` updater cannot supply that: React only guarantees to run
+	// it during the next render, so reading the value out of the updater returns
+	// null exactly when the queue was just written to — which is the only case
+	// this queue is ever used in. The ref is the source of truth instead.
+	const pendingRef = useRef<PendingInitialMessage[]>([])
 	const [pendingMessages, setPendingMessages] = useState<
 		PendingInitialMessage[]
 	>([])
@@ -42,23 +50,25 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 	}, [])
 
 	const enqueuePendingMessage = useCallback((msg: PendingInitialMessage) => {
-		setPendingMessages((prev) => [...prev, msg])
+		pendingRef.current = [...pendingRef.current, msg]
+		setPendingMessages(pendingRef.current)
 	}, [])
 
 	const consumePendingMessage = useCallback((dialogId: string) => {
-		let consumed: PendingInitialMessage | null = null
-		setPendingMessages((prev) => {
-			const index = prev.findIndex((m) => m.dialogId === dialogId)
-			if (index < 0) {
-				return prev
-			}
-			const next = prev[index]
-			if (!next) {
-				return prev
-			}
-			consumed = next
-			return [...prev.slice(0, index), ...prev.slice(index + 1)]
-		})
+		const queue = pendingRef.current
+		const index = queue.findIndex((m) => m.dialogId === dialogId)
+		if (index < 0) {
+			return null
+		}
+		const consumed = queue[index]
+		if (!consumed) {
+			return null
+		}
+		pendingRef.current = [
+			...queue.slice(0, index),
+			...queue.slice(index + 1),
+		]
+		setPendingMessages(pendingRef.current)
 		return consumed
 	}, [])
 

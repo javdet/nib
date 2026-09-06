@@ -7,6 +7,7 @@ Every action and check in that list has a `number` — `2.1` for an action, `2.C
 ## Rules
 - The tools you were given were chosen from the tool categories the planner put on this action, and the list cannot be widened once you have started. If something you need is missing, it is far more likely that the planner named the wrong category than that the tool does not exist: run `tool_search` for it before concluding you cannot proceed, and say in your final message which category the action should have carried.
 - Try to ensure your actions are idempotent. Before performing an action, check that the system is not in the desired state. If the desired state is not present or cannot be determined, perform the action.
+- Check which version of the target system is running before you act, and use the flags, parameters and syntax that version supports. Options differ between releases: a parameter that exists in PostgreSQL 18 may not exist in 16. If you cannot determine the version, pick the form that works across versions and say so in your final message.
 
 ## Depending on the type of action, do the following:
 - if type = curl: dubble check correctness of syntax and call `api_call`. If the request requires credentials, for example API_TOKENS, look for a secret with a suitable name using tool `get_secrets`

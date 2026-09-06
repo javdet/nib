@@ -56,14 +56,13 @@ services:
       - ":8081"
       - -http-path
       - /mcp
-      # "openrouter" is the kb CLI name for any OpenAI-compatible /embeddings
-      # endpoint; KB_OPENROUTER_BASE_URL points it at the OpenAI platform.
+      # "openrouter" is the kb CLI name for any OpenAI-compatible /embeddings client.
       - -provider
       - openrouter
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-nib}:${POSTGRES_PASSWORD:-nib}@postgres:5432/${POSTGRES_DB:-nib}?sslmode=disable
       OPENROUTER_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
-      OPENROUTER_BASE_URL: ${KB_OPENROUTER_BASE_URL:-https://api.openai.com/v1}
+      EMBEDDINGS_BASE_URL: ${KB_EMBEDDINGS_BASE_URL:-https://api.openai.com/v1}
     # Reached only over the internal network at http://kb-mcp:8081/mcp
     # (see deploy/compose/mcp.json). No host port needed.
     networks:
