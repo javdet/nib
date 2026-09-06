@@ -38,11 +38,16 @@ import {
 	type TableData,
 } from '@/features/dialogs/api/dialogs'
 import { AskQuestionMessage } from '@/features/dialogs/components/ask-question-message'
+import { AnsweredQuestionsMessage } from '@/features/dialogs/components/answered-questions-message'
 import { TableMessage } from '@/features/dialogs/components/table-message'
 import { ChatHistoryMenu } from '@/features/dialogs/components/chat-history-menu'
 import { CopyButton } from '@/components/copy-button'
 import { MarkdownMessage } from '@/components/markdown-message'
 import { findPendingAskQuestion } from '@/features/dialogs/lib/pending-question'
+import {
+	parseAnsweredQuestions,
+	type AnsweredQuestion,
+} from '@/features/dialogs/lib/answered-questions'
 import { parseCreateTableFromToolCalls } from '@/features/dialogs/lib/parse-table'
 import {
 	hasLastUserMessage,
@@ -52,6 +57,7 @@ import {
 import { useThinkingPhrase } from '@/features/dialogs/hooks/use-thinking-phrase'
 import { useToolActivity } from '@/features/dialogs/hooks/use-tool-activity'
 import { useSkills } from '@/features/skills/hooks/use-skills'
+import { useAutosizeTextarea } from '@/hooks/use-autosize-textarea'
 import {
 	SkillSuggestMenu,
 	SKILL_LISTBOX_ID,
@@ -71,6 +77,7 @@ interface Message {
 	role: 'user' | 'assistant'
 	content: string
 	table?: TableData
+	answers?: AnsweredQuestion[]
 	attachments?: Attachment[]
 }
 
@@ -106,9 +113,29 @@ function AnimatedDots() {
 	)
 }
 
+/**
+ * Reports whether a bubble is a real user turn.
+ *
+ * The answered-questions bubble renders user-side but is stored as a `tool`
+ * row, and `RetryLastResponse` truncates from the last `user` row — so it must
+ * not count when working out where a retry lands.
+ */
+function isUserTurn(m: Message): boolean {
+	return m.role === 'user' && !m.answers
+}
+
 function toUiMessages(msgs: DialogMessage[]): Message[] {
 	const out: Message[] = []
 	for (const m of msgs) {
+		// The answered set is stored only as an ask_question tool result, so it
+		// has to be rendered from here or it disappears on every reload.
+		if (m.role === 'tool' && m.name === 'ask_question') {
+			const answers = parseAnsweredQuestions(m.content)
+			if (answers) {
+				out.push({ role: 'user', content: '', answers })
+			}
+			continue
+		}
 		if (m.role === 'user') {
 			out.push({
 				role: 'user',
@@ -168,6 +195,10 @@ export function ChatPanel() {
 	const loadedDialogIdRef = useRef<string | null>(null)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const textareaRef = useRef<HTMLTextAreaElement>(null)
+	const panelRef = useRef<HTMLDivElement>(null)
+
+	// The composer grows with the draft but never past half the chat panel.
+	useAutosizeTextarea(textareaRef, panelRef, draft)
 
 	const hasPendingQuestions = pendingQuestions.length > 0
 	const inputDisabled = loading || messagesLoading || hasPendingQuestions
@@ -588,9 +619,15 @@ export function ChatPanel() {
 				return
 			}
 
+			// Same shape `toUiMessages` rebuilds from the stored tool row, so the
+			// reload that follows is idempotent rather than destructive.
+			const answered = pendingQuestions.map((q, i) => ({
+				question: q.question,
+				answer: answers[i] ?? '',
+			}))
 			setMessages((prev) => [
 				...prev,
-				...answers.map((a) => ({ role: 'user' as const, content: a })),
+				{ role: 'user' as const, content: '', answers: answered },
 			])
 			setPendingQuestions([])
 			setPendingToolCallId(null)
@@ -648,6 +685,7 @@ export function ChatPanel() {
 		[
 			activeDialogId,
 			pendingToolCallId,
+			pendingQuestions,
 			applyChatResponse,
 			bumpDialogsVersion,
 			reloadMessages,
@@ -665,7 +703,7 @@ export function ChatPanel() {
 			return
 		}
 
-		const lastUserIndex = findLastIndex(messages, (m) => m.role === 'user')
+		const lastUserIndex = findLastIndex(messages, isUserTurn)
 		if (lastUserIndex < 0) {
 			return
 		}
@@ -678,7 +716,7 @@ export function ChatPanel() {
 
 		setError(null)
 		setMessages((prev) => {
-			const idx = findLastIndex(prev, (m) => m.role === 'user')
+			const idx = findLastIndex(prev, isUserTurn)
 			if (idx < 0) {
 				return prev
 			}
@@ -881,7 +919,7 @@ export function ChatPanel() {
 		(draft.trim().length > 0 || pendingAttachments.length > 0) &&
 		!inputDisabled
 
-	const lastUserIndex = findLastIndex(messages, (m) => m.role === 'user')
+	const lastUserIndex = findLastIndex(messages, isUserTurn)
 	const lastAssistantIndex = findLastIndex(
 		messages,
 		(m) => m.role === 'assistant',
@@ -945,7 +983,7 @@ export function ChatPanel() {
 	}
 
 	return (
-		<div className="flex h-full min-h-0 min-w-0 flex-col">
+		<div ref={panelRef} className="flex h-full min-h-0 min-w-0 flex-col">
 			<ChatHistoryMenu />
 
 			<div
@@ -1016,7 +1054,9 @@ export function ChatPanel() {
 											: 'bg-muted',
 									)}
 								>
-									{msg.role === 'assistant' && msg.content ? (
+									{msg.answers ? (
+										<AnsweredQuestionsMessage answers={msg.answers} />
+									) : msg.role === 'assistant' && msg.content ? (
 										<MarkdownMessage
 											content={msg.content}
 											onDialogLink={handleOpenDialogLink}
@@ -1127,7 +1167,7 @@ export function ChatPanel() {
 						placeholder="Message…"
 						rows={2}
 						disabled={inputDisabled}
-						className="min-h-[72px] min-w-0 resize-none"
+						className="min-h-[72px] min-w-0 resize-none overflow-hidden"
 						role="combobox"
 						aria-autocomplete="list"
 						aria-expanded={isSkillMenuOpen}
