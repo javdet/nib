@@ -86,10 +86,10 @@ only the label differs. Re-ingesting is not required. The same rename in
 reverse is what the move to the OpenAI platform needed.
 
 The `kb-mcp` container has its own copy of these settings in
-`docker-compose.yml` (`OPENROUTER_BASE_URL`) and in the Helm values
-(`kbMcp.openrouter.baseURL`). Its `-provider openrouter` flag is just the `kb`
-CLI's name for a generic OpenAI-compatible `/embeddings` client, so it points
-wherever that base URL says.
+`docker-compose.yml` (`KB_EMBEDDINGS_BASE_URL` → `EMBEDDINGS_BASE_URL`) and in
+the Helm values (`kbMcp.embeddings.baseURL`). Its `-provider openrouter` flag
+is just the `kb` CLI's name for a generic OpenAI-compatible `/embeddings`
+client, so it points wherever that base URL says.
 
 ## Provider compatibility notes
 

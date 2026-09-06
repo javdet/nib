@@ -210,8 +210,8 @@ kbMcp:
     port: 8081
 
   ## The kb CLI "openrouter" provider is a generic OpenAI-compatible
-  ## /embeddings client; point it at the OpenAI platform and reuse LLM_API_KEY.
-  openrouter:
+  ## /embeddings client; point it at any provider and reuse LLM_API_KEY.
+  embeddings:
     baseURL: https://api.openai.com/v1
 
   podAnnotations: {}

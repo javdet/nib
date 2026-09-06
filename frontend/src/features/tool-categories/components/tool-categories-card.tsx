@@ -9,7 +9,10 @@ import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api-client'
 import { useMode } from '@/features/modes/mode-context'
 import { useDialog } from '@/features/dialogs/dialog-context'
-import { createDialog } from '@/features/dialogs/api/dialogs'
+import {
+	createDialog,
+	openDialogActivity,
+} from '@/features/dialogs/api/dialogs'
 import {
 	listToolCategories,
 	listCategoryTools,
@@ -38,6 +41,7 @@ export function ToolCategoriesCard() {
 	const [toolsLoading, setToolsLoading] = useState(false)
 	const [saving, setSaving] = useState(false)
 	const [filling, setFilling] = useState(false)
+	const [fillDialogId, setFillDialogId] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
 	const patternDirty = patternText !== savedPatternText
@@ -56,6 +60,24 @@ export function ToolCategoriesCard() {
 			})
 			.finally(() => setLoading(false))
 	}, [refreshCategories])
+
+	// Auto-fill runs in a discuss dialog; refresh the category list as the
+	// agent writes patterns so badges and the selected panel stay in sync.
+	useEffect(() => {
+		if (!fillDialogId) {
+			return
+		}
+
+		const close = openDialogActivity(fillDialogId, (ev) => {
+			if (ev.kind === 'tools_end' || ev.kind === 'turn_end') {
+				void refreshCategories().catch((err) => {
+					setError(extractErrorMessage(err))
+				})
+			}
+		})
+
+		return close
+	}, [fillDialogId, refreshCategories])
 
 	useEffect(() => {
 		if (!selection) {
@@ -151,6 +173,7 @@ export function ToolCategoriesCard() {
 				text: buildCategorizeToolsRequest(categories, uncategorized),
 			})
 			setActiveDialogId(dialog.id)
+			setFillDialogId(dialog.id)
 			bumpDialogsVersion()
 		} catch (err) {
 			setError(extractErrorMessage(err))

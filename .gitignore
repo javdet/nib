@@ -18,3 +18,4 @@ backend/toolcatalog
 # Image defaults are seeded from backend/seed/.
 data/
 CLAUDE.md
+searxng/

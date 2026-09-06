@@ -61,8 +61,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "nib.secretName" . }}
                   key: LLM_API_KEY
-            - name: OPENROUTER_BASE_URL
-              value: {{ .Values.kbMcp.openrouter.baseURL | quote }}
+            - name: EMBEDDINGS_BASE_URL
+              value: {{ default .Values.kbMcp.openrouter.baseURL .Values.kbMcp.embeddings.baseURL | quote }}
           {{- with .Values.kbMcp.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

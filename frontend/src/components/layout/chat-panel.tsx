@@ -558,7 +558,9 @@ export function ChatPanel() {
 	useEffect(() => {
 		if (!activeDialogId) return
 		if (loadedDialogIdRef.current !== activeDialogId) return
-		if (messagesLoading || loading) return
+		// Every condition sendMessage bails out on has to be repeated here:
+		// consuming a message it would then drop loses it for good.
+		if (messagesLoading || loading || hasPendingQuestions) return
 
 		const pending = pendingMessages.find((m) => m.dialogId === activeDialogId)
 		if (!pending) return
@@ -572,6 +574,7 @@ export function ChatPanel() {
 		pendingMessages,
 		messagesLoading,
 		loading,
+		hasPendingQuestions,
 		sendMessage,
 		consumePendingMessage,
 	])

@@ -23,14 +23,14 @@ const (
 )
 
 type mcpRuntime struct {
-	store             *kbstore.Store
-	provider          string
-	modelOverride     string
-	timeout           time.Duration
-	openRouterBaseURL string
-	googleBaseURL     string
-	httpReferer       string
-	appTitle          string
+	store              *kbstore.Store
+	provider           string
+	modelOverride      string
+	timeout            time.Duration
+	embeddingsBaseURL  string
+	googleBaseURL      string
+	httpReferer        string
+	appTitle           string
 }
 
 func runServeMCP(args []string) int {
@@ -43,7 +43,7 @@ func runServeMCP(args []string) int {
 		provider          string
 		model             string
 		timeout           time.Duration
-		openRouterBaseURL string
+		embeddingsBaseURL string
 		googleBaseURL     string
 		httpReferer       string
 		appTitle          string
@@ -57,7 +57,8 @@ func runServeMCP(args []string) int {
 	fs.StringVar(&provider, "provider", "openrouter", "embedding provider: openrouter or google (must match how the collection was ingested)")
 	fs.StringVar(&model, "model", "", "if set, every search collection must use this embedding_model (otherwise the collection row supplies the model)")
 	fs.DurationVar(&timeout, "timeout", 120*time.Second, "HTTP timeout for embedding requests")
-	fs.StringVar(&openRouterBaseURL, "openrouter-base-url", "", "OpenRouter-compatible API base URL (default https://openrouter.ai/api/v1 or $OPENROUTER_BASE_URL)")
+	fs.StringVar(&embeddingsBaseURL, "embeddings-base-url", "", "OpenAI-compatible API base URL ($EMBEDDINGS_BASE_URL)")
+	fs.StringVar(&embeddingsBaseURL, "openrouter-base-url", "", "Deprecated alias for -embeddings-base-url")
 	fs.StringVar(&googleBaseURL, "google-base-url", "", "Google Generative Language API base (default from embed package or $GOOGLE_API_BASE_URL)")
 	fs.StringVar(&httpReferer, "http-referer", "", "HTTP-Referer for OpenRouter ($HTTP_REFERER)")
 	fs.StringVar(&appTitle, "app-title", "", "X-Title for OpenRouter ($OPENROUTER_APP_TITLE)")
@@ -99,7 +100,7 @@ func runServeMCP(args []string) int {
 		provider:          provider,
 		modelOverride:     strings.TrimSpace(model),
 		timeout:           timeout,
-		openRouterBaseURL: openRouterBaseURL,
+		embeddingsBaseURL: embeddingsBaseURL,
 		googleBaseURL:     googleBaseURL,
 		httpReferer:       httpReferer,
 		appTitle:          appTitle,
@@ -192,7 +193,7 @@ func (rt *mcpRuntime) handleKnowledgeSearch(ctx context.Context, req mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("collection %q uses embedding_model %q, server -model is %q", collectionName, coll.EmbeddingModel, rt.modelOverride)), nil
 	}
 
-	embedder, err := buildEmbedder(rt.provider, coll.EmbeddingModel, rt.timeout, rt.openRouterBaseURL, rt.googleBaseURL, rt.httpReferer, rt.appTitle)
+	embedder, err := buildEmbedder(rt.provider, coll.EmbeddingModel, rt.timeout, rt.embeddingsBaseURL, rt.googleBaseURL, rt.httpReferer, rt.appTitle)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

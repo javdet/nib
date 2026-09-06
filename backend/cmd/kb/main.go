@@ -56,7 +56,7 @@ func runIngest(args []string) int {
 		metric            string
 		replace           bool
 		timeout           time.Duration
-		openRouterBaseURL string
+		embeddingsBaseURL string
 		googleBaseURL     string
 		httpReferer       string
 		appTitle          string
@@ -73,7 +73,8 @@ func runIngest(args []string) int {
 	fs.StringVar(&metric, "metric", "cosine", "distance metric label stored on the collection")
 	fs.BoolVar(&replace, "replace", false, "delete existing chunks for the same source_uri values before insert")
 	fs.DurationVar(&timeout, "timeout", 120*time.Second, "HTTP timeout for embedding requests")
-	fs.StringVar(&openRouterBaseURL, "openrouter-base-url", "", "OpenRouter-compatible API base URL (default https://openrouter.ai/api/v1 or $OPENROUTER_BASE_URL)")
+	fs.StringVar(&embeddingsBaseURL, "embeddings-base-url", "", "OpenAI-compatible API base URL ($EMBEDDINGS_BASE_URL)")
+	fs.StringVar(&embeddingsBaseURL, "openrouter-base-url", "", "Deprecated alias for -embeddings-base-url")
 	fs.StringVar(&googleBaseURL, "google-base-url", "", "Google Generative Language API base (default from embed package or $GOOGLE_API_BASE_URL)")
 	fs.StringVar(&httpReferer, "http-referer", "", "HTTP-Referer for OpenRouter ($HTTP_REFERER)")
 	fs.StringVar(&appTitle, "app-title", "", "X-Title for OpenRouter ($OPENROUTER_APP_TITLE)")
@@ -113,7 +114,7 @@ func runIngest(args []string) int {
 		return 1
 	}
 
-	embedder, err := buildEmbedder(provider, model, timeout, openRouterBaseURL, googleBaseURL, httpReferer, appTitle)
+	embedder, err := buildEmbedder(provider, model, timeout, embeddingsBaseURL, googleBaseURL, httpReferer, appTitle)
 	if err != nil {
 		logger.Error("embedder", "err", err)
 		return 1
@@ -258,7 +259,7 @@ func resolveDSN(flagDSN, configPath string) (string, error) {
 	return "", fmt.Errorf("set -dsn, environment DATABASE_URL, or -config with knowledge_base.uri")
 }
 
-func buildEmbedder(provider, model string, timeout time.Duration, orBase, googleBase, referer, title string) (embed.Embedder, error) {
+func buildEmbedder(provider, model string, timeout time.Duration, embeddingsBase, googleBase, referer, title string) (embed.Embedder, error) {
 	p := strings.ToLower(strings.TrimSpace(provider))
 	opts := embed.FactoryOptions{Timeout: timeout}
 	switch p {
@@ -267,10 +268,7 @@ func buildEmbedder(provider, model string, timeout time.Duration, orBase, google
 		if apiKey == "" {
 			return nil, fmt.Errorf("OPENROUTER_API_KEY is required for provider openrouter")
 		}
-		base := strings.TrimSpace(orBase)
-		if base == "" {
-			base = strings.TrimSpace(os.Getenv("OPENROUTER_BASE_URL"))
-		}
+		base := resolveEmbeddingsBaseURL(embeddingsBase)
 		opts.OpenRouter = embed.OpenRouterOptions{
 			BaseURL:     base,
 			Model:       strings.TrimSpace(model),
@@ -298,6 +296,16 @@ func buildEmbedder(provider, model string, timeout time.Duration, orBase, google
 		return nil, fmt.Errorf("unknown provider %q (use openrouter or google)", provider)
 	}
 	return embed.NewEmbedder(p, opts)
+}
+
+func resolveEmbeddingsBaseURL(flagValue string) string {
+	if base := strings.TrimSpace(flagValue); base != "" {
+		return base
+	}
+	if base := strings.TrimSpace(os.Getenv("EMBEDDINGS_BASE_URL")); base != "" {
+		return base
+	}
+	return strings.TrimSpace(os.Getenv("OPENROUTER_BASE_URL"))
 }
 
 func firstNonEmpty(a, b string) string {
