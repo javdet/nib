@@ -33,6 +33,7 @@ export function ToolCategoriesCard() {
 		useDialog()
 
 	const [categories, setCategories] = useState<ToolCategory[]>([])
+	const [uncategorizedCount, setUncategorizedCount] = useState(0)
 	const [selection, setSelection] = useState<Selection | null>(null)
 	const [tools, setTools] = useState<CategorizedTool[]>([])
 	const [patternText, setPatternText] = useState('')
@@ -47,8 +48,12 @@ export function ToolCategoriesCard() {
 	const patternDirty = patternText !== savedPatternText
 
 	const refreshCategories = useCallback(async () => {
-		const list = await listToolCategories()
+		const [list, uncategorized] = await Promise.all([
+			listToolCategories(),
+			listUncategorizedTools(),
+		])
 		setCategories(list)
+		setUncategorizedCount(uncategorized.length)
 		return list
 	}, [])
 
@@ -57,6 +62,7 @@ export function ToolCategoriesCard() {
 			.catch((err) => {
 				setError(extractErrorMessage(err))
 				setCategories([])
+				setUncategorizedCount(0)
 			})
 			.finally(() => setLoading(false))
 	}, [refreshCategories])
@@ -92,7 +98,10 @@ export function ToolCategoriesCard() {
 
 		if (selection.kind === 'uncategorized') {
 			listUncategorizedTools()
-				.then((list) => setTools(list))
+				.then((list) => {
+					setTools(list)
+					setUncategorizedCount(list.length)
+				})
 				.catch((err) => {
 					setError(extractErrorMessage(err))
 					setTools([])
@@ -136,8 +145,12 @@ export function ToolCategoriesCard() {
 				prev.map((c) => (c.name === updated.name ? updated : c)),
 			)
 			setSavedPatternText(patternText)
-			const list = await listCategoryTools(selection.name)
+			const [list, uncategorized] = await Promise.all([
+				listCategoryTools(selection.name),
+				listUncategorizedTools(),
+			])
 			setTools(list)
+			setUncategorizedCount(uncategorized.length)
 		} catch (err) {
 			setError(extractErrorMessage(err))
 		} finally {
@@ -274,8 +287,8 @@ export function ToolCategoriesCard() {
 								onClick={() => setSelection({ kind: 'uncategorized' })}
 							>
 								<span>Uncategorized</span>
-								<Badge variant="outline" className="text-xs">
-									null
+								<Badge variant="secondary" className="text-xs">
+									{uncategorizedCount}
 								</Badge>
 							</button>
 						</div>
