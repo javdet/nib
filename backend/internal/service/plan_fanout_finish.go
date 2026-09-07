@@ -183,6 +183,10 @@ func (s *ChatService) reportFanoutResult(
 		}
 	}
 
+	// Carried rows count too, so the number is the plan's coverage rather than
+	// the round's: "4 of 5" after a one-stage replan is what the operator sees in
+	// the stage list, and a sentence that counted only the round would disagree
+	// with it.
 	planned, failed := 0, 0
 	for _, st := range run.Stages {
 		switch st.Status {
@@ -238,6 +242,7 @@ func (s *ChatService) appendFanoutQuestion(
 }
 
 func fanoutQuestionPreamble(run FanoutRun, asked []blockerQuestion, total int) string {
+	// Plan coverage, carried rows included -- the same count the stage list shows.
 	done, failed := 0, 0
 	for _, st := range run.Stages {
 		switch st.Status {

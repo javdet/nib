@@ -47,6 +47,12 @@ func (s *Service) Seed() (SeedResult, error) {
 		if _, done := seeded[name]; done {
 			continue
 		}
+		// A system skill is served from the binary and must never gain an
+		// editable copy on the volume; the two registries are disjoint, and
+		// TestSystemAndDefaultNamesAreDisjoint keeps them that way.
+		if IsSystem(name) {
+			continue
+		}
 		seeded[name] = struct{}{}
 
 		switch err := s.store.Create(name, defaultContent[name]); {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/repository"
+	"github.com/javdet/nib/internal/skills"
 )
 
 const GetSkillToolName = "get_skill"
@@ -49,12 +50,20 @@ func (s *ChatService) ExecuteGetSkill(ctx context.Context, args map[string]any) 
 		return "", fmt.Errorf("get_skill: name is required")
 	}
 
-	skill, err := s.skillsSvc.Get(name)
+	skill, err := s.skillsSvc.GetAny(name)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("skill %q not found", name)
 		}
 		return "", fmt.Errorf("get skill: %w", err)
+	}
+
+	// A system skill is shipped documentation, not operator text: it quotes
+	// template syntax like {{ .global.CompanyName }} as an example, and
+	// prompttpl renders with missingkey=error, so putting it through the
+	// renderer would fail the tool call on its own documentation.
+	if skills.IsSystem(name) {
+		return skill.Content, nil
 	}
 
 	rendered, err := RenderTemplateVariables(ctx, skill.Content, s.variableRepo, s.selection)
@@ -64,14 +73,15 @@ func (s *ChatService) ExecuteGetSkill(ctx context.Context, args map[string]any) 
 	return rendered, nil
 }
 
-// buildSkillsSection renders the catalog of every skill on disk for the tail of
-// the system prompt.
+// buildSkillsSection renders the catalog of every skill the agent can load --
+// the operator's own plus the ones the image owns -- for the tail of the system
+// prompt.
 func (s *ChatService) buildSkillsSection() (string, error) {
 	if s.skillsSvc == nil {
 		return "", nil
 	}
 
-	list, err := s.skillsSvc.List()
+	list, err := s.skillsSvc.ListAll()
 	if err != nil {
 		return "", err
 	}
