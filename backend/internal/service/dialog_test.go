@@ -96,8 +96,29 @@ func (s *stubVariableRepo) EnsureBuiltin(context.Context, domain.PromptVariable)
 func (s *stubVariableRepo) Upsert(context.Context, domain.PromptVariable) (domain.PromptVariable, error) {
 	return domain.PromptVariable{}, nil
 }
+
+// LoadAll fills in the host* variables unless the test set its own. Every mode
+// prompt renders them and they are reconciled on every boot in production, so a
+// fixture that omits them would fail on missingkey=error for a reason that has
+// nothing to do with what it is testing.
 func (s *stubVariableRepo) LoadAll(context.Context) (map[string]map[string]any, error) {
-	return s.vars, nil
+	out := make(map[string]map[string]any, len(s.vars)+1)
+	for scope, names := range s.vars {
+		copied := make(map[string]any, len(names))
+		for name, value := range names {
+			copied[name] = value
+		}
+		out[scope] = copied
+	}
+	if out[defaultVariableScope] == nil {
+		out[defaultVariableScope] = map[string]any{}
+	}
+	for _, name := range HostVariableNames() {
+		if _, ok := out[defaultVariableScope][name]; !ok {
+			out[defaultVariableScope][name] = "stub-" + name
+		}
+	}
+	return out, nil
 }
 
 func TestNormalizeTagList(t *testing.T) {

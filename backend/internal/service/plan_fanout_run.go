@@ -60,6 +60,10 @@ type FanoutStage struct {
 	// without running an agent. The interface shows it as the row's tooltip
 	// either way, which is where the operator looks for "why is this empty".
 	Error string `json:"error,omitempty"`
+	// Carried marks a row the current run does not plan, kept from the run
+	// before it so the list is always the whole plan rather than the round. Its
+	// status, dialog and error are the earlier run's.
+	Carried bool `json:"carried,omitempty"`
 }
 
 // PlanBlocker is a question a stage subagent could not answer for itself. It

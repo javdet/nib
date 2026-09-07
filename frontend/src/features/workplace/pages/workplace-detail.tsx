@@ -1331,7 +1331,19 @@ export function WorkplaceDetail() {
 											key={`${stage.kind ?? 'stage'}:${stage.title}`}
 											className="flex items-center justify-between gap-2 text-sm"
 										>
-											<span className="truncate">{stage.title}</span>
+											<span
+												className={cn(
+													'truncate',
+													stage.carried && 'text-muted-foreground',
+												)}
+												title={
+													stage.carried
+														? 'Kept from an earlier round; this run does not replan it'
+														: undefined
+												}
+											>
+												{stage.title}
+											</span>
 											<span className="flex shrink-0 items-center gap-2">
 												<span
 													className={
