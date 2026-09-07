@@ -49,7 +49,7 @@ func TestSeedAllowListsWritesMissingLists(t *testing.T) {
 	}
 
 	names := readNames(t, filepath.Join(dir, "decompose.json"))
-	for _, want := range []string{"create_dag", "get_action_list"} {
+	for _, want := range []string{"create_dag", "create_plan_contract"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("decompose list is missing %q: %v", want, names)
 		}
@@ -65,10 +65,12 @@ func TestSeedAllowListsWritesMissingLists(t *testing.T) {
 		}
 	}
 
-	// execute_action belongs to the orchestrator now, as run_subagent's execute
-	// sub-agent. A fresh volume must not hand decompose a second way in.
-	if slices.Contains(names, "execute_action") {
-		t.Errorf("decompose list still offers execute_action: %v", names)
+	// Running the plan belongs to the orchestrator now: decompose only writes the
+	// plan, so a fresh volume must not hand it either half of the execute path.
+	for _, unwanted := range []string{"execute_action", "get_action_list"} {
+		if slices.Contains(names, unwanted) {
+			t.Errorf("decompose list still offers %q: %v", unwanted, names)
+		}
 	}
 }
 
@@ -93,8 +95,8 @@ func TestSeedAllowListsAddsNewToolToExistingList(t *testing.T) {
 	if !slices.Contains(names, "an_operators_own_tool") {
 		t.Errorf("the operator's own entry was dropped: %v", names)
 	}
-	if !slices.Contains(names, "get_action_list") {
-		t.Errorf("get_action_list was not added: %v", names)
+	if !slices.Contains(names, "create_dag") {
+		t.Errorf("create_dag was not added: %v", names)
 	}
 	if names[0] != "knowledge_search" || names[1] != "an_operators_own_tool" {
 		t.Errorf("existing order was not preserved: %v", names)
@@ -114,14 +116,14 @@ func TestSeedAllowListsLeavesARemovedToolRemoved(t *testing.T) {
 	}
 
 	kept := slices.DeleteFunc(readNames(t, path), func(n string) bool {
-		return n == "execute_action"
+		return n == "create_dag"
 	})
 	writeNames(t, path, kept)
 
 	if _, err := SeedAllowLists(dir); err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
-	if names := readNames(t, path); slices.Contains(names, "execute_action") {
+	if names := readNames(t, path); slices.Contains(names, "create_dag") {
 		t.Errorf("a removed tool came back: %v", names)
 	}
 }
