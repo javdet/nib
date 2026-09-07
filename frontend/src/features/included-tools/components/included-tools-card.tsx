@@ -6,6 +6,7 @@ import {
 	ChevronsRight,
 	Save,
 	Server,
+	Sparkles,
 	X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,12 @@ import { cn } from '@/lib/utils'
 import { Select } from '@/components/ui/select'
 import { extractErrorMessage } from '@/lib/api-client'
 import { listModes } from '@/features/modes/api/modes'
+import { useMode } from '@/features/modes/mode-context'
+import { useDialog } from '@/features/dialogs/dialog-context'
+import {
+	createDialog,
+	openDialogActivity,
+} from '@/features/dialogs/api/dialogs'
 import {
 	Tooltip,
 	TooltipContent,
@@ -35,6 +42,7 @@ import {
 	unknownServer,
 } from '../lib/group-tools'
 import { summarizeToolDescription } from '../lib/tool-description'
+import { buildDistributeToolsRequest } from '../lib/build-distribute-request'
 
 function ToolName({
 	name,
@@ -234,7 +242,15 @@ export function IncludedToolsCard() {
 	const [modeLoading, setModeLoading] = useState(false)
 	const [catalogLoading, setCatalogLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
+	const [distributing, setDistributing] = useState(false)
+	const [distributeDialogId, setDistributeDialogId] = useState<string | null>(
+		null,
+	)
 	const [error, setError] = useState<string | null>(null)
+
+	const { selectMode } = useMode()
+	const { setActiveDialogId, bumpDialogsVersion, enqueuePendingMessage } =
+		useDialog()
 
 	const catalogEntries = useMemo<ToolEntry[]>(
 		() =>
@@ -451,6 +467,65 @@ export function IncludedToolsCard() {
 		}
 	}, [selectedMode, included])
 
+	// The distribution runs in a discuss dialog; reload the selected mode's list
+	// as the agent writes so the panels follow it. Skipped while the card is
+	// dirty - reloading would throw away shuttle moves the operator has not
+	// saved, and the button is disabled in that state anyway.
+	useEffect(() => {
+		if (!distributeDialogId || !selectedMode || dirty) {
+			return
+		}
+
+		const close = openDialogActivity(distributeDialogId, (ev) => {
+			if (ev.kind === 'tools_end' || ev.kind === 'turn_end') {
+				void loadModeTools(selectedMode).catch((err) => {
+					setError(extractErrorMessage(err))
+				})
+			}
+		})
+
+		return close
+	}, [distributeDialogId, selectedMode, dirty, loadModeTools])
+
+	const handleDistribute = useCallback(async () => {
+		if (catalog.length === 0) {
+			return
+		}
+
+		setDistributing(true)
+		setError(null)
+		try {
+			// Only discuss carries the skills list and the update_included_tools
+			// tool, and the system prompt is frozen on a dialog's first message -
+			// so the mode has to be settled before anything is sent.
+			selectMode('discuss')
+			const dialog = await createDialog({
+				mode: 'discuss',
+				title: 'Included tools: distribute',
+			})
+			// The chat panel picks this up once it has loaded the (empty)
+			// transcript for the newly active dialog and sends it for us.
+			enqueuePendingMessage({
+				dialogId: dialog.id,
+				text: buildDistributeToolsRequest(modes, catalog),
+			})
+			setActiveDialogId(dialog.id)
+			setDistributeDialogId(dialog.id)
+			bumpDialogsVersion()
+		} catch (err) {
+			setError(extractErrorMessage(err))
+		} finally {
+			setDistributing(false)
+		}
+	}, [
+		catalog,
+		modes,
+		selectMode,
+		enqueuePendingMessage,
+		setActiveDialogId,
+		bumpDialogsVersion,
+	])
+
 	const loading = modesLoading || modeLoading || catalogLoading
 
 	return (
@@ -481,7 +556,31 @@ export function IncludedToolsCard() {
 							))}
 						</Select>
 					</div>
-					<div className="flex justify-end">
+					<p className="text-sm text-muted-foreground">
+						Distribute opens a discuss chat that narrows{' '}
+						<strong>every</strong> mode's list, not just the one
+						selected above. It only removes tools - a tool taken out
+						stays reachable through search, and putting one back is a
+						move here. Save or discard your changes first.
+					</p>
+					<div className="flex justify-end gap-2">
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => void handleDistribute()}
+							disabled={
+								distributing ||
+								loading ||
+								saving ||
+								dirty ||
+								catalog.length === 0
+							}
+						>
+							<Sparkles className="mr-2 h-4 w-4" />
+							{distributing
+								? 'Opening chat...'
+								: 'Distribute with AI'}
+						</Button>
 						<Button
 							size="sm"
 							onClick={() => void handleSave()}

@@ -62,6 +62,8 @@ function firstEnabled<T extends string>(
 	return options.find((opt) => opt.enabled)?.value
 }
 
+type SaveStatus = 'idle' | 'saved' | 'failed'
+
 export function ExecutorConfigCard() {
 	const typeId = useId()
 	const platformId = useId()
@@ -92,6 +94,7 @@ export function ExecutorConfigCard() {
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 	const [saved, setSaved] = useState<ExecutorConfig | null>(null)
 	const [type, setType] = useState<ExecutorType>('disabled')
 	const [platform, setPlatform] = useState<ExecutorPlatform | ''>('')
@@ -215,6 +218,7 @@ export function ExecutorConfigCard() {
 	const handleSave = async () => {
 		setSaving(true)
 		setError(null)
+		setSaveStatus('idle')
 		try {
 			applyConfig(
 				await updateExecutorConfig({
@@ -248,8 +252,10 @@ export function ExecutorConfigCard() {
 					llmModel,
 				}),
 			)
+			setSaveStatus('saved')
 		} catch (err) {
 			setError(extractErrorMessage(err))
+			setSaveStatus('failed')
 		} finally {
 			setSaving(false)
 		}
@@ -622,6 +628,18 @@ export function ExecutorConfigCard() {
 									placeholder="agent-runner:local"
 									disabled={saving}
 								/>
+								<p className="text-xs text-muted-foreground">
+									Official image tags are published at{' '}
+									<a
+										href="https://hub.docker.com/r/javdet/nib-agent"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="underline underline-offset-2"
+									>
+										hub.docker.com/r/javdet/nib-agent
+									</a>
+									.
+								</p>
 							</div>
 							<div className="space-y-2">
 								<Label htmlFor={llmModelId}>LLM model</Label>
@@ -808,7 +826,23 @@ export function ExecutorConfigCard() {
 						</div>
 					)}
 
-					<div className="flex justify-end">
+					<div className="flex items-center justify-end gap-3">
+						{saveStatus === 'saved' && !dirty && (
+							<span
+								className="text-sm text-green-600"
+								aria-live="polite"
+							>
+								Saved
+							</span>
+						)}
+						{saveStatus === 'failed' && (
+							<span
+								className="text-sm text-destructive"
+								aria-live="polite"
+							>
+								Save failed
+							</span>
+						)}
 						<Button
 							size="sm"
 							onClick={() => void handleSave()}

@@ -354,6 +354,7 @@ func (s *ChatService) resolveAllowSet(modeName string) (map[string]struct{}, err
 func enforceModeToolLimits(modeName string, allow map[string]struct{}) {
 	if modeName != discussDialogMode {
 		delete(allow, UpdateToolCategoryToolName)
+		delete(allow, UpdateIncludedToolsToolName)
 	}
 }
 
