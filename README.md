@@ -51,6 +51,9 @@ Every tool a server exposes is switched on for every mode as soon as it is index
 is usable right away; deleting a server takes its tools back out of every mode.
 The number of tools available to the agent can then be limited per mode on Tools -> Included tools - a tool taken
 out there stays out, and the remaining tools stay reachable through search.
+The Distribute with AI button on that tab hands the whole catalog to a discuss chat, which applies the
+per-mode policy in the `distribute-tools` skill - read-only modes lose the tools that change things,
+execute loses the version control ones. It only ever removes; putting a tool back is a move on the page.
 Tools can be sorted into different categories.
 
 Any value in an MCP server entry may use a reference of the form `${NAME}` - for example `"Authorization": "Bearer ${MCP_GITHUB_TOKEN}"`.

@@ -8,7 +8,6 @@
     "set_category",
     "create_dag",
     "create_plan_contract",
-    "get_action_list",
     "get_dag"
   ]
 }

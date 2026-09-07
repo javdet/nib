@@ -7,6 +7,7 @@
     "get_kb_document",
     "create_table",
     "update_kb",
-    "update_tool_category"
+    "update_tool_category",
+    "update_included_tools"
   ]
 }

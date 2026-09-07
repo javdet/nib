@@ -84,6 +84,7 @@ func init() {
 		registerRunSubagentTool,
 		registerStopExecutionTool,
 		registerUpdateToolCategoryTool,
+		registerUpdateIncludedToolsTool,
 	}
 }
 
@@ -337,4 +338,20 @@ func registerUpdateToolCategoryTool(s *ChatService, catalog *toolCatalog, b tool
 	}
 	catalog.localHandlers[UpdateToolCategoryToolName] = s.updateToolCategoryHandler()
 	catalog.tools = append(catalog.tools, UpdateToolCategoryToolDef(b.categoryNames))
+}
+
+// registerUpdateIncludedToolsTool is discuss mode's alone, guarded the same two
+// ways as update_tool_category: the binding here, and enforceModeToolLimits,
+// which drops the name from every other mode's allow set. Without the second
+// guard a plan or execute agent could narrow the tool surface of the very mode
+// it is running in.
+func registerUpdateIncludedToolsTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.mode != discussDialogMode || s.includedToolsSvc == nil {
+		return
+	}
+	if !localToolAllowed(allow, UpdateIncludedToolsToolName) {
+		return
+	}
+	catalog.localHandlers[UpdateIncludedToolsToolName] = s.updateIncludedToolsHandler()
+	catalog.tools = append(catalog.tools, UpdateIncludedToolsToolDef())
 }
