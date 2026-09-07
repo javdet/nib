@@ -10,9 +10,10 @@ import (
 	"github.com/javdet/nib/internal/config"
 )
 
+// Setup swaps the process-wide slog default, so the tests below cannot run in
+// parallel with each other: whoever calls SetDefault last owns every slog call
+// made after it, whichever test made it.
 func TestSetup_disabled(t *testing.T) {
-	t.Parallel()
-
 	prev := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
@@ -26,8 +27,6 @@ func TestSetup_disabled(t *testing.T) {
 }
 
 func TestSetup_enabled_writesToFile(t *testing.T) {
-	t.Parallel()
-
 	prev := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
@@ -60,8 +59,6 @@ func TestSetup_enabled_writesToFile(t *testing.T) {
 }
 
 func TestSetup_levelFilter(t *testing.T) {
-	t.Parallel()
-
 	const debugMsg = "debug-only payload"
 	const infoMsg = "info-level payload"
 
@@ -129,8 +126,6 @@ func TestSetup_levelFilter(t *testing.T) {
 }
 
 func TestSetup_enabled_openFailure(t *testing.T) {
-	t.Parallel()
-
 	prev := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
