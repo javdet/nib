@@ -4,6 +4,17 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.7.9] - 2026-09-07
+
+### Added
+- Two built-in system skills, `nib-configuration` and `nib-internals`, ship nib's own documentation to the agent; they are read-only, not written to the data volume, and not listed by the skills API.
+- New `update_included_tools` tool removes specific tools from a mode's included list while keeping them reachable via search, and a new `distribute-tools` skill applies per-mode tool policies across multiple modes at once.
+- Mode prompts now include a live snapshot of the host environment (runtime, distro, kernel, shell, working directory, available binaries), so the agent's answers reflect what it can actually run on this install.
+
+### Changed
+- The knowledge-base's OpenAI-compatible embeddings endpoint is now configured via `KB_EMBEDDINGS_BASE_URL` instead of `KB_OPENROUTER_BASE_URL`; update `.env` and any compose overrides accordingly.
+- Re-planning a subset of fan-out stages no longer drops the stages that weren't replanned — the plan view now carries them forward from the previous run (dimmed, with an explanation on hover) instead of losing them.
+
 ## [v0.7.8] - 2026-09-04
 
 ### Added
