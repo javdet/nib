@@ -127,3 +127,55 @@ func TestModeListsSkills(t *testing.T) {
 		}
 	}
 }
+
+// A system skill is nib's own documentation, and that documentation quotes
+// template syntax. prompttpl renders with missingkey=error, so putting it
+// through the renderer would make get_skill fail on the very text it is there
+// to serve -- while an operator's own skill must still be rendered.
+func TestExecuteGetSkillDoesNotRenderSystemSkills(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "skills")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skills: %v", err)
+	}
+	const templated = "see {{ .global.NoSuchVariable }} for details"
+	if err := os.WriteFile(filepath.Join(skillDir, "ours.md"), []byte(templated), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+
+	chatSvc := &ChatService{
+		skillsSvc:    skills.NewService(dir, "skills"),
+		variableRepo: &stubVariableRepo{vars: map[string]map[string]any{"global": {}}},
+	}
+
+	if _, err := chatSvc.ExecuteGetSkill(context.Background(), map[string]any{"name": "ours"}); err == nil {
+		t.Fatal("an operator skill with an unknown variable rendered without error; the fixture no longer proves anything")
+	}
+
+	out, err := chatSvc.ExecuteGetSkill(context.Background(), map[string]any{"name": "nib-configuration"})
+	if err != nil {
+		t.Fatalf("ExecuteGetSkill(nib-configuration): %v", err)
+	}
+	if !strings.Contains(out, "streamable HTTP") {
+		t.Fatal("the nib-configuration skill does not carry the MCP transport answer")
+	}
+}
+
+// The catalog in the main and discuss prompts is where the model learns the
+// system skills exist at all.
+func TestBuildSkillsSectionListsSystemSkills(t *testing.T) {
+	t.Parallel()
+
+	chatSvc := &ChatService{skillsSvc: skills.NewService(t.TempDir(), "skills")}
+	section, err := chatSvc.buildSkillsSection()
+	if err != nil {
+		t.Fatalf("buildSkillsSection() error = %v", err)
+	}
+	for _, meta := range skills.SystemMeta() {
+		if !strings.Contains(section, "- "+meta.Name+": ") {
+			t.Fatalf("section does not list the system skill %q: %s", meta.Name, section)
+		}
+	}
+}

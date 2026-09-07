@@ -5,6 +5,9 @@
 # The system prompts are //go:embed-ed, so they must reach the build context.
 # `*.md` does not cross `/` and never excluded them, but be explicit about it.
 !internal/systemprompts/defaults/*.md
+!internal/skills/defaults/*.md
+# Same reason: nib's own documentation is embedded and served to the agent.
+!internal/nibdocs/docs/*.md
 
 # Locally compiled binaries — the image builds its own in the build stage.
 /nib

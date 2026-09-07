@@ -85,7 +85,8 @@ func TestFanoutTargets_work(t *testing.T) {
 func TestFanoutStages_putsTheRollbackAfterTheLastWave(t *testing.T) {
 	t.Parallel()
 
-	got := fanoutStages([][]string{{"A", "B"}, {"C"}}, true)
+	waves := [][]string{{"A", "B"}, {"C"}}
+	got := fanoutStages(waves, stageTitleSet(waves), true, FanoutRun{})
 	if len(got) != 4 {
 		t.Fatalf("stages = %#v, want three stages and the rollback", got)
 	}
@@ -100,10 +101,82 @@ func TestFanoutStages_putsTheRollbackAfterTheLastWave(t *testing.T) {
 		if st.Kind != FanoutStageKindStage {
 			t.Fatalf("stage %q carries kind %q", st.Title, st.Kind)
 		}
+		if st.Carried {
+			t.Fatalf("stage %q is carried, want planned", st.Title)
+		}
+	}
+}
+
+// The list is the plan, not the round: a run that leaves the rollback alone
+// still shows its row, because a unit of work vanishing from the list reads as
+// work that was lost.
+func TestFanoutStages_carriesTheRollbackARunDoesNotRedo(t *testing.T) {
+	t.Parallel()
+
+	waves := [][]string{{"A"}}
+	previous := FanoutRun{Stages: []FanoutStage{
+		{Title: "A", Status: FanoutStageDone, DialogID: "d-a"},
+		{Title: rollbackStageTitle, Kind: FanoutStageKindRollback, Status: FanoutStageDone, DialogID: "d-r"},
+	}}
+
+	got := fanoutStages(waves, stageTitleSet(waves), false, previous)
+	if len(got) != 2 {
+		t.Fatalf("stages = %#v, want the stage and the carried rollback", got)
+	}
+	rollback := got[1]
+	if rollback.Kind != FanoutStageKindRollback || !rollback.Carried {
+		t.Fatalf("rollback = %#v, want a carried rollback row", rollback)
+	}
+	if rollback.Status != FanoutStageDone || rollback.DialogID != "d-r" {
+		t.Fatalf("rollback = %#v, want the earlier run's result and dialog", rollback)
+	}
+}
+
+// Answering one question replans one stage. Every other stage stays in the list
+// with what it already had -- including the dialog of the subagent that wrote
+// it, which is the only way back to its research.
+func TestFanoutStages_carriesTheStagesARunDoesNotReplan(t *testing.T) {
+	t.Parallel()
+
+	allWaves := [][]string{{"A", "B"}, {"C", "D"}}
+	previous := FanoutRun{Stages: []FanoutStage{
+		{Title: "A", Status: FanoutStageDone, DialogID: "d-a"},
+		{Title: "B", Status: FanoutStageFailed, DialogID: "d-b", Error: "boom"},
+		{Title: "C", Status: FanoutStageRunning, DialogID: "d-c"},
+		{Title: rollbackStageTitle, Kind: FanoutStageKindRollback, Status: FanoutStageDone},
+	}}
+
+	got := fanoutStages(allWaves, stageTitleSet([][]string{{"A"}}), true, previous)
+	if len(got) != 5 {
+		t.Fatalf("stages = %d (%#v), want every DAG stage and the rollback", len(got), got)
 	}
 
-	if got := fanoutStages([][]string{{"A"}}, false); len(got) != 1 {
-		t.Fatalf("stages = %#v, want no rollback row when it was not asked for", got)
+	byTitle := make(map[string]FanoutStage, len(got))
+	for _, st := range got {
+		byTitle[st.Title] = st
+	}
+
+	if a := byTitle["A"]; a.Carried || a.Status != FanoutStagePending || a.DialogID != "" {
+		t.Errorf("A = %#v, want a fresh pending row: it is the stage being replanned", a)
+	}
+	if b := byTitle["B"]; !b.Carried || b.Status != FanoutStageFailed || b.DialogID != "d-b" || b.Error != "boom" {
+		t.Errorf("B = %#v, want the earlier failure carried with its dialog", b)
+	}
+	// A row a finished run left running has no agent behind it any more.
+	if c := byTitle["C"]; !c.Carried || c.Status != FanoutStageFailed || c.Error != abandonedReason {
+		t.Errorf("C = %#v, want an abandoned row rather than a live one", c)
+	}
+	// The DAG has D, the previous run never did: it belongs in the list, and the
+	// row says nobody has written it.
+	if d := byTitle["D"]; !d.Carried || d.Status != FanoutStagePending || d.Error != notPlannedYetReason {
+		t.Errorf("D = %#v, want a carried row explaining it is unplanned", d)
+	}
+	if r := byTitle[rollbackStageTitle]; r.Carried || r.Status != FanoutStagePending {
+		t.Errorf("rollback = %#v, want a fresh pending row: every replan redoes it", r)
+	}
+	// Wave numbers stay the DAG's, so the rollback still sorts after every stage.
+	if byTitle["C"].Wave != 1 || byTitle[rollbackStageTitle].Wave != 2 {
+		t.Errorf("waves = %d and %d, want the DAG's own order", byTitle["C"].Wave, byTitle[rollbackStageTitle].Wave)
 	}
 }
 
@@ -172,15 +245,40 @@ func TestGroupBlockers_marksTheRollbackAgentWithoutNamingItAStage(t *testing.T) 
 	}
 }
 
-func TestAnsweredBlockers_keepsOnlyThoseWithAnswers(t *testing.T) {
+// A round asks two questions. The rest have to survive it, or a question raised
+// by a stage nobody is replanning could never be put to the operator at all.
+func TestCarryBlockers_keepsWhatTheNextRoundStillHasToAsk(t *testing.T) {
 	t.Parallel()
-	got := answeredBlockers([]PlanBlocker{
-		{Stage: "A", Answer: "yes"},
-		{Stage: "B"},
-		{Stage: "C", Answer: "  "},
-	})
-	if len(got) != 1 || got[0].Stage != "A" {
-		t.Fatalf("blockers = %#v", got)
+
+	blockers := []PlanBlocker{
+		{Stage: "A", Question: "answered", Answer: "yes"},
+		{Stage: "A", Question: "A raises this again"},
+		{Stage: "B", Question: "nobody is replanning B"},
+		{Stage: rollbackStageTitle, Kind: FanoutStageKindRollback, Question: "the rollback re-raises this"},
+		{Stage: "C", Question: "blank answers are not answers", Answer: "  "},
+	}
+
+	got := carryBlockers(blockers, map[string]struct{}{"a": {}}, true)
+
+	var kept []string
+	for _, b := range got {
+		kept = append(kept, b.Question)
+	}
+	want := []string{"answered", "nobody is replanning B", "blank answers are not answers"}
+	if strings.Join(kept, "|") != strings.Join(want, "|") {
+		t.Fatalf("kept = %v, want %v", kept, want)
+	}
+}
+
+// With the rollback left alone, its own open question is nobody else's to raise.
+func TestCarryBlockers_keepsARollbackQuestionWhenTheRollbackIsNotRedone(t *testing.T) {
+	t.Parallel()
+
+	got := carryBlockers([]PlanBlocker{
+		{Stage: rollbackStageTitle, Kind: FanoutStageKindRollback, Question: "still open"},
+	}, nil, false)
+	if len(got) != 1 || got[0].Question != "still open" {
+		t.Fatalf("blockers = %#v, want the rollback's question kept", got)
 	}
 }
 

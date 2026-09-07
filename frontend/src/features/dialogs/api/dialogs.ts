@@ -525,6 +525,12 @@ export interface FanoutStage {
 	/** The subagent's own dialog, so its research can be read back. */
 	dialogId?: string
 	error?: string
+	/**
+	 * Set on a row the current run does not plan, kept from the run before it so
+	 * the list is always the whole plan rather than the round. Its status and
+	 * dialog are the earlier run's.
+	 */
+	carried?: boolean
 }
 
 export interface PlanBlocker {

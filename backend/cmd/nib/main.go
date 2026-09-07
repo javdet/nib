@@ -20,6 +20,7 @@ import (
 	"github.com/javdet/nib/internal/crypto"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/handler"
+	"github.com/javdet/nib/internal/hostenv"
 	"github.com/javdet/nib/internal/kb"
 	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/llm"
@@ -28,6 +29,7 @@ import (
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/mcpclient"
+	"github.com/javdet/nib/internal/nibdocs"
 	"github.com/javdet/nib/internal/oauth"
 	"github.com/javdet/nib/internal/repository/postgres"
 	"github.com/javdet/nib/internal/repository/static"
@@ -175,6 +177,15 @@ func run() error {
 	if err := kbdoc.ValidateEmbeddedSkeleton(); err != nil {
 		return fmt.Errorf("knowledge base: %w", err)
 	}
+	// And for nib's own documentation: it is what the agent answers questions
+	// about configuring nib from, so an image built without it must fail here
+	// rather than at the tool call.
+	if err := nibdocs.ValidateEmbedded(nibdocs.RepoGuide); err != nil {
+		return fmt.Errorf("nib documentation: %w", err)
+	}
+	if err := skills.ValidateSystemSkills(); err != nil {
+		return fmt.Errorf("system skills: %w", err)
+	}
 	systemPromptsSvc := systemprompts.NewService(cfg.DataDir, cfg.Prompts.Dir)
 	promptHousekeeping, err := systemPromptsSvc.Prepare()
 	if err != nil {
@@ -222,6 +233,24 @@ func run() error {
 	}
 	if err := variableSvc.EnsureDefaults(ctx); err != nil {
 		slog.Warn("ensure builtin variables", "error", err)
+	}
+	// The Environment block of the mode prompts is rendered from these, so they
+	// are detected here and reconciled into the variable table: a value nothing
+	// has touched follows the host, an operator's edit is left alone.
+	hostInfo := hostenv.Detect()
+	slog.Info("host environment",
+		"runtime", hostInfo.Runtime, "namespace", hostInfo.KubeNamespace,
+		"distro", hostInfo.Distro, "kernel", hostInfo.Kernel,
+		"platform", hostInfo.GOOS+"/"+hostInfo.GOARCH,
+		"shell", hostInfo.Shell, "workdir", hostInfo.WorkDir,
+		"uid", hostInfo.UID, "onPath", hostInfo.OnPath)
+	hostEnvSvc := service.NewHostEnvService(variableRepo, cfg.DataDir)
+	if hostVars, err := hostEnvSvc.EnsureDefaults(ctx, hostInfo); err != nil {
+		slog.Warn("ensure host environment variables", "error", err)
+	} else if len(hostVars.Created) > 0 || len(hostVars.Refreshed) > 0 || len(hostVars.Overridden) > 0 {
+		slog.Info("host environment variables reconciled",
+			"created", hostVars.Created, "refreshed", hostVars.Refreshed,
+			"operatorOwned", hostVars.Overridden)
 	}
 
 	var secretsCipher *crypto.Cipher
