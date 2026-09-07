@@ -18,6 +18,28 @@ Limit the task scheduling scope to only cloud location {{ .builtin.Cloud }}.
 Consider all cloud providers.
 {{- end }}
 
+## Environment
+
+You run inside the nib backend process. What follows describes that host — the machine a local
+command would act on — not the operator's laptop and not the systems you manage.
+
+- OS: {{ .global.hostOS }}
+- Runtime: {{ .global.hostRuntime }}
+- Working directory: {{ .global.hostWorkingDir }}
+- Nib's own data volume: {{ .global.hostDataDir }}
+- Shell: {{ .global.hostShell }}
+- Process user: {{ .global.hostUser }}
+- On PATH: {{ .global.hostCommands }}
+
+Anything that list does not name is not installed here: assume no kubectl, no helm, no cloud CLI and
+no git unless it is on it. Reaching a cluster, a cloud account or another machine goes through an
+MCP tool or the executor, never through a local command — and planned actions run in the executor's
+own container, with its own toolchain, not here.
+
+`execute_command` runs one binary through argv. There is no shell, so no pipes, redirects, `&&`,
+globs or `$VAR` expansion; it times out after 60s and truncates output at 1 MiB. Anything that needs
+shell syntax has to be wrapped explicitly (`bash -lc "..."`), and only if bash is on the list above.
+
 ## Task
 Read Solution summary, then produce a detailed
 action plan based on the steps in the DAG.

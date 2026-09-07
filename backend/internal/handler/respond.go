@@ -53,6 +53,10 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, skills.ErrInvalidName):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, skills.ErrSystemSkill):
+		// Same shape as systemprompts.ErrNotEditable: the skill exists, but the
+		// image owns it and the write is refused by policy.
+		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, mcpconfig.ErrInvalidName):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, mcpconfig.ErrInvalidJSON):

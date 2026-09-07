@@ -146,10 +146,17 @@ func numberedStageList(titles []string) string {
 	return strings.Join(parts, ", ")
 }
 
+// plannedStagesSummary says what the run just started is about to do, so a
+// carried row is stepped over: it is in the run's list to be watched, not to be
+// planned, and naming it would tell the orchestrator it had replanned the whole
+// DAG when it asked for one stage.
 func plannedStagesSummary(run FanoutRun) string {
 	var stages []string
 	rollback := false
 	for _, st := range run.Stages {
+		if st.Carried {
+			continue
+		}
 		if st.Kind == FanoutStageKindRollback {
 			rollback = true
 			continue

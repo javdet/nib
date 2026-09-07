@@ -32,6 +32,11 @@ const (
 	// rollbackPromptName is the prompt appended to plan.md for the agent that
 	// writes the plan's rollback list once the stages are written.
 	rollbackPromptName = "rollback_stage"
+	// notPlannedYetReason explains a carried row nothing has written: a stage the
+	// DAG gained since the last run, or one an earlier run never reached.
+	notPlannedYetReason = "not planned yet; replan it to fill this in"
+	// abandonedReason closes a carried row a finished run left mid-flight.
+	abandonedReason = "the run that was planning this ended before it finished"
 )
 
 var (
@@ -74,13 +79,23 @@ func (t FanoutTargets) work(waves [][]string) ([][]string, bool, error) {
 	return waves, t.Rollback, nil
 }
 
-// fanoutStages lays the run's work out in order: the stages wave by wave, then
+// fanoutStages lays the plan's work out in order: the stages wave by wave, then
 // the rollback on its own, since it undoes the plan as a whole and can only be
 // worked out once every stage is written.
-func fanoutStages(waves [][]string, rollback bool) []FanoutStage {
+//
+// allWaves is the whole DAG rather than the slice of it this run replans, and
+// running holds the titles the run does plan. A unit of work outside it is
+// carried from the run before, so the list an operator reads is always the plan
+// and never the round: answering one question must not make the stages nobody
+// is replanning disappear.
+func fanoutStages(allWaves [][]string, running map[string]struct{}, rollback bool, previous FanoutRun) []FanoutStage {
 	var stages []FanoutStage
-	for waveIdx, wave := range waves {
+	for waveIdx, wave := range allWaves {
 		for _, title := range wave {
+			if _, plans := running[normalizeStageTitle(title)]; !plans {
+				stages = append(stages, carriedStage(previous, waveIdx, title, FanoutStageKindStage))
+				continue
+			}
 			stages = append(stages, FanoutStage{
 				Title:  title,
 				Wave:   waveIdx,
@@ -88,15 +103,78 @@ func fanoutStages(waves [][]string, rollback bool) []FanoutStage {
 			})
 		}
 	}
-	if rollback {
-		stages = append(stages, FanoutStage{
-			Title:  rollbackStageTitle,
-			Wave:   len(waves),
-			Kind:   FanoutStageKindRollback,
-			Status: FanoutStagePending,
-		})
+
+	if !rollback {
+		return append(stages, carriedStage(previous, len(allWaves), rollbackStageTitle, FanoutStageKindRollback))
 	}
-	return stages
+	return append(stages, FanoutStage{
+		Title:  rollbackStageTitle,
+		Wave:   len(allWaves),
+		Kind:   FanoutStageKindRollback,
+		Status: FanoutStagePending,
+	})
+}
+
+// carriedStage is the row for a unit of work this run leaves alone: whatever the
+// run before it recorded, marked so nothing mistakes it for work in hand. The
+// earlier subagent's dialog comes with it, which is what keeps the "Open" button
+// on a stage planned two rounds ago working.
+func carriedStage(previous FanoutRun, wave int, title string, kind FanoutStageKind) FanoutStage {
+	st := FanoutStage{Title: title, Wave: wave, Kind: kind, Carried: true}
+
+	prior, found := findFanoutStage(previous, title, kind)
+	if !found {
+		// A stage the DAG gained since the last run, or a first run that leaves
+		// the rollback out: it is in the list because it is part of the plan, not
+		// because anything has written it.
+		st.Status = FanoutStagePending
+		st.Error = notPlannedYetReason
+		return st
+	}
+
+	st.Status = prior.Status
+	st.DialogID = prior.DialogID
+	st.Error = prior.Error
+	switch prior.Status {
+	case FanoutStageRunning:
+		// A run that is over left nothing behind that is still working, and
+		// carrying "running" would show a spinner with no agent under it -- the
+		// reasoning the boot-time sweep in ReconcileStuckRuns follows too.
+		st.Status = FanoutStageFailed
+		st.Error = abandonedReason
+	case FanoutStagePending:
+		st.Error = notPlannedYetReason
+	}
+	return st
+}
+
+// findFanoutStage looks a row up the way the run's writers address it: a DAG
+// stage by title among the rows carrying no kind, the rollback by kind alone.
+func findFanoutStage(run FanoutRun, title string, kind FanoutStageKind) (FanoutStage, bool) {
+	for _, st := range run.Stages {
+		if kind != FanoutStageKindStage {
+			if st.Kind == kind {
+				return st, true
+			}
+			continue
+		}
+		if st.Kind == FanoutStageKindStage && normalizeStageTitle(st.Title) == normalizeStageTitle(title) {
+			return st, true
+		}
+	}
+	return FanoutStage{}, false
+}
+
+// stageTitleSet is the normalized titles a run plans, which is what separates a
+// row being replanned from one only being carried.
+func stageTitleSet(waves [][]string) map[string]struct{} {
+	out := make(map[string]struct{})
+	for _, wave := range waves {
+		for _, title := range wave {
+			out[normalizeStageTitle(title)] = struct{}{}
+		}
+	}
+	return out
 }
 
 // PlanFanoutConfig tunes the stage fan-out. The zero value is the shipped default.
@@ -148,9 +226,13 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 		return FanoutRun{}, ErrNoDAGStages
 	}
 
-	if existing, found, err := s.ReadFanoutRun(rootID); err != nil {
+	// The run before this one is both the guard against a second fan-out and the
+	// source of every row and blocker this one carries, so it is read once.
+	previous, _, err := s.ReadFanoutRun(rootID)
+	if err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: read run: %w", err)
-	} else if found && existing.Active() {
+	}
+	if previous.Active() {
 		metrics.RecordFanoutRejected("in_progress")
 		return FanoutRun{}, ErrFanoutInProgress
 	}
@@ -161,26 +243,25 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 		slog.Warn("plan fanout: read contract", "dialog_id", rootID, "error", err)
 	}
 
-	waves, err := planWaves(titles, contract)
+	allWaves, err := planWaves(titles, contract)
 	if err != nil {
 		slog.Warn("plan fanout: wave order", "dialog_id", rootID, "error", err)
 	}
-	waves, rollback, err := targets.work(waves)
+	waves, rollback, err := targets.work(allWaves)
 	if err != nil {
 		return FanoutRun{}, err
 	}
+	running := stageTitleSet(waves)
 
 	run := FanoutRun{
 		RunID:     uuid.NewString(),
 		Status:    FanoutRunRunning,
 		StartedAt: time.Now().Unix(),
 	}
-	// Blockers already answered stay on the record so a stage being replanned can
-	// be told what the user said.
-	if previous, found, _ := s.ReadFanoutRun(rootID); found {
-		run.Blockers = answeredBlockers(previous.Blockers)
-	}
-	run.Stages = fanoutStages(waves, rollback)
+	run.Blockers = carryBlockers(previous.Blockers, running, rollback)
+	// The whole DAG, not just this run's share of it: what a round replans is the
+	// waves below, what the operator watches is every stage plus the rollback.
+	run.Stages = fanoutStages(allWaves, running, rollback, previous)
 	if err := s.writeFanoutRun(rootID, run); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
@@ -226,10 +307,27 @@ func filterWaves(waves [][]string, only []string) [][]string {
 	return out
 }
 
-func answeredBlockers(blockers []PlanBlocker) []PlanBlocker {
+// carryBlockers is the blockers a new run starts with.
+//
+// An answered one stays, so the stage being replanned can be told what the user
+// said. An unanswered one stays too unless the run replans whoever raised it:
+// that agent raises again whatever it still cannot answer, while an agent nobody
+// is rerunning gets no second chance to, and dropping its blocker would lose the
+// question for good -- which is what used to happen to every question past the
+// two a round asks.
+func carryBlockers(blockers []PlanBlocker, running map[string]struct{}, rollback bool) []PlanBlocker {
 	var out []PlanBlocker
 	for _, b := range blockers {
 		if strings.TrimSpace(b.Answer) != "" {
+			out = append(out, b)
+			continue
+		}
+
+		reraised := rollback
+		if b.Kind == FanoutStageKindStage {
+			_, reraised = running[normalizeStageTitle(b.Stage)]
+		}
+		if !reraised {
 			out = append(out, b)
 		}
 	}

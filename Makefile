@@ -1,4 +1,4 @@
-.PHONY: up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev buildx-setup images-local images-push
+.PHONY: up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev buildx-setup images-local images-push sync-docs check-docs-sync
 
 COMPOSE_DEV = docker compose -f docker-compose.dev.yml
 
@@ -16,6 +16,25 @@ restart: ## Restart production compose stack
 logs: ## Tail production compose logs
 	docker compose logs -f
 
+# --- Shipped docs ---
+
+# CLAUDE.md is //go:embed-ed so the agent can answer questions about nib itself,
+# but the backend image is built from the `backend` context, which cannot reach
+# the repository root. The copy is therefore synced before every image build and
+# guarded by TestRepoGuideMatchesRepoRoot. The copy is not named claude.md so a
+# CLAUDE.md line in .gitignore cannot swallow it on a case-insensitive checkout.
+EMBEDDED_CLAUDE_MD = backend/internal/nibdocs/docs/repo-guide.md
+
+sync-docs: ## Copy repo-root CLAUDE.md into the backend build context
+	@if [ -f CLAUDE.md ]; then \
+		cp CLAUDE.md $(EMBEDDED_CLAUDE_MD) && echo "synced CLAUDE.md -> $(EMBEDDED_CLAUDE_MD)"; \
+	else \
+		echo "CLAUDE.md is not in this tree; keeping the embedded copy unchanged"; \
+	fi
+
+check-docs-sync: ## Fail when the embedded copy of CLAUDE.md has drifted
+	diff -u $(EMBEDDED_CLAUDE_MD) CLAUDE.md
+
 # --- Docker images ---
 
 VERSION   ?= $(shell tr -d '[:space:]' < VERSION)
@@ -27,7 +46,7 @@ buildx-setup: ## Create the docker-container builder needed for multi-arch build
 	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 \
 		|| docker buildx create --name $(BUILDER) --driver docker-container --bootstrap
 
-images-local: ## Build all three images for THIS machine's arch into the local daemon
+images-local: sync-docs ## Build all three images for THIS machine's arch into the local daemon
 	docker buildx build --load -t $(REGISTRY)/nib-backend:$(VERSION) \
 		--build-arg VERSION=$(VERSION) -f backend/Dockerfile backend
 	docker buildx build --load -t $(REGISTRY)/nib-kb:$(VERSION) \
@@ -35,7 +54,7 @@ images-local: ## Build all three images for THIS machine's arch into the local d
 	docker buildx build --load -t $(REGISTRY)/nib-frontend:$(VERSION) \
 		-f frontend/Dockerfile frontend
 
-images-push: buildx-setup ## Build all three images for $(PLATFORMS) and push (needs `docker login`)
+images-push: buildx-setup sync-docs ## Build all three images for $(PLATFORMS) and push (needs `docker login`)
 	docker buildx build --builder $(BUILDER) --platform $(PLATFORMS) --push \
 		-t $(REGISTRY)/nib-backend:$(VERSION) -t $(REGISTRY)/nib-backend:latest \
 		--build-arg VERSION=$(VERSION) -f backend/Dockerfile backend
