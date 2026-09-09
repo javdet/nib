@@ -316,8 +316,12 @@ func modeListsSkills(modeName string) bool {
 }
 
 // modeListsRules reports whether the mode's system prompt carries the rule catalog.
+//
+// Plan reads the catalog to apply the guardrails; discuss reads it to maintain
+// them -- write_rule replaces a rule in full, so the agent has to see which
+// rules exist and load the one it is about to rewrite.
 func modeListsRules(modeName string) bool {
-	return modeName == "plan"
+	return modeName == "plan" || modeName == discussDialogMode
 }
 
 // resolveAllowSet returns the union of system tools (from data/tools/{mode}.json)
@@ -355,6 +359,7 @@ func enforceModeToolLimits(modeName string, allow map[string]struct{}) {
 	if modeName != discussDialogMode {
 		delete(allow, UpdateToolCategoryToolName)
 		delete(allow, UpdateIncludedToolsToolName)
+		delete(allow, WriteRuleToolName)
 	}
 }
 

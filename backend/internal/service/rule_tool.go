@@ -81,7 +81,7 @@ func (s *ChatService) buildRulesSection() (string, error) {
 
 	var sb strings.Builder
 	sb.WriteString("## Rule library\n")
-	sb.WriteString("The following rules are available. Each one holds the guardrails for a specific component or product. Before you plan work that touches a component a rule covers, call get_rule with its name to load the full text, then follow it.\n")
+	sb.WriteString("The following rules are available. Each one holds the guardrails for a specific component or product. A description is all you get here: call get_rule with the name to load the full text of the ones the work in front of you touches.\n")
 	for _, m := range list.Rules {
 		if m.Description == "" {
 			sb.WriteString("- ")

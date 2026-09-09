@@ -61,6 +61,7 @@ func init() {
 		registerToolSearchTool,
 		registerGetSkillTool,
 		registerGetRuleTool,
+		registerWriteRuleTool,
 		registerAPICallTool,
 		registerExecuteCommandTool,
 		registerGetSecretsTool,
@@ -132,6 +133,21 @@ func registerGetRuleTool(s *ChatService, catalog *toolCatalog, _ toolBinding, al
 	}
 	catalog.localHandlers[GetRuleToolName] = s.ExecuteGetRule
 	catalog.tools = append(catalog.tools, GetRuleToolDef())
+}
+
+// registerWriteRuleTool is discuss mode's alone, guarded the same two ways as
+// update_included_tools: the binding here, and enforceModeToolLimits, which
+// drops the name from every other mode's allow set. Plan mode must read its
+// guardrails, never rewrite the ones it is being judged against.
+func registerWriteRuleTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.mode != discussDialogMode || s.rulesSvc == nil {
+		return
+	}
+	if !localToolAllowed(allow, WriteRuleToolName) {
+		return
+	}
+	catalog.localHandlers[WriteRuleToolName] = s.writeRuleHandler()
+	catalog.tools = append(catalog.tools, WriteRuleToolDef())
 }
 
 func registerAPICallTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {

@@ -169,10 +169,14 @@ func TestBuildRulesSectionEmptyWithoutRules(t *testing.T) {
 func TestModeListsRules(t *testing.T) {
 	t.Parallel()
 
-	if !modeListsRules("plan") {
-		t.Fatal(`modeListsRules("plan") = false, want true`)
+	// plan applies the rules, discuss maintains them; every other mode has no
+	// business with the catalog.
+	for _, m := range []string{"plan", "discuss"} {
+		if !modeListsRules(m) {
+			t.Fatalf("modeListsRules(%q) = false, want true", m)
+		}
 	}
-	for _, m := range []string{"main", "decompose", "execute", "discuss", "incident", ""} {
+	for _, m := range []string{"main", "decompose", "execute", "incident", ""} {
 		if modeListsRules(m) {
 			t.Fatalf("modeListsRules(%q) = true, want false", m)
 		}
