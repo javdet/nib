@@ -139,8 +139,12 @@ extend what the agent believes about its host.
 - **System skills** (`nib-configuration`, `nib-internals`) are served from the binary. They cannot
   be created, edited, renamed or deleted, do not appear in the Skills page or the HTTP API, and are
   visible only to the agent.
-- Rules live in `{DATA_DIR}/rules`, same format, listed in the `plan` prompt and loaded with
-  `get_rule`.
+- Rules live in `{DATA_DIR}/rules`, same format, listed in the `plan` and `discuss` prompts and
+  loaded with `get_rule`. **Discuss mode alone can write them**, with `write_rule` (name,
+  description, body) — it composes the frontmatter and replaces the whole file, so an edit means
+  reading the rule first and passing the merged body. Every other mode has the tool withdrawn
+  whatever its allow list says (`enforceModeToolLimits`), so a planner cannot rewrite the
+  guardrails it is planning against.
 - The knowledge base is pgvector chunks searched by `knowledge_search`; the file last uploaded to a
   collection is kept at `{DATA_DIR}/knowledgebase/{collection}.md` and read back with
   `get_kb_document`.

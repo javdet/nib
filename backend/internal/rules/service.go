@@ -67,6 +67,13 @@ func (s *Service) Set(name, content string) error {
 	return s.store.Set(name, content)
 }
 
+// Put writes a rule, creating it or replacing an existing one. Create and Set
+// both fail on the wrong pre-existing state; Put is for the callers that only
+// care about the end result.
+func (s *Service) Put(name, content string) error {
+	return s.store.Put(name, content)
+}
+
 // Rename changes the rule name and optionally updates content.
 func (s *Service) Rename(oldName, newName, content string) error {
 	return s.store.Rename(oldName, newName, content)

@@ -3,11 +3,13 @@
     "knowledge_search",
     "tool_search",
     "get_skill",
+    "get_rule",
     "list_variables",
     "get_kb_document",
     "create_table",
     "update_kb",
     "update_tool_category",
-    "update_included_tools"
+    "update_included_tools",
+    "write_rule"
   ]
 }
