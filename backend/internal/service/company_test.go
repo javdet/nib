@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 type memoryVariableRepo struct {
@@ -44,7 +44,7 @@ func (r *memoryVariableRepo) Upsert(_ context.Context, v domain.PromptVariable) 
 	r.vars[v.Scope][v.Name] = v.Value
 	return v, nil
 }
-func (r *memoryVariableRepo) LoadAll(context.Context) (map[string]map[string]any, error) {
+func (r *memoryVariableRepo) LoadAll(context.Context, map[string]string) (map[string]map[string]any, error) {
 	out := make(map[string]map[string]any, len(r.vars))
 	for scope, names := range r.vars {
 		scopeVars := make(map[string]any, len(names))

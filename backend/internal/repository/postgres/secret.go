@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 var _ repository.SecretRepository = (*SecretRepo)(nil)
@@ -62,11 +62,11 @@ func (r *SecretRepo) GetByID(ctx context.Context, id uuid.UUID) (domain.PromptSe
 	return s, nil
 }
 
-func (r *SecretRepo) GetByName(ctx context.Context, scope, name string) (domain.PromptSecret, error) {
+func (r *SecretRepo) GetByName(ctx context.Context, scope, scopeName, name string) (domain.PromptSecret, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT `+secretColumns+`
 		 FROM prompt_secrets
-		 WHERE scope = $1 AND name = $2`, scope, name)
+		 WHERE scope = $1 AND scope_name = $2 AND name = $3`, scope, scopeName, name)
 
 	s, err := scanSecretRow(row)
 	if err != nil {
@@ -91,11 +91,12 @@ func (r *SecretRepo) GetEncrypted(ctx context.Context, id uuid.UUID) ([]byte, er
 	return encrypted, nil
 }
 
-func (r *SecretRepo) GetEncryptedByName(ctx context.Context, scope, name string) ([]byte, error) {
+func (r *SecretRepo) GetEncryptedByName(ctx context.Context, scope, scopeName, name string) ([]byte, error) {
 	var encrypted []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT value_encrypted FROM prompt_secrets WHERE scope = $1 AND name = $2`,
-		scope, name).Scan(&encrypted)
+		`SELECT value_encrypted FROM prompt_secrets
+		 WHERE scope = $1 AND scope_name = $2 AND name = $3`,
+		scope, scopeName, name).Scan(&encrypted)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, repository.ErrNotFound

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,20 +16,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/javdet/nib/internal/includedtools"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/crypto"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/handler"
 	"github.com/javdet/nib/internal/hostenv"
+	"github.com/javdet/nib/internal/includedtools"
 	"github.com/javdet/nib/internal/kb"
 	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/logging"
+	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
-	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/nibdocs"
 	"github.com/javdet/nib/internal/oauth"
 	"github.com/javdet/nib/internal/repository/postgres"
@@ -38,8 +41,6 @@ import (
 	"github.com/javdet/nib/internal/skills"
 	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/javdet/nib/internal/toolcatalog"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
 
@@ -339,6 +340,10 @@ func run() error {
 			slog.Warn("tool catalog startup reindex", "error", err)
 		}
 	}()
+	// chat_attachments cascades away with its dialog and with the messages a
+	// retry rewinds, taking the only record of what is on disk with it. An
+	// AFTER DELETE trigger queues each path; this drains the queue.
+	go service.NewAttachmentSweeper(attachmentRepo, cfg.DataDir).Run(ctx)
 	toolSearchSvc := service.NewToolSearchService(toolCatalogStore, llmProvider, cfg.LLM.EmbeddingModel)
 	dialogSvc := service.NewDialogService(dialogRepo)
 	chatSvc := service.NewChatService(
@@ -553,18 +558,19 @@ func resolveConfigPath(flagPath string) string {
 	return "config.yaml"
 }
 
+// migrationAdvisoryLockKey serializes the whole migration run across processes.
+// Rolling restarts overlap pods, and two of them applying the same file at once
+// either collides on duplicate DDL or on the schema_migrations primary key.
+const migrationAdvisoryLockKey = "nib_schema_migrations"
+
 // runMigrations applies .up.sql files in lexicographic order, tracking applied
 // migrations in a schema_migrations table so each file runs at most once.
+//
+// The whole run holds one advisory lock on a single dedicated connection, and
+// each file's DDL and its ledger row are written in one transaction, so a crash
+// can never leave the schema ahead of the ledger (which would re-run the file
+// and fail on the migrations that use bare CREATE TABLE / ADD COLUMN).
 func runMigrations(ctx context.Context, pool *pgxpool.Pool, dir string) error {
-	_, err := pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version TEXT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)`)
-	if err != nil {
-		return fmt.Errorf("create schema_migrations table: %w", err)
-	}
-
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -582,33 +588,116 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 	}
 	sort.Strings(upFiles)
 
+	// One connection for the whole run: an advisory lock belongs to the session
+	// that took it, so it cannot be taken through the pool.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtext($1))`, migrationAdvisoryLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		// Best effort: the lock is released anyway when the session ends.
+		if _, err := conn.Exec(context.WithoutCancel(ctx),
+			`SELECT pg_advisory_unlock(hashtext($1))`, migrationAdvisoryLockKey); err != nil {
+			slog.Warn("release migration lock failed", "error", err)
+		}
+	}()
+
+	if err := ensureMigrationLedger(ctx, conn); err != nil {
+		return err
+	}
+
 	for _, name := range upFiles {
 		version := strings.TrimSuffix(name, ".up.sql")
 
-		var exists bool
-		err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists)
-		if err != nil {
-			return fmt.Errorf("check migration %s: %w", version, err)
-		}
-		if exists {
-			continue
-		}
-
-		sql, err := os.ReadFile(filepath.Join(dir, name))
+		body, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
+		sum := fmt.Sprintf("%x", sha256.Sum256(body))
 
-		if _, err := pool.Exec(ctx, string(sql)); err != nil {
-			return fmt.Errorf("apply migration %s: %w", name, err)
+		var applied bool
+		var recorded *string
+		err = conn.QueryRow(ctx,
+			`SELECT true, checksum FROM schema_migrations WHERE version = $1`, version).Scan(&applied, &recorded)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("check migration %s: %w", version, err)
+		}
+		if applied {
+			if err := reconcileMigrationChecksum(ctx, conn, version, sum, recorded); err != nil {
+				return err
+			}
+			continue
 		}
 
-		if _, err := pool.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
-			return fmt.Errorf("record migration %s: %w", version, err)
+		if err := applyMigration(ctx, conn, version, string(body), sum); err != nil {
+			return err
 		}
-
 		slog.Info("applied migration", "version", version)
 	}
 
+	return nil
+}
+
+// ensureMigrationLedger creates schema_migrations and brings an older ledger
+// (one without the checksum column) up to the current shape.
+func ensureMigrationLedger(ctx context.Context, conn *pgxpool.Conn) error {
+	_, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`)
+	if err != nil {
+		return fmt.Errorf("create schema_migrations table: %w", err)
+	}
+	if _, err := conn.Exec(ctx,
+		`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum TEXT`); err != nil {
+		return fmt.Errorf("add schema_migrations.checksum: %w", err)
+	}
+	return nil
+}
+
+// reconcileMigrationChecksum backfills the checksum of a migration that was
+// applied before the column existed, and warns when a recorded file has since
+// been edited — an edit is silently never re-applied, so it has to be visible.
+func reconcileMigrationChecksum(ctx context.Context, conn *pgxpool.Conn, version, sum string, recorded *string) error {
+	if recorded == nil {
+		if _, err := conn.Exec(ctx,
+			`UPDATE schema_migrations SET checksum = $2 WHERE version = $1 AND checksum IS NULL`,
+			version, sum); err != nil {
+			return fmt.Errorf("backfill checksum for %s: %w", version, err)
+		}
+		return nil
+	}
+	if *recorded != sum {
+		slog.Warn("migration file changed after it was applied; it will not re-run",
+			"version", version, "recorded_checksum", *recorded, "file_checksum", sum)
+	}
+	return nil
+}
+
+// applyMigration runs one migration file and records it in the same transaction,
+// so the ledger and the schema can never disagree.
+func applyMigration(ctx context.Context, conn *pgxpool.Conn, version, body, sum string) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin migration %s: %w", version, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, body); err != nil {
+		return fmt.Errorf("apply migration %s: %w", version, err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)`, version, sum); err != nil {
+		return fmt.Errorf("record migration %s: %w", version, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit migration %s: %w", version, err)
+	}
 	return nil
 }

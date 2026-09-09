@@ -30,7 +30,7 @@ func (s *ToolCategoryService) EnsureCategories(ctx context.Context) error {
 		return fmt.Errorf("tool category service not configured")
 	}
 
-	vars, err := s.repo.LoadAll(ctx)
+	vars, err := s.repo.LoadAll(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("load variables for tool categories: %w", err)
 	}
@@ -53,7 +53,9 @@ func (s *ToolCategoryService) EnsureCategories(ctx context.Context) error {
 	keep := make([]string, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
 	for _, name := range items {
-		name = strings.TrimSpace(name)
+		// Canonical here too, so the keep set below and the pruning compare the
+		// same spelling the store writes.
+		name = toolcatalog.CanonicalCategoryName(name)
 		if name == "" {
 			continue
 		}
@@ -102,7 +104,10 @@ func (s *ToolCategoryService) SetPatterns(ctx context.Context, name string, patt
 		return toolcatalog.CategoryWithPatterns{}, fmt.Errorf("tool category service not configured")
 	}
 
-	name = strings.TrimSpace(name)
+	// Canonical before the store call and before the lookup below: the store
+	// writes the lowercased name, so comparing the caller's spelling to what
+	// comes back would report "not found after update" for "Kubernetes".
+	name = toolcatalog.CanonicalCategoryName(name)
 	if name == "" {
 		return toolcatalog.CategoryWithPatterns{}, fmt.Errorf("category name is required")
 	}

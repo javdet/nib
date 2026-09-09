@@ -157,13 +157,13 @@ func TestListTools_returnsAllOrdered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer beta: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvB, "z_tool", "last server first name", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvB, "z_tool", "last server first name", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool z: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvA, "a_tool", "first server", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvA, "a_tool", "first server", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool a: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvA, "b_tool", "second name", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvA, "b_tool", "second name", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool b: %v", err)
 	}
 
@@ -216,7 +216,7 @@ func TestUpsertCategory_UpsertServer_ReplaceCategories_UpsertTool_Search(t *test
 		t.Fatalf("UpsertServer: %v", err)
 	}
 	schema := json.RawMessage(`{"type":"object"}`)
-	if err := s.UpsertTool(ctx, srvID, "list_alerts", "List firing alerts", schema, nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "list_alerts", "List firing alerts", schema, nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool: %v", err)
 	}
 	if err := s.RecomputeToolCategories(ctx); err != nil {
@@ -266,7 +266,7 @@ func TestSearch_categoryFilter_excludesOtherServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer grafana: %v", err)
 	}
-	if err := s.UpsertTool(ctx, gid, "alerts", "list alerts", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, gid, "alerts", "list alerts", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool grafana: %v", err)
 	}
 
@@ -274,7 +274,7 @@ func TestSearch_categoryFilter_excludesOtherServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer slack: %v", err)
 	}
-	if err := s.UpsertTool(ctx, sid, "post_message", "post a slack message", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, sid, "post_message", "post a slack message", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool slack: %v", err)
 	}
 	if err := s.RecomputeToolCategories(ctx); err != nil {
@@ -316,7 +316,7 @@ func TestSearch_categoryFilter_strict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer common: %v", err)
 	}
-	if err := s.UpsertTool(ctx, commonID, "ping_host", "gadget connectivity probe", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, commonID, "ping_host", "gadget connectivity probe", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool common: %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestSearch_categoryFilter_strict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer monitoring: %v", err)
 	}
-	if err := s.UpsertTool(ctx, monID, "gadget_dashboard", "open gadget panels", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, monID, "gadget_dashboard", "open gadget panels", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool monitoring: %v", err)
 	}
 	if err := s.RecomputeToolCategories(ctx); err != nil {
@@ -367,10 +367,10 @@ func TestSearch_nameMatchRanksAbove_descriptionOnlyMatch(t *testing.T) {
 		t.Fatalf("UpsertServer: %v", err)
 	}
 	// Query uses english websearch_to_tsquery; tool names use simple, descriptions use english.
-	if err := s.UpsertTool(ctx, srvID, "gadget_probe", "utility tool", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "gadget_probe", "utility tool", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool 1: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "other_tool", "use gadget for batch jobs", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "other_tool", "use gadget for batch jobs", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool 2: %v", err)
 	}
 
@@ -399,7 +399,7 @@ func TestDeleteToolsNotIn_removesStaleNames(t *testing.T) {
 		t.Fatalf("UpsertServer: %v", err)
 	}
 	for _, n := range []string{"keep_a", "keep_b", "drop_c"} {
-		if err := s.UpsertTool(ctx, srvID, n, "d", json.RawMessage(`{}`), nil); err != nil {
+		if err := s.UpsertTool(ctx, srvID, n, "d", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 			t.Fatalf("UpsertTool %q: %v", n, err)
 		}
 	}
@@ -436,7 +436,7 @@ func TestDeleteToolsNotIn_emptyKeep_deletesAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "x", "", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "x", "", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool: %v", err)
 	}
 	if err := s.DeleteToolsNotIn(ctx, srvID, []string{}); err != nil {
@@ -466,7 +466,7 @@ func TestSearch_scopeServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "noop", "noop", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "noop", "noop", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool: %v", err)
 	}
 	if err := s.RecomputeToolCategories(ctx); err != nil {
@@ -555,7 +555,7 @@ func TestSearch_bothScope_returnsToolsAndServers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "check_health", "health monitoring probe", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "check_health", "health monitoring probe", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool: %v", err)
 	}
 	if err := s.RecomputeToolCategories(ctx); err != nil {
@@ -583,7 +583,7 @@ func TestSearch_scan_populatesServerID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertServer: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "t1", "alpha beta uniquegamma", json.RawMessage(`{}`), nil); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "t1", "alpha beta uniquegamma", json.RawMessage(`{}`), nil, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool: %v", err)
 	}
 	res, err := s.Search(ctx, "uniquegamma", nil, nil, 5, SearchScopeTool)
@@ -649,10 +649,10 @@ func TestSearch_hybrid_vectorMatch(t *testing.T) {
 	}
 	vecA := testUnitEmbedding(1536, 0, 1)
 	vecB := testUnitEmbedding(1536, 1, 1)
-	if err := s.UpsertTool(ctx, srvID, "alpha_tool", "unrelated text", json.RawMessage(`{}`), vecA); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "alpha_tool", "unrelated text", json.RawMessage(`{}`), vecA, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool alpha: %v", err)
 	}
-	if err := s.UpsertTool(ctx, srvID, "beta_tool", "other unrelated text", json.RawMessage(`{}`), vecB); err != nil {
+	if err := s.UpsertTool(ctx, srvID, "beta_tool", "other unrelated text", json.RawMessage(`{}`), vecB, "test-embed"); err != nil {
 		t.Fatalf("UpsertTool beta: %v", err)
 	}
 

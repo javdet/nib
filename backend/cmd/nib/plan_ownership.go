@@ -89,8 +89,12 @@ func migratePlanOwnership(ctx context.Context, pool *pgxpool.Pool, dataDir strin
 		moved++
 	}
 
+	// DO NOTHING rather than a bare insert: the file moves above are not
+	// transactional, so an overlapping pod (or a crash between the moves and
+	// this row) must not turn a re-run into a primary key crash on boot.
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO schema_migrations (version) VALUES ($1)`, planOwnershipMigrationVersion,
+		`INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING`,
+		planOwnershipMigrationVersion,
 	); err != nil {
 		return fmt.Errorf("record plan ownership migration: %w", err)
 	}

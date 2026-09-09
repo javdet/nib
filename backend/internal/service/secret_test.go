@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/crypto"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 type fakeSecretRepo struct {
@@ -39,9 +39,9 @@ func (f *fakeSecretRepo) GetByID(ctx context.Context, id uuid.UUID) (domain.Prom
 	return s, nil
 }
 
-func (f *fakeSecretRepo) GetByName(ctx context.Context, scope, name string) (domain.PromptSecret, error) {
+func (f *fakeSecretRepo) GetByName(ctx context.Context, scope, scopeName, name string) (domain.PromptSecret, error) {
 	for _, s := range f.secrets {
-		if s.Scope == scope && s.Name == name {
+		if s.Scope == scope && s.ScopeName == scopeName && s.Name == name {
 			return s, nil
 		}
 	}
@@ -56,9 +56,9 @@ func (f *fakeSecretRepo) GetEncrypted(ctx context.Context, id uuid.UUID) ([]byte
 	return ct, nil
 }
 
-func (f *fakeSecretRepo) GetEncryptedByName(ctx context.Context, scope, name string) ([]byte, error) {
+func (f *fakeSecretRepo) GetEncryptedByName(ctx context.Context, scope, scopeName, name string) ([]byte, error) {
 	for id, s := range f.secrets {
-		if s.Scope == scope && s.Name == name {
+		if s.Scope == scope && s.ScopeName == scopeName && s.Name == name {
 			ct, ok := f.encrypted[id]
 			if !ok {
 				return nil, repository.ErrNotFound
@@ -225,7 +225,7 @@ func TestSecretServiceGetValueByName(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	value, err := svc.GetValueByName(context.Background(), "global", "EXECUTOR_GIT_API_TOKEN")
+	value, err := svc.GetValueByName(context.Background(), "global", "", "EXECUTOR_GIT_API_TOKEN")
 	if err != nil {
 		t.Fatalf("GetValueByName() error = %v", err)
 	}
@@ -233,7 +233,7 @@ func TestSecretServiceGetValueByName(t *testing.T) {
 		t.Fatalf("value = %q, want %q", value, "ghp_test_token")
 	}
 
-	_, err = svc.GetValueByName(context.Background(), "global", "missing")
+	_, err = svc.GetValueByName(context.Background(), "global", "", "missing")
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("GetValueByName() missing error = %v, want %v", err, repository.ErrNotFound)
 	}
@@ -243,7 +243,7 @@ func TestSecretServiceGetValueByName(t *testing.T) {
 
 func TestSecretServiceGetValueByNameWithoutCipher(t *testing.T) {
 	svc := NewSecretService(newFakeSecretRepo(), nil)
-	_, err := svc.GetValueByName(context.Background(), "global", "EXECUTOR_GIT_API_TOKEN")
+	_, err := svc.GetValueByName(context.Background(), "global", "", "EXECUTOR_GIT_API_TOKEN")
 	if !errors.Is(err, ErrSecretsEncryptionNotConfigured) {
 		t.Fatalf("GetValueByName() error = %v, want %v", err, ErrSecretsEncryptionNotConfigured)
 	}
@@ -255,7 +255,7 @@ func TestSecretServiceSetValueByName(t *testing.T) {
 	svc := NewSecretService(repo, testCipher(t))
 	const name = ExecutorKubernetesTokenSecretName
 
-	exists, err := svc.ExistsByName(ctx, "", name)
+	exists, err := svc.ExistsByName(ctx, "", "", name)
 	if err != nil {
 		t.Fatalf("ExistsByName() error = %v", err)
 	}
@@ -264,20 +264,20 @@ func TestSecretServiceSetValueByName(t *testing.T) {
 	}
 
 	// Empty scope defaults to global, matching GetValueByName.
-	if err := svc.SetValueByName(ctx, "", name, "k8s token", "first-token"); err != nil {
+	if err := svc.SetValueByName(ctx, "", "", name, "k8s token", "first-token"); err != nil {
 		t.Fatalf("SetValueByName() create error = %v", err)
 	}
-	if exists, err = svc.ExistsByName(ctx, "", name); err != nil || !exists {
+	if exists, err = svc.ExistsByName(ctx, "", "", name); err != nil || !exists {
 		t.Fatalf("ExistsByName() = %v, %v after create", exists, err)
 	}
 
-	if err := svc.SetValueByName(ctx, "global", name, "k8s token", "second-token"); err != nil {
+	if err := svc.SetValueByName(ctx, "global", "", name, "k8s token", "second-token"); err != nil {
 		t.Fatalf("SetValueByName() update error = %v", err)
 	}
 	if len(repo.secrets) != 1 {
 		t.Fatalf("secret count = %d, want 1 (update must not create a duplicate)", len(repo.secrets))
 	}
-	value, err := svc.GetValueByName(ctx, "global", name)
+	value, err := svc.GetValueByName(ctx, "global", "", name)
 	if err != nil {
 		t.Fatalf("GetValueByName() error = %v", err)
 	}
@@ -286,10 +286,10 @@ func TestSecretServiceSetValueByName(t *testing.T) {
 	}
 
 	// A blank value keeps the stored token.
-	if err := svc.SetValueByName(ctx, "global", name, "", ""); err != nil {
+	if err := svc.SetValueByName(ctx, "global", "", name, "", ""); err != nil {
 		t.Fatalf("SetValueByName() blank error = %v", err)
 	}
-	value, err = svc.GetValueByName(ctx, "global", name)
+	value, err = svc.GetValueByName(ctx, "global", "", name)
 	if err != nil {
 		t.Fatalf("GetValueByName() after blank error = %v", err)
 	}
@@ -302,7 +302,7 @@ func TestSecretServiceSetValueByNameBlankOnMissingIsNoop(t *testing.T) {
 	repo := newFakeSecretRepo()
 	svc := NewSecretService(repo, testCipher(t))
 
-	if err := svc.SetValueByName(context.Background(), "", "MISSING_TOKEN", "", ""); err != nil {
+	if err := svc.SetValueByName(context.Background(), "", "", "MISSING_TOKEN", "", ""); err != nil {
 		t.Fatalf("SetValueByName() error = %v", err)
 	}
 	if len(repo.secrets) != 0 {
@@ -339,7 +339,7 @@ func TestSecretServiceStripsTrailingNewlines(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	value, err := svc.GetValueByName(ctx, "global", "GITHUB_TOKEN")
+	value, err := svc.GetValueByName(ctx, "global", "", "GITHUB_TOKEN")
 	if err != nil {
 		t.Fatalf("GetValueByName() error = %v", err)
 	}
@@ -354,7 +354,7 @@ func TestSecretServiceStripsTrailingNewlines(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
-	value, err = svc.GetValueByName(ctx, "global", "GITHUB_TOKEN")
+	value, err = svc.GetValueByName(ctx, "global", "", "GITHUB_TOKEN")
 	if err != nil {
 		t.Fatalf("GetValueByName() after update error = %v", err)
 	}
@@ -376,7 +376,7 @@ func TestSecretServiceKeepsInteriorNewlines(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	value, err := svc.GetValueByName(ctx, "global", "DEPLOY_KEY")
+	value, err := svc.GetValueByName(ctx, "global", "", "DEPLOY_KEY")
 	if err != nil {
 		t.Fatalf("GetValueByName() error = %v", err)
 	}

@@ -99,7 +99,7 @@ func (s *Service) loadTokenKubeConfig(ctx context.Context, cfg Config) (*rest.Co
 		return nil, fmt.Errorf("%w: secret lookup is not configured", ErrKubernetesConfigLoad)
 	}
 
-	token, err := lookup.GetValueByName(ctx, secretScope, cfg.KubernetesTokenSecretName)
+	token, err := lookup.GetValueByName(ctx, secretScope, secretScopeName, cfg.KubernetesTokenSecretName)
 	if err != nil {
 		return nil, fmt.Errorf("%w: resolve kubernetes token secret %q: %v", ErrKubernetesConfigLoad, cfg.KubernetesTokenSecretName, err)
 	}
@@ -116,8 +116,8 @@ func (s *Service) loadTokenKubeConfig(ctx context.Context, cfg Config) (*rest.Co
 	}
 
 	return &rest.Config{
-		Host:        cfg.KubernetesHost,
-		BearerToken: token,
+		Host:            cfg.KubernetesHost,
+		BearerToken:     token,
 		TLSClientConfig: tlsCfg,
 	}, nil
 }

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 type stubDialogRepo struct {
@@ -90,8 +90,8 @@ func (s *stubVariableRepo) Create(context.Context, domain.PromptVariable) (domai
 func (s *stubVariableRepo) Update(context.Context, uuid.UUID, domain.PromptVariable) (domain.PromptVariable, error) {
 	return domain.PromptVariable{}, nil
 }
-func (s *stubVariableRepo) Delete(context.Context, uuid.UUID) error { return nil }
-func (s *stubVariableRepo) EnsureExists(context.Context, domain.PromptVariable) error { return nil }
+func (s *stubVariableRepo) Delete(context.Context, uuid.UUID) error                    { return nil }
+func (s *stubVariableRepo) EnsureExists(context.Context, domain.PromptVariable) error  { return nil }
 func (s *stubVariableRepo) EnsureBuiltin(context.Context, domain.PromptVariable) error { return nil }
 func (s *stubVariableRepo) Upsert(context.Context, domain.PromptVariable) (domain.PromptVariable, error) {
 	return domain.PromptVariable{}, nil
@@ -101,7 +101,7 @@ func (s *stubVariableRepo) Upsert(context.Context, domain.PromptVariable) (domai
 // prompt renders them and they are reconciled on every boot in production, so a
 // fixture that omits them would fail on missingkey=error for a reason that has
 // nothing to do with what it is testing.
-func (s *stubVariableRepo) LoadAll(context.Context) (map[string]map[string]any, error) {
+func (s *stubVariableRepo) LoadAll(context.Context, map[string]string) (map[string]map[string]any, error) {
 	out := make(map[string]map[string]any, len(s.vars)+1)
 	for scope, names := range s.vars {
 		copied := make(map[string]any, len(names))

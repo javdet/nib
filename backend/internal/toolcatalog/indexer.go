@@ -170,7 +170,7 @@ func (i *Indexer) reindex(ctx context.Context) error {
 			if j < len(embeddings) {
 				emb = embeddings[j]
 			}
-			if err := i.store.UpsertTool(ctx, serverID, tn, t.Description, params, emb); err != nil {
+			if err := i.store.UpsertTool(ctx, serverID, tn, t.Description, params, emb, i.embeddingModel); err != nil {
 				return fmt.Errorf("upsert tool %q/%q: %w", server.Name, tn, err)
 			}
 			seen = append(seen, tn)

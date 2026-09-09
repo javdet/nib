@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,32 @@ import (
 // which is the difference between "internal server error" in the tools dialog
 // and a message naming the rejected credential or unreachable host.
 var ErrMCPConnectionUnavailable = errors.New("mcp connection unavailable")
+
+// ErrInvalidMCPMetadata marks a metadata field that is present but is not a JSON
+// object, so it cannot be stored in a column every reader treats as one.
+var ErrInvalidMCPMetadata = errors.New("mcp connection metadata must be a JSON object")
+
+// normalizeMCPMetadata reduces the shapes a metadata field arrives in to the two
+// the column allows.
+//
+// json.RawMessage is a json.Unmarshaler, so a request body of "metadata": null
+// arrives as the four bytes `null` -- non-nil, length 4 -- and used to be stored
+// verbatim as a JSON null that no reader handles. An absent field returns nil,
+// which the update path reads as "leave what is there".
+func normalizeMCPMetadata(meta json.RawMessage) (json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(meta)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	if string(trimmed) == "null" {
+		return json.RawMessage("{}"), nil
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &probe); err != nil {
+		return nil, fmt.Errorf("%w", ErrInvalidMCPMetadata)
+	}
+	return json.RawMessage(trimmed), nil
+}
 
 // MCPService orchestrates MCP connection CRUD, OAuth flows, and live MCP sessions.
 type MCPService struct {
@@ -73,6 +100,11 @@ func (s *MCPService) GetConnection(ctx context.Context, id uuid.UUID) (domain.MC
 
 // CreateConnectionWithToken creates a new MCP connection that authenticates via API token.
 func (s *MCPService) CreateConnectionWithToken(ctx context.Context, connType, name, serverURL, apiToken string, metadata json.RawMessage) (domain.MCPConnection, error) {
+	metadata, err := normalizeMCPMetadata(metadata)
+	if err != nil {
+		return domain.MCPConnection{}, err
+	}
+
 	conn := domain.MCPConnection{
 		Type:       connType,
 		Name:       name,
@@ -156,7 +188,10 @@ func (s *MCPService) HandleOAuthCallback(ctx context.Context, providerType, stat
 		Status:         "connecting",
 	}
 
-	result, err := s.repo.Create(ctx, conn)
+	// Upsert, not insert: Name is the provider type, so a second run of the flow
+	// is a re-authentication of the same upstream. Inserting left both rows
+	// connected, and the tool router registered every tool twice.
+	result, err := s.repo.UpsertByTypeName(ctx, conn)
 	if err != nil {
 		return domain.MCPConnection{}, fmt.Errorf("create connection: %w", err)
 	}
@@ -176,6 +211,11 @@ func (s *MCPService) HandleOAuthCallback(ctx context.Context, providerType, stat
 // UpdateConnection updates an existing MCP connection's name, server URL, API token, and metadata.
 // If the API token changed, it reconnects the MCP session with the new credentials.
 func (s *MCPService) UpdateConnection(ctx context.Context, id uuid.UUID, name, serverURL, apiToken string, metadata json.RawMessage) (domain.MCPConnection, error) {
+	metadata, err := normalizeMCPMetadata(metadata)
+	if err != nil {
+		return domain.MCPConnection{}, err
+	}
+
 	conn := domain.MCPConnection{
 		Name:      name,
 		ServerURL: serverURL,

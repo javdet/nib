@@ -7,9 +7,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/mode"
+	"github.com/javdet/nib/internal/repository"
 )
 
 const maxDialogTagCount = 32
@@ -19,6 +20,14 @@ var ErrEmptyDialogTitle = errors.New("title is required")
 
 // ErrTooManyDialogTags is returned when a tag list exceeds the allowed size.
 var ErrTooManyDialogTags = errors.New("too many tags")
+
+// ErrInvalidDialogMode is returned when a dialog is created in a mode that has
+// no system prompt and no tool catalog behind it.
+var ErrInvalidDialogMode = errors.New("invalid dialog mode")
+
+// ErrInvalidDialogParent is returned when a dialog is given a parent that is
+// itself a child. Dialog trees are one level deep.
+var ErrInvalidDialogParent = errors.New("invalid dialog parent")
 
 // DialogService implements business logic for persisted chat dialogs.
 type DialogService struct {
@@ -45,16 +54,16 @@ func (s *DialogService) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *DialogService) ListByMode(ctx context.Context, mode string, limit, offset int) ([]domain.Dialog, error) {
-	dialogs, err := s.repo.ListDialogsByMode(ctx, mode, limit, offset)
+func (s *DialogService) ListByMode(ctx context.Context, dialogMode string, limit, offset int) ([]domain.Dialog, error) {
+	dialogs, err := s.repo.ListDialogsByMode(ctx, dialogMode, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list dialogs by mode: %w", err)
 	}
 	return dialogs, nil
 }
 
-func (s *DialogService) CountByMode(ctx context.Context, mode string) (int, error) {
-	count, err := s.repo.CountDialogsByMode(ctx, mode)
+func (s *DialogService) CountByMode(ctx context.Context, dialogMode string) (int, error) {
+	count, err := s.repo.CountDialogsByMode(ctx, dialogMode)
 	if err != nil {
 		return 0, fmt.Errorf("count dialogs by mode: %w", err)
 	}
@@ -77,24 +86,51 @@ func (s *DialogService) CountAll(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *DialogService) Search(ctx context.Context, mode, query string, limit, offset int) ([]domain.Dialog, error) {
-	dialogs, err := s.repo.SearchDialogs(ctx, mode, strings.TrimSpace(query), limit, offset)
+func (s *DialogService) Search(ctx context.Context, dialogMode, query string, limit, offset int) ([]domain.Dialog, error) {
+	dialogs, err := s.repo.SearchDialogs(ctx, dialogMode, strings.TrimSpace(query), limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("search dialogs: %w", err)
 	}
 	return dialogs, nil
 }
 
-func (s *DialogService) CountSearch(ctx context.Context, mode, query string) (int, error) {
-	count, err := s.repo.CountDialogsSearch(ctx, mode, strings.TrimSpace(query))
+func (s *DialogService) CountSearch(ctx context.Context, dialogMode, query string) (int, error) {
+	count, err := s.repo.CountDialogsSearch(ctx, dialogMode, strings.TrimSpace(query))
 	if err != nil {
 		return 0, fmt.Errorf("count search dialogs: %w", err)
 	}
 	return count, nil
 }
 
-func (s *DialogService) Create(ctx context.Context, mode, title string, parentID *uuid.UUID) (domain.Dialog, error) {
-	d, err := s.repo.CreateDialog(ctx, strings.TrimSpace(mode), strings.TrimSpace(title), parentID)
+func (s *DialogService) Create(ctx context.Context, dialogMode, title string, parentID *uuid.UUID) (domain.Dialog, error) {
+	// The API accepts a body with no mode at all, and an unchecked mode used to
+	// be stored verbatim: '' passed the old blacklist predicate and was listed as
+	// a plan, while mode.IsValid('') is false so the dialog got no system prompt
+	// and an empty tool catalog.
+	dialogMode = strings.TrimSpace(dialogMode)
+	if dialogMode == "" {
+		dialogMode = mode.Default
+	}
+	if !mode.IsValid(dialogMode) {
+		return domain.Dialog{}, fmt.Errorf("%w: %q", ErrInvalidDialogMode, dialogMode)
+	}
+
+	// One level is the contract every internal caller already keeps by resolving
+	// a root first, but this one takes the parent straight from the request. The
+	// schema cannot express a depth limit, so it is checked here; without it the
+	// API can build an arbitrarily deep chain that resolveRootDialogID then has
+	// to walk under its cycle guard.
+	if parentID != nil {
+		parent, err := s.repo.GetDialog(ctx, *parentID)
+		if err != nil {
+			return domain.Dialog{}, fmt.Errorf("create dialog: resolve parent: %w", err)
+		}
+		if parent.ParentID != nil {
+			return domain.Dialog{}, fmt.Errorf("%w: parent %s is not a root dialog", ErrInvalidDialogParent, parent.ID)
+		}
+	}
+
+	d, err := s.repo.CreateDialog(ctx, dialogMode, strings.TrimSpace(title), parentID)
 	if err != nil {
 		return domain.Dialog{}, fmt.Errorf("create dialog: %w", err)
 	}
@@ -196,4 +232,3 @@ func (s *DialogService) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	return nil
 }
-

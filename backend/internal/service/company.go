@@ -18,26 +18,26 @@ var ErrInvalidGitEmail = errors.New("invalid git email address")
 
 // CompanyInfo holds company metadata stored as prompt variables.
 type CompanyInfo struct {
-	CompanyName           string `json:"companyName"`
-	CompanyDescription    string `json:"companyDescription"`
-	VersionControlSystem  string `json:"versionControlSystem"`
-	GitBaseURL            string `json:"gitBaseUrl"`
-	GitUsername           string `json:"gitUsername"`
-	GitEmail              string `json:"gitEmail"`
-	CICDSystem            string `json:"ciCdSystem"`
-	TaskTracker           string `json:"taskTracker"`
-	IssueProject          string `json:"issueProject"`
-	Wiki                  string `json:"wiki"`
-	Messenger             string `json:"messenger"`
+	CompanyName          string `json:"companyName"`
+	CompanyDescription   string `json:"companyDescription"`
+	VersionControlSystem string `json:"versionControlSystem"`
+	GitBaseURL           string `json:"gitBaseUrl"`
+	GitUsername          string `json:"gitUsername"`
+	GitEmail             string `json:"gitEmail"`
+	CICDSystem           string `json:"ciCdSystem"`
+	TaskTracker          string `json:"taskTracker"`
+	IssueProject         string `json:"issueProject"`
+	Wiki                 string `json:"wiki"`
+	Messenger            string `json:"messenger"`
 }
 
 type companyField struct {
-	jsonKey       string
-	varName       string
-	description   string
-	defaultValue  string
-	getValue      func(*CompanyInfo) string
-	setValue      func(*CompanyInfo, string)
+	jsonKey      string
+	varName      string
+	description  string
+	defaultValue string
+	getValue     func(*CompanyInfo) string
+	setValue     func(*CompanyInfo, string)
 }
 
 var companyFields = []companyField{
@@ -148,7 +148,7 @@ func (s *CompanyService) EnsureDefaults(ctx context.Context) error {
 
 // Get returns current company metadata from prompt variables.
 func (s *CompanyService) Get(ctx context.Context) (CompanyInfo, error) {
-	vars, err := s.repo.LoadAll(ctx)
+	vars, err := s.repo.LoadAll(ctx, nil)
 	if err != nil {
 		return CompanyInfo{}, fmt.Errorf("load company variables: %w", err)
 	}

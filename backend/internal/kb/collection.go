@@ -21,6 +21,13 @@ func (s *Store) UpsertCollection(ctx context.Context, name string, dimensions in
 	if dimensions < 1 {
 		return Collection{}, fmt.Errorf("kb: dimensions must be positive")
 	}
+	// Checked before the insert, not after: a committed collection row at the
+	// wrong width poisons the name permanently, because every later upload
+	// matches that row and then fails against the fixed vector column.
+	if dimensions != ChunkEmbeddingDimensions {
+		return Collection{}, fmt.Errorf("%w: embedding model produced %d dimensions, chunks are stored as vector(%d)",
+			ErrUnsupportedDimensions, dimensions, ChunkEmbeddingDimensions)
+	}
 	embeddingModel = strings.TrimSpace(embeddingModel)
 	if embeddingModel == "" {
 		return Collection{}, fmt.Errorf("kb: embedding_model is required")

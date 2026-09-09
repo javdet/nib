@@ -10,6 +10,29 @@ import (
 
 const rrfK = 60.0
 
+// vectorCandidateMultiplier sizes the k-NN prefilter that feeds the hybrid
+// ranking. pgvector's HNSW index is only usable for a top-level
+// ORDER BY <distance> LIMIT k, so the vector side has to be a bounded nearest
+// neighbour query before anything else touches it -- ranking inside an unbounded
+// window function, as this did, plans as a full scan of every embedding plus a
+// sort, and the index buys nothing but write amplification.
+//
+// The pool is wider than the result limit because the category filter and the
+// reciprocal-rank join both prune it afterwards.
+const vectorCandidateMultiplier = 10
+
+// minVectorCandidates keeps the pool useful for small limits.
+const minVectorCandidates = 100
+
+// vectorCandidatePool is how many nearest neighbours to fetch for a given limit.
+func vectorCandidatePool(limit int) int {
+	pool := limit * vectorCandidateMultiplier
+	if pool < minVectorCandidates {
+		return minVectorCandidates
+	}
+	return pool
+}
+
 const toolSearchFTSSQL = `
 SELECT t.id, t.server_id, t.name, t.description, t.input_schema,
        s.name AS server_name,
@@ -24,7 +47,7 @@ WHERE t.fts @@ q
   AND ($2::text[] IS NULL OR EXISTS (
 	SELECT 1 FROM mcp_tool_categories tc2
 	JOIN tool_categories c2 ON c2.id = tc2.category_id
-	WHERE tc2.tool_id = t.id AND c2.name = ANY($2)
+	WHERE tc2.tool_id = t.id AND lower(c2.name) = ANY($2)
   ))
 GROUP BY t.id, s.id, q
 ORDER BY score DESC
@@ -41,19 +64,24 @@ WITH kw AS (
 	  AND ($3::text[] IS NULL OR EXISTS (
 		SELECT 1 FROM mcp_tool_categories tc2
 		JOIN tool_categories c2 ON c2.id = tc2.category_id
-		WHERE tc2.tool_id = t.id AND c2.name = ANY($3)
+		WHERE tc2.tool_id = t.id AND lower(c2.name) = ANY($3)
 	  ))
 ),
-vec AS (
-	SELECT t.id,
-	       ROW_NUMBER() OVER (ORDER BY t.embedding <=> $2::vector) AS vec_rank
+vec_candidates AS (
+	SELECT t.id, t.embedding <=> $2::vector AS distance
 	FROM mcp_tools t
-	JOIN mcp_servers s ON s.id = t.server_id
 	WHERE t.embedding IS NOT NULL
-	  AND ($3::text[] IS NULL OR EXISTS (
+	ORDER BY t.embedding <=> $2::vector
+	LIMIT $6
+),
+vec AS (
+	SELECT vc.id,
+	       ROW_NUMBER() OVER (ORDER BY vc.distance) AS vec_rank
+	FROM vec_candidates vc
+	WHERE ($3::text[] IS NULL OR EXISTS (
 		SELECT 1 FROM mcp_tool_categories tc2
 		JOIN tool_categories c2 ON c2.id = tc2.category_id
-		WHERE tc2.tool_id = t.id AND c2.name = ANY($3)
+		WHERE tc2.tool_id = vc.id AND lower(c2.name) = ANY($3)
 	  ))
 ),
 combined AS (
@@ -89,7 +117,7 @@ WHERE s.fts @@ q
 	SELECT 1 FROM mcp_tools t2
 	JOIN mcp_tool_categories tc2 ON tc2.tool_id = t2.id
 	JOIN tool_categories c2 ON c2.id = tc2.category_id
-	WHERE t2.server_id = s.id AND c2.name = ANY($2)
+	WHERE t2.server_id = s.id AND lower(c2.name) = ANY($2)
   ))
 GROUP BY s.id, q
 ORDER BY score DESC
@@ -106,21 +134,26 @@ WITH kw AS (
 		SELECT 1 FROM mcp_tools t2
 		JOIN mcp_tool_categories tc2 ON tc2.tool_id = t2.id
 		JOIN tool_categories c2 ON c2.id = tc2.category_id
-		WHERE t2.server_id = s.id AND c2.name = ANY($3)
+		WHERE t2.server_id = s.id AND lower(c2.name) = ANY($3)
 	  ))
 ),
-vec AS (
-	SELECT s.id,
-	       ROW_NUMBER() OVER (ORDER BY MIN(t.embedding <=> $2::vector)) AS vec_rank
-	FROM mcp_servers s
-	JOIN mcp_tools t ON t.server_id = s.id
+vec_candidates AS (
+	SELECT t.id, t.server_id, t.embedding <=> $2::vector AS distance
+	FROM mcp_tools t
 	WHERE t.embedding IS NOT NULL
-	  AND ($3::text[] IS NULL OR EXISTS (
+	ORDER BY t.embedding <=> $2::vector
+	LIMIT $6
+),
+vec AS (
+	SELECT vc.server_id AS id,
+	       ROW_NUMBER() OVER (ORDER BY MIN(vc.distance)) AS vec_rank
+	FROM vec_candidates vc
+	WHERE ($3::text[] IS NULL OR EXISTS (
 		SELECT 1 FROM mcp_tool_categories tc2
 		JOIN tool_categories c2 ON c2.id = tc2.category_id
-		WHERE tc2.tool_id = t.id AND c2.name = ANY($3)
+		WHERE tc2.tool_id = vc.id AND lower(c2.name) = ANY($3)
 	  ))
-	GROUP BY s.id
+	GROUP BY vc.server_id
 ),
 combined AS (
 	SELECT COALESCE(kw.id, vec.id) AS id,
@@ -188,7 +221,8 @@ func normalizeCategoryArg(categories []string) any {
 	seen := make(map[string]struct{}, len(categories))
 	out := make([]string, 0, len(categories))
 	for _, c := range categories {
-		c = strings.TrimSpace(c)
+		// Canonical, because the SQL compares lower(c2.name) against this list.
+		c = CanonicalCategoryName(c)
 		if c == "" {
 			continue
 		}
@@ -210,7 +244,7 @@ func (s *Store) searchTools(ctx context.Context, query string, queryEmbedding []
 
 	if useHybrid {
 		qv := pgvector.NewVector(queryEmbedding)
-		rows, err = s.pool.Query(ctx, toolSearchHybridSQL, query, qv, catArg, rrfK, limit)
+		rows, err = s.pool.Query(ctx, toolSearchHybridSQL, query, qv, catArg, rrfK, limit, vectorCandidatePool(limit))
 	} else {
 		rows, err = s.pool.Query(ctx, toolSearchFTSSQL, query, catArg, limit)
 	}
@@ -228,7 +262,7 @@ func (s *Store) searchServers(ctx context.Context, query string, queryEmbedding 
 
 	if useHybrid {
 		qv := pgvector.NewVector(queryEmbedding)
-		rows, err = s.pool.Query(ctx, serverSearchHybridSQL, query, qv, catArg, rrfK, limit)
+		rows, err = s.pool.Query(ctx, serverSearchHybridSQL, query, qv, catArg, rrfK, limit, vectorCandidatePool(limit))
 	} else {
 		rows, err = s.pool.Query(ctx, serverSearchFTSSQL, query, catArg, limit)
 	}

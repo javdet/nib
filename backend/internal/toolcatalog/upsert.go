@@ -11,8 +11,12 @@ import (
 )
 
 // UpsertCategory inserts or updates a category by unique name.
+//
+// The name is lowercased because dialog category lists are (see
+// service.normalizeTagList) and the two are matched against each other: a
+// category stored as "Kubernetes" would be invisible to every dialog.
 func (s *Store) UpsertCategory(ctx context.Context, name, description string) (Category, error) {
-	name = strings.TrimSpace(name)
+	name = CanonicalCategoryName(name)
 	if name == "" {
 		return Category{}, fmt.Errorf("toolcatalog: category name is required")
 	}
@@ -48,7 +52,8 @@ INSERT INTO mcp_servers (name, description, url)
 VALUES ($1, $2, $3)
 ON CONFLICT (name) DO UPDATE SET
 	description = EXCLUDED.description,
-	url = EXCLUDED.url
+	url = EXCLUDED.url,
+	last_seen_at = now()
 RETURNING id`
 
 	var id uuid.UUID
@@ -61,7 +66,11 @@ RETURNING id`
 
 // UpsertTool inserts or updates a tool row for a server.
 // embedding may be nil (stored as NULL; tool remains searchable via full-text search).
-func (s *Store) UpsertTool(ctx context.Context, serverID uuid.UUID, name, description string, inputSchema json.RawMessage, embedding []float32) error {
+//
+// embeddingModel is stored alongside the vector so a model change is detectable:
+// without it, vectors from two different spaces accumulate in one column and
+// searches quietly get worse with nothing to point at.
+func (s *Store) UpsertTool(ctx context.Context, serverID uuid.UUID, name, description string, inputSchema json.RawMessage, embedding []float32, embeddingModel string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return fmt.Errorf("toolcatalog: tool name is required")
@@ -70,21 +79,25 @@ func (s *Store) UpsertTool(ctx context.Context, serverID uuid.UUID, name, descri
 		inputSchema = json.RawMessage(`{}`)
 	}
 
-	var vec any
+	// The model is recorded only when a vector actually was: a NULL embedding
+	// with a model name would look like a successful embed at that model.
+	var vec, model any
 	if len(embedding) > 0 {
 		vec = pgvector.NewVector(embedding)
+		model = strings.TrimSpace(embeddingModel)
 	}
 
 	const q = `
-INSERT INTO mcp_tools (server_id, name, description, input_schema, embedding)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO mcp_tools (server_id, name, description, input_schema, embedding, embedding_model)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (server_id, name) DO UPDATE SET
 	description = EXCLUDED.description,
 	input_schema = EXCLUDED.input_schema,
 	embedding = EXCLUDED.embedding,
-	discovered_at = now()`
+	embedding_model = EXCLUDED.embedding_model,
+	last_seen_at = now()`
 
-	if _, err := s.pool.Exec(ctx, q, serverID, name, description, inputSchema, vec); err != nil {
+	if _, err := s.pool.Exec(ctx, q, serverID, name, description, inputSchema, vec, model); err != nil {
 		return fmt.Errorf("toolcatalog: upsert tool: %w", err)
 	}
 	return nil

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/textutil"
-	"github.com/google/uuid"
 )
 
 // actionTypeCode is the action plan step type executed by the coding agent.
@@ -359,7 +359,7 @@ func (s *ChatService) resolveActionRunSecrets(ctx context.Context) (gitToken, ll
 }
 
 func (s *ChatService) readNamedSecret(ctx context.Context, name string) (string, error) {
-	value, err := s.secretSvc.GetValueByName(ctx, defaultVariableScope, name)
+	value, err := s.secretSvc.GetValueByName(ctx, defaultVariableScope, "", name)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fmt.Errorf("%w: %q", ErrExecutorSecretMissing, name)

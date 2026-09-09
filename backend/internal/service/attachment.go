@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"mime"
 	"os"
 	"path/filepath"
@@ -129,8 +131,13 @@ func (s *ChatService) DeleteAttachment(ctx context.Context, dialogID, attachment
 		return fmt.Errorf("delete attachment: %w", err)
 	}
 
+	// The row is gone first, so the AFTER DELETE trigger has already queued this
+	// path. Removing it here is the fast path; if it fails, the sweeper retries
+	// rather than the file being lost track of.
 	absPath := filepath.Join(s.attachmentsDir, dialogID.String(), filepath.Base(a.Path))
-	_ = os.Remove(absPath)
+	if err := os.Remove(absPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("remove attachment file, left for the sweeper", "path", a.Path, "error", err)
+	}
 	return nil
 }
 

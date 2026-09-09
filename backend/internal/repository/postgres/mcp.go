@@ -66,8 +66,10 @@ func (r *MCPRepo) GetByID(ctx context.Context, id uuid.UUID) (domain.MCPConnecti
 }
 
 func (r *MCPRepo) Create(ctx context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
+	// len, not nil: the service hands back a nil RawMessage for "not supplied",
+	// and an empty non-nil slice is not valid JSON either.
 	meta := conn.Metadata
-	if meta == nil {
+	if len(meta) == 0 {
 		meta = json.RawMessage("{}")
 	}
 
@@ -85,21 +87,62 @@ func (r *MCPRepo) Create(ctx context.Context, conn domain.MCPConnection) (domain
 
 	result, err := scanConnectionRow(row)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.MCPConnection{}, repository.ErrAlreadyExists
+		}
 		return domain.MCPConnection{}, fmt.Errorf("insert mcp connection: %w", err)
 	}
 	return result, nil
 }
 
-func (r *MCPRepo) Update(ctx context.Context, id uuid.UUID, conn domain.MCPConnection) (domain.MCPConnection, error) {
+func (r *MCPRepo) UpsertByTypeName(ctx context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	meta := conn.Metadata
-	if meta == nil {
+	if len(meta) == 0 {
 		meta = json.RawMessage("{}")
+	}
+
+	row := r.pool.QueryRow(ctx,
+		`INSERT INTO mcp_connections (type, name, server_url, auth_method,
+		        access_token, refresh_token, token_expires_at,
+		        api_token, status, metadata)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 ON CONFLICT (type, name) DO UPDATE SET
+		     server_url = EXCLUDED.server_url,
+		     auth_method = EXCLUDED.auth_method,
+		     access_token = EXCLUDED.access_token,
+		     refresh_token = EXCLUDED.refresh_token,
+		     token_expires_at = EXCLUDED.token_expires_at,
+		     api_token = COALESCE(EXCLUDED.api_token, mcp_connections.api_token),
+		     status = EXCLUDED.status,
+		     metadata = EXCLUDED.metadata,
+		     updated_at = now()
+		 RETURNING id, type, name, server_url, auth_method,
+		           access_token, refresh_token, token_expires_at,
+		           api_token, status, metadata, created_at, updated_at`,
+		conn.Type, conn.Name, conn.ServerURL, conn.AuthMethod,
+		nilIfEmpty(conn.AccessToken), nilIfEmpty(conn.RefreshToken), conn.TokenExpiresAt,
+		nilIfEmpty(conn.APIToken), conn.Status, meta)
+
+	result, err := scanConnectionRow(row)
+	if err != nil {
+		return domain.MCPConnection{}, fmt.Errorf("upsert mcp connection: %w", err)
+	}
+	return result, nil
+}
+
+func (r *MCPRepo) Update(ctx context.Context, id uuid.UUID, conn domain.MCPConnection) (domain.MCPConnection, error) {
+	// A nil metadata means the request did not carry the field, so COALESCE keeps
+	// what is stored -- the same protection api_token already had. Writing $5
+	// unconditionally made every PUT that omitted metadata wipe it to {}.
+	var meta any
+	if len(conn.Metadata) > 0 {
+		meta = []byte(conn.Metadata)
 	}
 
 	row := r.pool.QueryRow(ctx,
 		`UPDATE mcp_connections
 		 SET name = $2, server_url = $3, api_token = COALESCE(NULLIF($4, ''), api_token),
-		     metadata = $5, updated_at = now()
+		     metadata = COALESCE($5::jsonb, metadata), updated_at = now()
 		 WHERE id = $1
 		 RETURNING id, type, name, server_url, auth_method,
 		           access_token, refresh_token, token_expires_at,

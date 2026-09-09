@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/repository"
-	"github.com/javdet/nib/internal/textutil"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
+	"github.com/javdet/nib/internal/textutil"
 )
 
 var _ repository.DialogRepository = (*DialogRepo)(nil)
@@ -28,10 +28,17 @@ func NewDialogRepo(pool *pgxpool.Pool) *DialogRepo {
 
 const dialogColumns = `id, title, mode, parent_id, task_id, categories, pinned, created_at, updated_at`
 
-// planDialogPredicate is what makes a dialog a plan: a root whose mode carries
-// one. Kept as a const because the same predicate is also spelled out in Go in
-// handler.enrichDialogsWithPlanStatus, and the two have to agree.
-const planDialogPredicate = `parent_id IS NULL AND mode NOT IN ('discuss', 'incident')`
+// planModes are the modes that carry a plan. A whitelist, not a blacklist: with
+// "everything except discuss and incident" a mode added later became a plan by
+// default, and so did a row whose mode was never set.
+//
+// Kept as a const because the same predicate is also spelled out in Go in
+// handler.enrichDialogsWithPlanStatus and as the plan_dialogs view in migration
+// 000025, and the three have to agree.
+const planModes = `('main', 'decompose', 'plan', 'execute')`
+
+// planDialogPredicate is what makes a dialog a plan: a root whose mode carries one.
+const planDialogPredicate = `parent_id IS NULL AND mode IN ` + planModes
 
 const messageColumns = `id, dialog_id, seq, role, content, tool_calls, tool_call_id, name, created_at`
 
@@ -53,7 +60,7 @@ func (r *DialogRepo) ListRecentDialogs(ctx context.Context, limit, offset int) (
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+dialogColumns+`
 		 FROM chat_dialogs
-		 WHERE parent_id IS NULL AND mode NOT IN ('discuss', 'incident') AND pinned = false
+		 WHERE `+planDialogPredicate+` AND pinned = false
 		 ORDER BY updated_at DESC
 		 LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
@@ -75,7 +82,7 @@ func (r *DialogRepo) ListRecentDialogs(ctx context.Context, limit, offset int) (
 func (r *DialogRepo) CountDialogs(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM chat_dialogs WHERE parent_id IS NULL AND mode NOT IN ('discuss', 'incident') AND pinned = false`).Scan(&count)
+		`SELECT count(*) FROM chat_dialogs WHERE `+planDialogPredicate+` AND pinned = false`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count chat dialogs: %w", err)
 	}
@@ -163,7 +170,7 @@ func (r *DialogRepo) SearchDialogs(ctx context.Context, mode, query string, limi
 		rows, err = r.pool.Query(ctx,
 			`SELECT `+dialogColumns+`
 			 FROM chat_dialogs
-			 WHERE parent_id IS NULL AND mode NOT IN ('discuss', 'incident')
+			 WHERE `+planDialogPredicate+`
 			   AND title ILIKE $1 ESCAPE '\'
 			 ORDER BY updated_at DESC
 			 LIMIT $2 OFFSET $3`, pattern, limit, offset)
@@ -200,7 +207,7 @@ func (r *DialogRepo) CountDialogsSearch(ctx context.Context, mode, query string)
 	if mode == "" {
 		err = r.pool.QueryRow(ctx,
 			`SELECT count(*) FROM chat_dialogs
-			 WHERE parent_id IS NULL AND mode NOT IN ('discuss', 'incident')
+			 WHERE `+planDialogPredicate+`
 			   AND title ILIKE $1 ESCAPE '\'`, pattern).Scan(&count)
 	} else {
 		err = r.pool.QueryRow(ctx,
@@ -341,7 +348,7 @@ func (r *DialogRepo) ListPinnedDialogs(ctx context.Context) ([]domain.Dialog, er
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+dialogColumns+`
 		 FROM chat_dialogs
-		 WHERE parent_id IS NULL AND pinned = true AND mode NOT IN ('discuss', 'incident')
+		 WHERE `+planDialogPredicate+` AND pinned = true
 		 ORDER BY pinned_at DESC NULLS LAST, updated_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list pinned chat dialogs: %w", err)
