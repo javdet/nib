@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/service"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/mode"
+	"github.com/javdet/nib/internal/service"
 )
 
 const dialogListLimit = 10
@@ -68,10 +69,7 @@ func (h *DialogHandler) enrichDialogsWithPlanStatus(ctx context.Context, dialogs
 
 	planIDs := make([]uuid.UUID, 0, len(dialogs))
 	for _, d := range dialogs {
-		if d.ParentID != nil {
-			continue
-		}
-		if d.Mode == "discuss" || d.Mode == "incident" {
+		if !carriesPlan(d) {
 			continue
 		}
 		planIDs = append(planIDs, d.ID)
@@ -82,7 +80,7 @@ func (h *DialogHandler) enrichDialogsWithPlanStatus(ctx context.Context, dialogs
 	items := make([]dialogListItem, len(dialogs))
 	for i, d := range dialogs {
 		item := dialogListItem{Dialog: d}
-		if d.ParentID == nil && d.Mode != "discuss" && d.Mode != "incident" {
+		if carriesPlan(d) {
 			state := states[d.ID]
 			statusStr := string(state.Status)
 			item.PlanStatus = &statusStr
@@ -90,6 +88,16 @@ func (h *DialogHandler) enrichDialogsWithPlanStatus(ctx context.Context, dialogs
 		items[i] = item
 	}
 	return items, nil
+}
+
+// carriesPlan is the Go twin of postgres.planDialogPredicate and of the
+// plan_dialogs view: a root dialog whose mode carries a plan. A whitelist, so a
+// mode added later is not silently listed as a plan that has no plan.
+func carriesPlan(d domain.Dialog) bool {
+	if d.ParentID != nil {
+		return false
+	}
+	return mode.CarriesPlan(d.Mode)
 }
 
 func (h *DialogHandler) List() http.HandlerFunc {

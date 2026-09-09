@@ -58,7 +58,7 @@ func (r *fakeHostVarRepo) Update(context.Context, uuid.UUID, domain.PromptVariab
 func (r *fakeHostVarRepo) Delete(context.Context, uuid.UUID) error                    { return nil }
 func (r *fakeHostVarRepo) EnsureExists(context.Context, domain.PromptVariable) error  { return nil }
 func (r *fakeHostVarRepo) EnsureBuiltin(context.Context, domain.PromptVariable) error { return nil }
-func (r *fakeHostVarRepo) LoadAll(context.Context) (map[string]map[string]any, error) {
+func (r *fakeHostVarRepo) LoadAll(context.Context, map[string]string) (map[string]map[string]any, error) {
 	return nil, nil
 }
 

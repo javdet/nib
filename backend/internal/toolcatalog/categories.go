@@ -81,7 +81,7 @@ ORDER BY c.name`
 
 // ReplaceCategoryPatterns replaces all patterns for a category and recomputes tool assignments.
 func (s *Store) ReplaceCategoryPatterns(ctx context.Context, categoryName string, patterns []string) error {
-	categoryName = strings.TrimSpace(categoryName)
+	categoryName = CanonicalCategoryName(categoryName)
 	if categoryName == "" {
 		return fmt.Errorf("toolcatalog: category name is required")
 	}
@@ -92,7 +92,7 @@ func (s *Store) ReplaceCategoryPatterns(ctx context.Context, categoryName string
 	}
 
 	var catID uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM tool_categories WHERE name = $1`, categoryName).Scan(&catID)
+	err = tx.QueryRow(ctx, `SELECT id FROM tool_categories WHERE lower(name) = $1`, categoryName).Scan(&catID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		return fmt.Errorf("toolcatalog: unknown category %q", categoryName)
@@ -168,13 +168,29 @@ ON CONFLICT DO NOTHING`
 	return nil
 }
 
+// CanonicalCategoryName is the single spelling of a category name: trimmed and
+// lowercased. Dialog category lists are normalized the same way, and the two are
+// matched against each other, so both sides have to agree on the form.
+//
+// It is what the tool_categories_name_lower_key unique index enforces.
+func CanonicalCategoryName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
 // DeleteCategoriesNotIn removes categories whose names are not in keepNames.
+// Compared canonically, so a row that predates the lowercasing is matched by the
+// keep list rather than deleted as unknown.
 func (s *Store) DeleteCategoriesNotIn(ctx context.Context, keepNames []string) error {
 	const q = `
 DELETE FROM tool_categories
-WHERE NOT (name = ANY($1::text[]))`
+WHERE NOT (lower(name) = ANY($1::text[]))`
 
-	if _, err := s.pool.Exec(ctx, q, keepNames); err != nil {
+	keep := make([]string, 0, len(keepNames))
+	for _, name := range keepNames {
+		keep = append(keep, CanonicalCategoryName(name))
+	}
+
+	if _, err := s.pool.Exec(ctx, q, keep); err != nil {
 		return fmt.Errorf("toolcatalog: delete categories not in: %w", err)
 	}
 	return nil
@@ -182,7 +198,7 @@ WHERE NOT (name = ANY($1::text[]))`
 
 // ListToolsByCategory returns tools assigned to the given category name.
 func (s *Store) ListToolsByCategory(ctx context.Context, categoryName string) ([]CatalogTool, error) {
-	categoryName = strings.TrimSpace(categoryName)
+	categoryName = CanonicalCategoryName(categoryName)
 	if categoryName == "" {
 		return nil, fmt.Errorf("toolcatalog: category name is required")
 	}
@@ -193,7 +209,7 @@ SELECT s.name AS server_name, t.name, t.description,
 FROM mcp_tools t
 JOIN mcp_servers s ON s.id = t.server_id
 JOIN mcp_tool_categories tc ON tc.tool_id = t.id
-JOIN tool_categories cat ON cat.id = tc.category_id AND cat.name = $1
+JOIN tool_categories cat ON cat.id = tc.category_id AND lower(cat.name) = $1
 LEFT JOIN mcp_tool_categories tc2 ON tc2.tool_id = t.id
 LEFT JOIN tool_categories c ON c.id = tc2.category_id
 GROUP BY s.name, t.name, t.description

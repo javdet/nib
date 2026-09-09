@@ -27,3 +27,12 @@ type Attachment struct {
 	URL         string         `json:"url,omitempty"`
 	CreatedAt   time.Time      `json:"createdAt"`
 }
+
+// OrphanedAttachmentFile is one queued file deletion: a chat_attachments row is
+// gone (deleted outright, or cascaded away with its dialog or message) and the
+// bytes it pointed at are still on disk.
+type OrphanedAttachmentFile struct {
+	ID       int64
+	Path     string
+	DialogID uuid.UUID
+}

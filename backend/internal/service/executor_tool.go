@@ -16,13 +16,13 @@ import (
 const ExecutorKubernetesTokenSecretName = "EXECUTOR_KUBERNETES_TOKEN"
 
 const (
-	RunExecutorToolName              = "run_executor"
-	executorGitTokenSecretName       = "EXECUTOR_GIT_API_TOKEN"
-	executorLLMAPIKeySecretName      = "EXECUTOR_LLM_API_KEY"
-	executorVarGitBaseURL            = "GitBaseURL"
-	executorVarVersionControlSystem  = "VersionControlSystem"
-	executorVarGitUsername           = "GitUsername"
-	executorVarGitEmail              = "GitEmail"
+	RunExecutorToolName             = "run_executor"
+	executorGitTokenSecretName      = "EXECUTOR_GIT_API_TOKEN"
+	executorLLMAPIKeySecretName     = "EXECUTOR_LLM_API_KEY"
+	executorVarGitBaseURL           = "GitBaseURL"
+	executorVarVersionControlSystem = "VersionControlSystem"
+	executorVarGitUsername          = "GitUsername"
+	executorVarGitEmail             = "GitEmail"
 )
 
 var runExecutorParameters = json.RawMessage(`{
@@ -109,17 +109,17 @@ func (s *ChatService) resolveRunExecutorRequest(ctx context.Context, args map[st
 	}
 
 	return executor.RunRequest{
-		RepoURL:      gitSettings.RepoURL,
-		BaseBranch:   baseBranch,
-		WorkBranch:   workBranch,
-		TaskPrompt:   taskPrompt,
-		PRTitle:      prTitle,
-		GitProvider:  gitSettings.Provider,
-		GitToken:     gitToken,
-		LLMAPIKey:    llmAPIKey,
-		LLMBaseURL:   strings.TrimSpace(s.llmBaseURL),
-		GitUsername:  gitSettings.Username,
-		GitEmail:     gitSettings.Email,
+		RepoURL:     gitSettings.RepoURL,
+		BaseBranch:  baseBranch,
+		WorkBranch:  workBranch,
+		TaskPrompt:  taskPrompt,
+		PRTitle:     prTitle,
+		GitProvider: gitSettings.Provider,
+		GitToken:    gitToken,
+		LLMAPIKey:   llmAPIKey,
+		LLMBaseURL:  strings.TrimSpace(s.llmBaseURL),
+		GitUsername: gitSettings.Username,
+		GitEmail:    gitSettings.Email,
 	}, nil
 }
 
@@ -134,7 +134,7 @@ func (s *ChatService) resolveExecutorGitSettings(ctx context.Context) (executorG
 	if s.variableRepo == nil {
 		return executorGitSettings{}, fmt.Errorf("variable repository is not configured")
 	}
-	vars, err := s.variableRepo.LoadAll(ctx)
+	vars, err := s.variableRepo.LoadAll(ctx, nil)
 	if err != nil {
 		return executorGitSettings{}, fmt.Errorf("load variables: %w", err)
 	}
@@ -155,14 +155,14 @@ func (s *ChatService) resolveExecutorSecrets(ctx context.Context) (gitToken, llm
 	if s.secretSvc == nil {
 		return "", "", fmt.Errorf("secret service is not configured")
 	}
-	gitToken, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, executorGitTokenSecretName)
+	gitToken, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, "", executorGitTokenSecretName)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", "", fmt.Errorf("secret %q is not configured", executorGitTokenSecretName)
 		}
 		return "", "", fmt.Errorf("resolve %q: %w", executorGitTokenSecretName, err)
 	}
-	llmAPIKey, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, executorLLMAPIKeySecretName)
+	llmAPIKey, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, "", executorLLMAPIKeySecretName)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", "", fmt.Errorf("secret %q is not configured", executorLLMAPIKeySecretName)

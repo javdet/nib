@@ -18,7 +18,7 @@ type fakeSecrets struct {
 	calls  int
 }
 
-func (f *fakeSecrets) GetValueByName(_ context.Context, _, name string) (string, error) {
+func (f *fakeSecrets) GetValueByName(_ context.Context, _, _, name string) (string, error) {
 	f.calls++
 	if v, ok := f.values[name]; ok {
 		return v, nil

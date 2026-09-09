@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 const defaultVariableScope = "global"
@@ -156,8 +156,10 @@ func (s *VariableService) EnsureDefaults(ctx context.Context) error {
 }
 
 // LoadAll returns variables grouped by scope for template rendering.
-func (s *VariableService) LoadAll(ctx context.Context) (map[string]map[string]any, error) {
-	vars, err := s.repo.LoadAll(ctx)
+// scopeNames picks which entity's copy wins each non-global scope; see
+// repository.VariableRepository.LoadAll.
+func (s *VariableService) LoadAll(ctx context.Context, scopeNames map[string]string) (map[string]map[string]any, error) {
+	vars, err := s.repo.LoadAll(ctx, scopeNames)
 	if err != nil {
 		return nil, fmt.Errorf("load variables: %w", err)
 	}

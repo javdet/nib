@@ -1,1 +1,4 @@
+-- Rolling back this pair has no coherent semantics: 000010.down drops
+-- chat_attachments, so a rollback to 11 leaves the table standing while a
+-- rollback to 10 drops a table that 11 is the one that actually created.
 -- No-op: repair migration must not drop chat_attachments on rollback.

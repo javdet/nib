@@ -177,6 +177,9 @@ func (emptyMCPRepo) GetByID(context.Context, uuid.UUID) (domain.MCPConnection, e
 func (emptyMCPRepo) Create(_ context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	return conn, nil
 }
+func (emptyMCPRepo) UpsertByTypeName(_ context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
+	return conn, nil
+}
 func (emptyMCPRepo) Update(_ context.Context, _ uuid.UUID, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	return conn, nil
 }

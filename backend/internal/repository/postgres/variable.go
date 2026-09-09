@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 var _ repository.VariableRepository = (*VariableRepo)(nil)
@@ -155,24 +155,40 @@ func (r *VariableRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *VariableRepo) LoadAll(ctx context.Context) (map[string]map[string]any, error) {
+func (r *VariableRepo) LoadAll(ctx context.Context, scopeNames map[string]string) (map[string]map[string]any, error) {
+	// ORDER BY scope_name makes the fallback pick reproducible: without it the
+	// row that lands in out[scope][name] is whichever one the heap happens to
+	// return, which changes after an UPDATE or a VACUUM.
 	rows, err := r.pool.Query(ctx,
-		`SELECT scope, name, value, kind FROM prompt_variables`)
+		`SELECT scope, scope_name, name, value, kind
+		 FROM prompt_variables
+		 ORDER BY scope ASC, name ASC, scope_name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("load prompt variables: %w", err)
 	}
 	defer rows.Close()
 
 	out := make(map[string]map[string]any)
+	// filled marks the (scope, name) slots already written, so the ordered first
+	// row stands unless the active scope_name comes along to displace it.
+	filled := make(map[[2]string]struct{})
 	for rows.Next() {
-		var scope, name, value, kind string
-		if err := rows.Scan(&scope, &name, &value, &kind); err != nil {
+		var scope, scopeName, name, value, kind string
+		if err := rows.Scan(&scope, &scopeName, &name, &value, &kind); err != nil {
 			return nil, fmt.Errorf("scan prompt variable: %w", err)
+		}
+		slot := [2]string{scope, name}
+		if _, taken := filled[slot]; taken {
+			active, ok := scopeNames[scope]
+			if !ok || scopeName != active {
+				continue
+			}
 		}
 		if _, ok := out[scope]; !ok {
 			out[scope] = make(map[string]any)
 		}
 		out[scope][name] = parseVariableValue(kind, value)
+		filled[slot] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate prompt variables: %w", err)

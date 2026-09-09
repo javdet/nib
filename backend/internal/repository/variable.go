@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 // VariableRepository defines the data-access contract for prompt variable entities.
@@ -22,5 +22,10 @@ type VariableRepository interface {
 	Upsert(ctx context.Context, v domain.PromptVariable) (domain.PromptVariable, error)
 	// LoadAll returns every variable grouped as {scope: {name: value}} for text/template rendering.
 	// List variables are parsed into []string; string variables remain strings.
-	LoadAll(ctx context.Context) (map[string]map[string]any, error)
+	//
+	// The grouping has no room for scope_name, so several entities' copies of one
+	// name compete for the same slot. scopeNames says which scope_name is active
+	// per scope and wins that competition; without a match the lowest scope_name
+	// wins, so the result is at least stable instead of heap-order dependent.
+	LoadAll(ctx context.Context, scopeNames map[string]string) (map[string]map[string]any, error)
 }

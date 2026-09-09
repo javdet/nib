@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/crypto"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 // ErrSecretsEncryptionNotConfigured is returned when secret write operations
@@ -142,21 +142,32 @@ func (s *SecretService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// GetValueByName decrypts a secret by scope and name. Values are never exposed to LLM tools.
-func (s *SecretService) GetValueByName(ctx context.Context, scope, name string) (string, error) {
+// GetValueByName decrypts a secret by its full identity. Values are never exposed to LLM tools.
+//
+// scopeName is part of the identity, not an optional refinement: (scope,
+// scope_name, name) is what is UNIQUE, so a lookup that left it out would match
+// every project's copy of a name and decrypt whichever row came back first.
+func (s *SecretService) GetValueByName(ctx context.Context, scope, scopeName, name string) (string, error) {
 	if s.cipher == nil {
 		return "", ErrSecretsEncryptionNotConfigured
 	}
-	scope = strings.TrimSpace(scope)
-	if scope == "" {
-		scope = defaultVariableScope
+	// Only the scope half is validated. Callers reach this with a reference name
+	// out of mcp.json, whose accepted syntax is slightly wider than a secret name
+	// can be, and a name that cannot exist should stay a plain "no such secret"
+	// rather than becoming a validation error.
+	meta := normalizeSecretMeta(domain.PromptSecret{Scope: scope, ScopeName: scopeName, Name: name})
+	if err := validateScope(meta.Scope); err != nil {
+		return "", err
 	}
-	name = strings.TrimSpace(name)
+	if err := validateScopeName(meta.Scope, meta.ScopeName); err != nil {
+		return "", err
+	}
+	scope, scopeName, name = meta.Scope, meta.ScopeName, meta.Name
 	if name == "" {
 		return "", fmt.Errorf("%w: secret name is required", ErrInvalidVariableName)
 	}
 
-	encrypted, err := s.repo.GetEncryptedByName(ctx, scope, name)
+	encrypted, err := s.repo.GetEncryptedByName(ctx, scope, scopeName, name)
 	if err != nil {
 		return "", fmt.Errorf("get secret %q: %w", name, err)
 	}
@@ -167,10 +178,10 @@ func (s *SecretService) GetValueByName(ctx context.Context, scope, name string) 
 	return plaintext, nil
 }
 
-// ExistsByName reports whether a secret with the given scope and name is stored.
+// ExistsByName reports whether a secret with the given identity is stored.
 // It does not need the cipher, so it works without SECRETS_ENCRYPTION_KEY.
-func (s *SecretService) ExistsByName(ctx context.Context, scope, name string) (bool, error) {
-	if _, err := s.getByName(ctx, scope, name); err != nil {
+func (s *SecretService) ExistsByName(ctx context.Context, scope, scopeName, name string) (bool, error) {
+	if _, err := s.getByName(ctx, scope, scopeName, name); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return false, nil
 		}
@@ -179,17 +190,17 @@ func (s *SecretService) ExistsByName(ctx context.Context, scope, name string) (b
 	return true, nil
 }
 
-// SetValueByName creates or updates a secret identified by scope and name.
+// SetValueByName creates or updates a secret identified by scope, scope name and name.
 // A blank value keeps the currently stored value, matching Update's semantics.
-func (s *SecretService) SetValueByName(ctx context.Context, scope, name, description, value string) error {
-	existing, err := s.getByName(ctx, scope, name)
+func (s *SecretService) SetValueByName(ctx context.Context, scope, scopeName, name, description, value string) error {
+	existing, err := s.getByName(ctx, scope, scopeName, name)
 	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return err
 	}
 
 	input := SecretInput{
 		Scope:       scope,
-		ScopeName:   "",
+		ScopeName:   scopeName,
 		Name:        name,
 		Description: description,
 		Value:       value,
@@ -209,12 +220,12 @@ func (s *SecretService) SetValueByName(ctx context.Context, scope, name, descrip
 	return err
 }
 
-func (s *SecretService) getByName(ctx context.Context, scope, name string) (domain.PromptSecret, error) {
-	meta := normalizeSecretMeta(domain.PromptSecret{Scope: scope, Name: name})
+func (s *SecretService) getByName(ctx context.Context, scope, scopeName, name string) (domain.PromptSecret, error) {
+	meta := normalizeSecretMeta(domain.PromptSecret{Scope: scope, ScopeName: scopeName, Name: name})
 	if err := validateSecretMeta(meta); err != nil {
 		return domain.PromptSecret{}, err
 	}
-	return s.repo.GetByName(ctx, meta.Scope, meta.Name)
+	return s.repo.GetByName(ctx, meta.Scope, meta.ScopeName, meta.Name)
 }
 
 // trimTrailingNewlines drops the line breaks at the end of a stored value.

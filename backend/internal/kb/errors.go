@@ -9,4 +9,14 @@ var (
 
 	// ErrDimensionMismatch is returned when a vector length does not match the collection's dimensions.
 	ErrDimensionMismatch = errors.New("kb: embedding vector length does not match collection dimensions")
+
+	// ErrUnsupportedDimensions is returned when a collection is asked for at a
+	// width the chunk table cannot store.
+	ErrUnsupportedDimensions = errors.New("kb: unsupported embedding dimensions")
 )
+
+// ChunkEmbeddingDimensions is the width of kb_chunks.embedding. The column is
+// vector(1536) and the HNSW index spans exactly that width, so a collection
+// cannot be created at any other size -- an insert would fail row by row while
+// the collection row stayed committed and unrepairable.
+const ChunkEmbeddingDimensions = 1536

@@ -10,14 +10,18 @@ import (
 )
 
 // secretScope is the prompt secret scope searched for ${NAME} references.
-// A blank scope resolves to the default ("global") inside the secret service.
-const secretScope = ""
+// A blank scope resolves to the default ("global") inside the secret service,
+// and a global secret carries an empty scope_name.
+const (
+	secretScope     = ""
+	secretScopeName = ""
+)
 
-// SecretLookup resolves a secret value by scope and name. It is satisfied by
+// SecretLookup resolves a secret value by its full identity. It is satisfied by
 // *service.SecretService; declaring it here keeps mcpconfig free of a
 // dependency on the service package.
 type SecretLookup interface {
-	GetValueByName(ctx context.Context, scope, name string) (string, error)
+	GetValueByName(ctx context.Context, scope, scopeName, name string) (string, error)
 }
 
 // Resolved is a server entry whose ${NAME} references have been expanded,
@@ -176,7 +180,7 @@ func (r *resolver) lookup(ctx context.Context, name string) (string, bool, error
 		return "", false, nil
 	}
 
-	v, err := r.secrets.GetValueByName(ctx, secretScope, name)
+	v, err := r.secrets.GetValueByName(ctx, secretScope, secretScopeName, name)
 	switch {
 	case err == nil:
 		// Surrounding whitespace is stripped because every field a reference
