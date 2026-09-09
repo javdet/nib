@@ -35,6 +35,18 @@ func (s *Store) ReplaceDocument(ctx context.Context, collectionID uuid.UUID, chu
 	return nil
 }
 
+// InsertChunks inserts rows into kb_chunks in a single batch. Embeddings must match
+// the collection's dimensions.
+func (s *Store) InsertChunks(ctx context.Context, collectionID uuid.UUID, chunks []ChunkInput) error {
+	return s.insertChunks(ctx, s.pool, collectionID, chunks)
+}
+
+// InsertChunksTx is like [Store.InsertChunks] but sends the batch on tx (e.g. after
+// deletes in the same transaction).
+func (s *Store) InsertChunksTx(ctx context.Context, tx pgx.Tx, collectionID uuid.UUID, chunks []ChunkInput) error {
+	return s.insertChunks(ctx, tx, collectionID, chunks)
+}
+
 func (s *Store) insertChunks(ctx context.Context, conn batchConn, collectionID uuid.UUID, chunks []ChunkInput) error {
 	if len(chunks) == 0 {
 		return nil

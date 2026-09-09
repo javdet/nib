@@ -3,29 +3,17 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/repository"
-	"github.com/javdet/nib/internal/service"
-	"github.com/javdet/nib/internal/skills"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/service"
 )
 
 // SkillHandler exposes HTTP endpoints for managing skill files.
 type SkillHandler struct {
-	svc        *skills.Service
-	variableRepo repository.VariableRepository
-	selection  *service.SelectionStore
+	svc *service.SkillService
 }
 
-func NewSkillHandler(
-	svc *skills.Service,
-	variableRepo repository.VariableRepository,
-	selection *service.SelectionStore,
-) *SkillHandler {
-	return &SkillHandler{
-		svc:        svc,
-		variableRepo: variableRepo,
-		selection:  selection,
-	}
+func NewSkillHandler(svc *service.SkillService) *SkillHandler {
+	return &SkillHandler{svc: svc}
 }
 
 type skillPayload struct {
@@ -82,18 +70,11 @@ func (h *SkillHandler) Get() http.HandlerFunc {
 // GetRendered returns skill content with text/template actions resolved.
 func (h *SkillHandler) GetRendered() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := chi.URLParam(r, "name")
-		skill, err := h.svc.Get(name)
+		skill, err := h.svc.GetRendered(r.Context(), chi.URLParam(r, "name"))
 		if err != nil {
 			handleServiceError(w, err)
 			return
 		}
-		rendered, err := service.RenderTemplateVariables(r.Context(), skill.Content, h.variableRepo, h.selection)
-		if err != nil {
-			handleServiceError(w, err)
-			return
-		}
-		skill.Content = rendered
 		writeJSON(w, http.StatusOK, skill)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/service"
 	"github.com/javdet/nib/internal/skills"
 )
 
@@ -18,7 +19,7 @@ func newSkillRouter(t *testing.T) (chi.Router, *skills.Service) {
 	t.Helper()
 
 	svc := skills.NewService(t.TempDir(), "skills")
-	h := NewSkillHandler(svc, nil, nil)
+	h := NewSkillHandler(service.NewSkillService(svc, nil, nil))
 
 	r := chi.NewRouter()
 	r.Route("/skills", func(r chi.Router) {

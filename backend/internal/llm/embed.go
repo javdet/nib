@@ -2,10 +2,10 @@ package llm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
+	"github.com/javdet/nib/internal/embed"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -39,7 +39,7 @@ func (p *OpenAIProvider) Embed(ctx context.Context, texts []string) ([][]float32
 		if idx < 0 || idx >= len(texts) {
 			return nil, 0, fmt.Errorf("openai embeddings: index %d out of range [0,%d)", idx, len(texts))
 		}
-		row, d, err := floatsToFloat32(item.Embedding)
+		row, d, err := embed.FloatsToFloat32(item.Embedding)
 		if err != nil {
 			return nil, 0, fmt.Errorf("openai embeddings: row %d: %w", idx, err)
 		}
@@ -51,15 +51,4 @@ func (p *OpenAIProvider) Embed(ctx context.Context, texts []string) ([][]float32
 		out[idx] = row
 	}
 	return out, dim, nil
-}
-
-func floatsToFloat32(xs []float64) ([]float32, int, error) {
-	if len(xs) == 0 {
-		return nil, 0, errors.New("empty embedding vector")
-	}
-	out := make([]float32, len(xs))
-	for i, v := range xs {
-		out[i] = float32(v)
-	}
-	return out, len(out), nil
 }

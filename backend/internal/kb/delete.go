@@ -1,4 +1,4 @@
-package kbstore
+package kb
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func (s *Store) DeleteChunksBySourceURIs(ctx context.Context, collectionID uuid.
 	return s.deleteChunksBySourceURIs(ctx, s.pool, collectionID, uris)
 }
 
-// DeleteChunksBySourceURIsTx is like [DeleteChunksBySourceURIs] but runs on tx.
+// DeleteChunksBySourceURIsTx is like [Store.DeleteChunksBySourceURIs] but runs on tx.
 func (s *Store) DeleteChunksBySourceURIsTx(ctx context.Context, tx pgx.Tx, collectionID uuid.UUID, uris []string) error {
 	return s.deleteChunksBySourceURIs(ctx, tx, collectionID, uris)
 }
@@ -30,7 +30,7 @@ func (s *Store) deleteChunksBySourceURIs(ctx context.Context, e execer, collecti
 	}
 	const q = `DELETE FROM kb_chunks WHERE collection_id = $1 AND source_uri = ANY($2)`
 	if _, err := e.Exec(ctx, q, collectionID, uris); err != nil {
-		return fmt.Errorf("kbstore: delete chunks: %w", err)
+		return fmt.Errorf("kb: delete chunks: %w", err)
 	}
 	return nil
 }

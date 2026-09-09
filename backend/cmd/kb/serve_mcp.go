@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/javdet/nib/internal/kbstore"
 	"github.com/jackc/pgx/v5"
+	"github.com/javdet/nib/internal/kb"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -23,14 +23,14 @@ const (
 )
 
 type mcpRuntime struct {
-	store              *kbstore.Store
-	provider           string
-	modelOverride      string
-	timeout            time.Duration
-	embeddingsBaseURL  string
-	googleBaseURL      string
-	httpReferer        string
-	appTitle           string
+	store             *kb.Store
+	provider          string
+	modelOverride     string
+	timeout           time.Duration
+	embeddingsBaseURL string
+	googleBaseURL     string
+	httpReferer       string
+	appTitle          string
 }
 
 func runServeMCP(args []string) int {
@@ -88,7 +88,7 @@ func runServeMCP(args []string) int {
 	}
 
 	ctx := context.Background()
-	store, err := kbstore.New(ctx, dsn)
+	store, err := kb.Open(ctx, dsn)
 	if err != nil {
 		logger.Error("database", "err", err)
 		return 1

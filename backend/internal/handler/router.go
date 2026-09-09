@@ -1,46 +1,52 @@
 package handler
 
 import (
-	"github.com/javdet/nib/internal/includedtools"
-	"github.com/javdet/nib/internal/executor"
-	"github.com/javdet/nib/internal/mcpconfig"
-	"github.com/javdet/nib/internal/repository"
-	"github.com/javdet/nib/internal/rules"
-	"github.com/javdet/nib/internal/service"
-	"github.com/javdet/nib/internal/skills"
-	"github.com/javdet/nib/internal/systemprompts"
-	"github.com/javdet/nib/internal/toolcatalog"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/javdet/nib/internal/executor"
+	"github.com/javdet/nib/internal/mcpconfig"
+	"github.com/javdet/nib/internal/rules"
+	"github.com/javdet/nib/internal/service"
+	"github.com/javdet/nib/internal/systemprompts"
 )
 
+// Deps is everything NewRouter needs, named rather than positional. The router
+// used to take these as 22 parameters, where a reordered pair of same-typed
+// arguments compiled cleanly and mis-wired the server; naming them also makes it
+// obvious when a handler is reaching past the service layer, because the field
+// would be a store or a repository.
+type Deps struct {
+	AllowedOrigins []string
+
+	// Entity services.
+	Projects       *service.ProjectService
+	Environments   *service.EnvironmentService
+	Clouds         *service.CloudService
+	Locations      *service.LocationService
+	Knowledge      *service.KnowledgeService
+	MCP            *service.MCPService
+	Chat           *service.ChatService
+	Variables      *service.VariableService
+	Secrets        *service.SecretService
+	Company        *service.CompanyService
+	Dialogs        *service.DialogService
+	Skills         *service.SkillService
+	IncludedTools  *service.IncludedToolsService
+	ToolCategories *service.ToolCategoryService
+	Selection      *service.SelectionStore
+
+	// File-backed configuration surfaces, edited directly through the API.
+	SystemPrompts *systemprompts.Service
+	Rules         *rules.Service
+	MCPConfig     *mcpconfig.Service
+	Executor      *executor.Service
+
+	FrontendBaseURL   string
+	AgentWebhookToken string
+}
+
 // NewRouter builds the chi router with all middleware and routes.
-func NewRouter(
-	allowedOrigins []string,
-	projectSvc *service.ProjectService,
-	envSvc *service.EnvironmentService,
-	cloudSvc *service.CloudService,
-	locationSvc *service.LocationService,
-	knowledgeSvc *service.KnowledgeService,
-	mcpSvc *service.MCPService,
-	chatSvc *service.ChatService,
-	systemPromptsSvc *systemprompts.Service,
-	rulesSvc *rules.Service,
-	mcpConfigSvc *mcpconfig.Service,
-	includedToolsSvc *includedtools.Service,
-	toolCatalogStore *toolcatalog.Store,
-	executorSvc *executor.Service,
-	skillSvc *skills.Service,
-	variableRepo repository.VariableRepository,
-	variableSvc *service.VariableService,
-	secretSvc *service.SecretService,
-	companySvc *service.CompanyService,
-	dialogSvc *service.DialogService,
-	selectionStore *service.SelectionStore,
-	toolCategorySvc *service.ToolCategoryService,
-	frontendBaseURL string,
-	agentWebhookToken string,
-) chi.Router {
+func NewRouter(d Deps) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -48,32 +54,32 @@ func NewRouter(
 	r.Use(middleware.Logger)
 	r.Use(httpMetrics)
 	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware(allowedOrigins))
+	r.Use(corsMiddleware(d.AllowedOrigins))
 
 	agentRun := writeDeadline(agentWriteTimeout)
 
-	projects := NewProjectHandler(projectSvc)
-	environments := NewEnvironmentHandler(envSvc)
-	clouds := NewCloudHandler(cloudSvc)
-	locations := NewLocationHandler(locationSvc)
-	knowledge := NewKnowledgeHandler(knowledgeSvc)
-	mcpHandler := NewMCPHandler(mcpSvc, frontendBaseURL)
-	chat := NewChatHandler(chatSvc)
-	systemTools := NewSystemToolsHandler(chatSvc)
-	systemPrompts := NewSystemPromptsHandler(systemPromptsSvc)
-	rulesHandler := NewRulesHandler(rulesSvc)
-	mcpConfig := NewMCPConfigHandler(mcpConfigSvc)
-	includedTools := NewIncludedToolsHandler(includedToolsSvc, toolCatalogStore, chatSvc)
-	executorHandler := NewExecutorHandler(executorSvc)
-	skills := NewSkillHandler(skillSvc, variableRepo, selectionStore)
-	variables := NewVariableHandler(variableSvc)
-	secrets := NewSecretHandler(secretSvc)
-	company := NewCompanyHandler(companySvc)
-	dialogs := NewDialogHandler(dialogSvc, chatSvc)
-	selection := NewSelectionHandler(selectionStore)
-	toolCategories := NewToolCategoriesHandler(toolCategorySvc)
-	agentWebhook := NewAgentWebhookHandler(chatSvc, agentWebhookToken)
-	execution := NewExecutionHandler(chatSvc)
+	projects := NewProjectHandler(d.Projects)
+	environments := NewEnvironmentHandler(d.Environments)
+	clouds := NewCloudHandler(d.Clouds)
+	locations := NewLocationHandler(d.Locations)
+	knowledge := NewKnowledgeHandler(d.Knowledge)
+	mcpHandler := NewMCPHandler(d.MCP, d.FrontendBaseURL)
+	chat := NewChatHandler(d.Chat)
+	systemTools := NewSystemToolsHandler(d.Chat)
+	systemPrompts := NewSystemPromptsHandler(d.SystemPrompts)
+	rulesHandler := NewRulesHandler(d.Rules)
+	mcpConfig := NewMCPConfigHandler(d.MCPConfig)
+	includedTools := NewIncludedToolsHandler(d.IncludedTools)
+	executorHandler := NewExecutorHandler(d.Executor)
+	skills := NewSkillHandler(d.Skills)
+	variables := NewVariableHandler(d.Variables)
+	secrets := NewSecretHandler(d.Secrets)
+	company := NewCompanyHandler(d.Company)
+	dialogs := NewDialogHandler(d.Dialogs, d.Chat)
+	selection := NewSelectionHandler(d.Selection)
+	toolCategories := NewToolCategoriesHandler(d.ToolCategories)
+	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookToken)
+	execution := NewExecutionHandler(d.Chat)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", HealthCheck())
@@ -307,15 +313,15 @@ func NewRouter(
 				r.Get("/", mcpHandler.OAuthCallback())
 			})
 
-		r.Route("/{id}", func(r chi.Router) {
-			r.Put("/", mcpHandler.Update())
-			r.Delete("/", mcpHandler.Delete())
+			r.Route("/{id}", func(r chi.Router) {
+				r.Put("/", mcpHandler.Update())
+				r.Delete("/", mcpHandler.Delete())
 
-			r.Route("/tools", func(r chi.Router) {
-				r.Get("/", mcpHandler.ListTools())
-				r.Post("/{toolName}", mcpHandler.CallTool())
+				r.Route("/tools", func(r chi.Router) {
+					r.Get("/", mcpHandler.ListTools())
+					r.Post("/{toolName}", mcpHandler.CallTool())
+				})
 			})
-		})
 		})
 	})
 

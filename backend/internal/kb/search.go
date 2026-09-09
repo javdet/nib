@@ -2,6 +2,7 @@ package kb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -14,7 +15,7 @@ type SearchHit struct {
 	ChunkID   uuid.UUID
 	Content   string
 	SourceURI string
-	Metadata  []byte
+	Metadata  json.RawMessage
 	Score     float64
 }
 
