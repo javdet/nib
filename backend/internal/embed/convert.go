@@ -4,7 +4,11 @@ import (
 	"errors"
 )
 
-func floatsToFloat32(xs []float64) ([]float32, int, error) {
+// FloatsToFloat32 narrows a provider's float64 embedding row to the float32 form
+// pgvector stores, returning the vector and its dimension. An empty row is an
+// error: a zero-width vector would be accepted by the collection check and then
+// fail row by row at insert.
+func FloatsToFloat32(xs []float64) ([]float32, int, error) {
 	if len(xs) == 0 {
 		return nil, 0, errors.New("empty embedding vector")
 	}

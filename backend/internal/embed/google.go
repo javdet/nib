@@ -119,7 +119,7 @@ func (c *GoogleEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 	out := make([][]float32, len(texts))
 	dim := 0
 	for i := range parsed.Embeddings {
-		row, d, err := floatsToFloat32(parsed.Embeddings[i].Values)
+		row, d, err := FloatsToFloat32(parsed.Embeddings[i].Values)
 		if err != nil {
 			return nil, 0, fmt.Errorf("embed: google row %d: %w", i, err)
 		}

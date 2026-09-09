@@ -448,32 +448,39 @@ func run() error {
 	}, cfg.Metrics.RefreshInterval())
 	defer stopMetrics()
 
-	router := handler.NewRouter(
-		[]string{"http://localhost:5173"},
-		projectSvc,
-		envSvc,
-		cloudSvc,
-		locationSvc,
-		knowledgeSvc,
-		mcpSvc,
-		chatSvc,
-		systemPromptsSvc,
-		rulesSvc,
-		mcpConfigSvc,
-		includedToolsSvc,
-		toolCatalogStore,
-		executorSvc,
-		skillSvc,
-		variableRepo,
-		variableSvc,
-		secretSvc,
-		companySvc,
-		dialogSvc,
-		selectionStore,
-		toolCategorySvc,
-		cfg.OAuth.FrontendBaseURL,
-		cfg.Executor.WebhookToken,
-	)
+	// The application-layer wrappers over the two stores the HTTP layer used to
+	// reach for directly: the per-mode include list plus the tool catalog, and
+	// the skill files plus the variable repository a rendered skill needs.
+	includedToolsAppSvc := service.NewIncludedToolsService(includedToolsSvc, toolCatalogStore, chatSvc)
+	skillAppSvc := service.NewSkillService(skillSvc, variableRepo, selectionStore)
+
+	router := handler.NewRouter(handler.Deps{
+		AllowedOrigins: []string{"http://localhost:5173"},
+
+		Projects:       projectSvc,
+		Environments:   envSvc,
+		Clouds:         cloudSvc,
+		Locations:      locationSvc,
+		Knowledge:      knowledgeSvc,
+		MCP:            mcpSvc,
+		Chat:           chatSvc,
+		Variables:      variableSvc,
+		Secrets:        secretSvc,
+		Company:        companySvc,
+		Dialogs:        dialogSvc,
+		Skills:         skillAppSvc,
+		IncludedTools:  includedToolsAppSvc,
+		ToolCategories: toolCategorySvc,
+		Selection:      selectionStore,
+
+		SystemPrompts: systemPromptsSvc,
+		Rules:         rulesSvc,
+		MCPConfig:     mcpConfigSvc,
+		Executor:      executorSvc,
+
+		FrontendBaseURL:   cfg.OAuth.FrontendBaseURL,
+		AgentWebhookToken: cfg.Executor.WebhookToken,
+	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

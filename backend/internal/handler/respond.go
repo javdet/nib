@@ -95,7 +95,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, kb.ErrDimensionMismatch):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, service.ErrInvalidGitEmail),
+	case errors.Is(err, service.ErrInvalidMode),
+		errors.Is(err, service.ErrInvalidGitEmail),
 		errors.Is(err, service.ErrConnectionURIRequired),
 		errors.Is(err, service.ErrFilenameRequired),
 		errors.Is(err, service.ErrEmptyFile),

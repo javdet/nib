@@ -15,8 +15,8 @@ import (
 
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/embed"
-	"github.com/javdet/nib/internal/kbingest"
-	"github.com/javdet/nib/internal/kbstore"
+
+	"github.com/javdet/nib/internal/kb"
 )
 
 func main() {
@@ -66,8 +66,8 @@ func runIngest(args []string) int {
 	fs.StringVar(&collection, "collection", "", "collection name (required)")
 	fs.StringVar(&provider, "provider", "openrouter", "embedding provider: openrouter or google")
 	fs.StringVar(&model, "model", "", "embedding model id (required)")
-	fs.IntVar(&chunkSize, "chunk-size", 512, "max runes per chunk")
-	fs.IntVar(&chunkOverlap, "chunk-overlap", 64, "rune overlap between consecutive chunks")
+	fs.IntVar(&chunkSize, "chunk-size", kb.DefaultChunkSize, "max runes per chunk")
+	fs.IntVar(&chunkOverlap, "chunk-overlap", kb.DefaultChunkOverlap, "rune overlap between consecutive chunks")
 	fs.IntVar(&embedBatch, "embed-batch", 32, "max texts per embedding API request")
 	fs.IntVar(&insertBatch, "insert-batch", 256, "max rows per database insert batch")
 	fs.StringVar(&metric, "metric", "cosine", "distance metric label stored on the collection")
@@ -138,7 +138,7 @@ func runIngest(args []string) int {
 	}
 	var rows []row
 	for _, src := range sources {
-		parts := kbingest.Chunk(src.content, chunkSize, chunkOverlap)
+		parts := kb.Chunk(src.content, chunkSize, chunkOverlap)
 		if len(parts) == 0 {
 			continue
 		}
@@ -156,16 +156,16 @@ func runIngest(args []string) int {
 	}
 
 	ctx := context.Background()
-	store, err := kbstore.New(ctx, dsn)
+	store, err := kb.Open(ctx, dsn)
 	if err != nil {
 		logger.Error("database", "err", err)
 		return 1
 	}
 	defer store.Close()
 
-	var coll kbstore.Collection
+	var coll kb.Collection
 	dim := 0
-	var allChunks []kbstore.ChunkInput
+	var allChunks []kb.ChunkInput
 
 	for start := 0; start < len(rows); start += embedBatch {
 		end := start + embedBatch
@@ -186,7 +186,7 @@ func runIngest(args []string) int {
 			dim = d
 			coll, err = store.UpsertCollection(ctx, collection, dim, model, metric)
 			if err != nil {
-				if errors.Is(err, kbstore.ErrCollectionMismatch) {
+				if errors.Is(err, kb.ErrCollectionMismatch) {
 					logger.Error("collection mismatch", "detail", "existing collection uses different dimensions or model")
 				} else {
 					logger.Error("upsert collection", "err", err)
@@ -203,7 +203,7 @@ func runIngest(args []string) int {
 			return 1
 		}
 		for i := range batch {
-			allChunks = append(allChunks, kbstore.ChunkInput{
+			allChunks = append(allChunks, kb.ChunkInput{
 				SourceURI:  batch[i].source,
 				ChunkIndex: batch[i].index,
 				Content:    batch[i].text,

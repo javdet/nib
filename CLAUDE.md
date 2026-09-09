@@ -203,8 +203,11 @@ knowledge base) is migrated in place by `backend/migrations` at startup.
 ### Backend layering
 
 `backend/cmd/nib/main.go` is the composition root: every dependency is constructed there and
-passed positionally into `handler.NewRouter`. Flow is `handler` (chi) → `service` → `repository`,
-with `domain` holding plain structs. Handlers translate errors through `handleServiceError` in
+passed into `handler.NewRouter` as a named `handler.Deps` struct. Flow is `handler` (chi) →
+`service` → `repository`, with `domain` holding plain structs. A handler takes services, never a
+store or a repository — when the HTTP layer needs two collaborators joined, the join belongs in a
+service (see `service.IncludedToolsService` and `service.SkillService`, which exist for exactly
+that reason). Handlers translate errors through `handleServiceError` in
 [respond.go](backend/internal/handler/respond.go) — a new sentinel error needs a case added there or
 it degrades to a 500.
 

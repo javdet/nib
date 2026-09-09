@@ -24,7 +24,7 @@ type OpenRouterOptions struct {
 	APIKey string
 	// HTTPReferer and AppTitle are optional OpenRouter attribution headers.
 	HTTPReferer string
-	AppTitle string
+	AppTitle    string
 	// Timeout bounds the entire HTTP request. Zero means no client timeout.
 	Timeout time.Duration
 }
@@ -117,7 +117,7 @@ func (c *OpenRouterEmbedder) Embed(ctx context.Context, texts []string) ([][]flo
 		if item.Index < 0 || item.Index >= len(texts) {
 			return nil, 0, fmt.Errorf("embed: openrouter index %d out of range [0,%d)", item.Index, len(texts))
 		}
-		row, d, err := floatsToFloat32(item.Embedding)
+		row, d, err := FloatsToFloat32(item.Embedding)
 		if err != nil {
 			return nil, 0, fmt.Errorf("embed: openrouter row %d: %w", item.Index, err)
 		}
