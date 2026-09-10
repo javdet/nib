@@ -1,0 +1,14 @@
+{
+  "name": "nib-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Playwright end-to-end suite for the nib stack. Lives at the repo root, not in frontend/, so that vitest (rooted at frontend/) does not pick up *.spec.ts and so the playwright-test MCP server resolves the CLI from the project root. Layout follows Playwright's agent convention: plans in specs/, generated tests and the seed in tests/.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
