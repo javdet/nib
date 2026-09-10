@@ -4,6 +4,18 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.7.10] - 2026-09-10
+
+### Added
+- New `write_rule` tool lets discuss mode create or replace rule files in the rules directory, so guardrails can be written from chat instead of edited on disk; other modes still cannot write rules.
+- A background sweeper now removes attachment files on disk whose database rows were deleted (dialog delete, or a retry that rewinds messages), and expires uploads that were never sent after 24 hours.
+
+### Changed
+- Database migrations are now checksummed and applied under a Postgres advisory lock, preventing two instances (e.g. overlapping pods during a rolling restart) from applying the same migration concurrently, and logging a warning if an already-applied migration file was edited afterward instead of silently ignoring it.
+
+### Fixed
+- Startup no longer fails if the plan-ownership migration marker was already recorded (e.g. after a crash or an overlapping pod during the same migration run).
+
 ## [v0.7.9] - 2026-09-07
 
 ### Added
