@@ -18,3 +18,11 @@ backend/toolcatalog
 # Image defaults are seeded from backend/seed/.
 data/
 searxng/
+
+# Playwright e2e (root package.json / playwright.config.ts)
+/node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.mcp.json
