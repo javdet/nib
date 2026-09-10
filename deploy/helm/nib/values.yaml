@@ -202,7 +202,7 @@ kbMcp:
 
   image:
     repository: javdet/nib-kb
-    tag: "0.7.9"
+    tag: "0.7.10"
     pullPolicy: IfNotPresent
 
   service:
