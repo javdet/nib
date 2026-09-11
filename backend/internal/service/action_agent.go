@@ -130,6 +130,12 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 	var dialogID uuid.UUID
 	finish := func(status ActionExecStatus, errMsg, body string) {
 		run := s.finishActionExecRun(planID, key, status, errMsg)
+		// The body is this sub-agent's own final message. Recording it before the
+		// report is what keeps it reachable by the actions that come after, now
+		// that a successful run no longer spells it out in the plan chat. A run
+		// that produced no text -- a failure, a cancellation -- records nothing;
+		// its reason is already on the run record as `error`.
+		s.recordActionNote(planID, key, body)
 		s.reportActionResult(context.WithoutCancel(ctx), planID, key, run.Attempt, dialogID, status, body)
 	}
 	fail := func(err error) {

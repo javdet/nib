@@ -315,8 +315,8 @@ func insertedStageRemap(index int) func(int) int {
 	}
 }
 
-// remapActionPlanItemKeys rewrites the persisted checkbox, comment and run keys
-// of a dialog after stages moved. Stores that hold nothing are left untouched so
+// remapActionPlanItemKeys rewrites the persisted checkbox, comment, run and
+// executor-note keys of a dialog after stages moved. Stores that hold nothing are left untouched so
 // a plan being drafted does not grow empty side files.
 func (s *ChatService) remapActionPlanItemKeys(dialogID uuid.UUID, remap func(int) int) error {
 	checked, err := s.ReadActionPlanChecks(dialogID)
@@ -345,6 +345,19 @@ func (s *ChatService) remapActionPlanItemKeys(dialogID uuid.UUID, remap func(int
 	}
 	if len(runs) > 0 {
 		if err := s.WriteActionPlanRuns(dialogID, rekeyActionPlanMap(runs, remap)); err != nil {
+			return err
+		}
+	}
+
+	// A replaced stage remaps to -1, so its notes are dropped rather than moved:
+	// the actions at those positions are different work now, and a result from
+	// the ones they replaced would be a lie told to whoever executes them.
+	notes, err := s.readActionPlanNotes(dialogID)
+	if err != nil {
+		return err
+	}
+	if len(notes) > 0 {
+		if err := s.writeActionPlanNotes(dialogID, rekeyActionPlanMap(notes, remap)); err != nil {
 			return err
 		}
 	}

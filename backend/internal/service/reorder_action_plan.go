@@ -333,5 +333,15 @@ func (s *ChatService) ReorderActionPlanItems(
 		return nil, nil, nil, err
 	}
 
+	notes, err := s.readActionPlanNotes(dialogID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	notes = remapActionPlanKeys(notes, stage, scope, perm)
+
+	if err := s.writeActionPlanNotes(dialogID, notes); err != nil {
+		return nil, nil, nil, err
+	}
+
 	return json.RawMessage(planData), checked, comments, nil
 }

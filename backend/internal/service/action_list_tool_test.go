@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/javdet/nib/internal/domain"
@@ -272,8 +273,13 @@ func TestBuildActionListResponse(t *testing.T) {
 		},
 	}
 	checked := map[string]struct{}{"s0.step0": {}}
+	notes := map[string]string{
+		"s0.step0":   "pods listed: api-7f9c, api-2b10",
+		"rollback.1": "rolled back to revision 4",
+		"s0.check0":  "a check never runs, so this must not surface",
+	}
 
-	resp := buildActionListResponse(plan, checked, ActionExecRuns{})
+	resp := buildActionListResponse(plan, checked, ActionExecRuns{}, notes)
 	if len(resp.Stages) != 1 || len(resp.Stages[0].Actions) != 2 || !resp.Stages[0].Actions[0].Executed {
 		t.Fatalf("actions = %#v", resp.Stages[0].Actions)
 	}
@@ -309,6 +315,25 @@ func TestBuildActionListResponse(t *testing.T) {
 	}
 	if resp.Rollback[1].Command != "kubectl -n prod rollout undo deployment/api" {
 		t.Fatalf("rollback command = %q", resp.Rollback[1].Command)
+	}
+	if got := resp.Stages[0].Actions[0].Notes; got != "pods listed: api-7f9c, api-2b10" {
+		t.Fatalf("step notes = %q", got)
+	}
+	if got := resp.Rollback[1].Notes; got != "rolled back to revision 4" {
+		t.Fatalf("rollback notes = %q", got)
+	}
+	// An action nobody has run carries no note, and the key must be absent from
+	// the JSON rather than present and empty: the agent reads its absence as
+	// "nothing has been reported here yet".
+	if got := resp.Stages[0].Actions[1].Notes; got != "" {
+		t.Fatalf("unrun action notes = %q, want empty", got)
+	}
+	out, err := json.Marshal(resp.Stages[0].Actions[1])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "notes") {
+		t.Fatalf("empty notes serialised: %s", out)
 	}
 }
 

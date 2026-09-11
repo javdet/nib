@@ -283,6 +283,9 @@ func TestUpdateActionPlanHandler_remapsCheckedKeys(t *testing.T) {
 	if err := svc.WriteActionPlanComments(planID, map[string]string{"s0.step0": "looks right"}); err != nil {
 		t.Fatalf("write comments: %v", err)
 	}
+	if err := svc.writeActionPlanNotes(planID, map[string]string{"s0.step0": "created vpc-0a91f3"}); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
 
 	t.Run("an earlier stage pushes the checked keys down", func(t *testing.T) {
 		if _, err := handler(ctx, map[string]any{
@@ -305,6 +308,13 @@ func TestUpdateActionPlanHandler_remapsCheckedKeys(t *testing.T) {
 		}
 		if comments["s1.step0"] != "looks right" {
 			t.Fatalf("comments = %#v", comments)
+		}
+		notes, err := svc.readActionPlanNotes(planID)
+		if err != nil {
+			t.Fatalf("read notes: %v", err)
+		}
+		if notes["s1.step0"] != "created vpc-0a91f3" {
+			t.Fatalf("notes = %#v", notes)
 		}
 	})
 
@@ -329,6 +339,15 @@ func TestUpdateActionPlanHandler_remapsCheckedKeys(t *testing.T) {
 		}
 		if len(comments) != 0 {
 			t.Fatalf("comments = %#v, want empty", comments)
+		}
+		// The replaced stage's actions are different work, so the results the
+		// previous ones reported must not be offered to whoever runs these.
+		notes, err := svc.readActionPlanNotes(planID)
+		if err != nil {
+			t.Fatalf("read notes: %v", err)
+		}
+		if len(notes) != 0 {
+			t.Fatalf("notes = %#v, want empty", notes)
 		}
 	})
 }

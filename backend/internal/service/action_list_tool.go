@@ -21,7 +21,9 @@ func GetActionListToolDef() llm.ToolDef {
 		Description: "Return the action plan bound to the current conversation. " +
 			"Includes stages with actions, verification checks, and rollback steps, each with type and executed status. " +
 			"Each action and check carries the `number` the operator sees next to it in the web interface. " +
-			"`executed` is the operator's checkbox; `run` is the last sub-agent attempt, which is a weaker claim.",
+			"`executed` is the operator's checkbox; `run` is the last sub-agent attempt, which is a weaker claim. " +
+			"`notes` is what the last run of that action reported: the concrete values it produced -- an id, a name, " +
+			"an address, a branch -- which is where to look for anything an earlier action created.",
 		Parameters: getActionListParameters,
 	}
 }
@@ -52,6 +54,12 @@ type actionListAction struct {
 	// It is deliberately separate from Executed: a sub-agent finishing is not
 	// the same claim as the operator accepting the result.
 	Run *actionListRun `json:"run,omitempty"`
+	// Notes is what the last run of this action reported. It is the sub-agents'
+	// working memory and reaches nothing else: not the plan chat, not the web
+	// interface. It is here because a value one action produces -- a resource id,
+	// a generated name, a branch -- is usually knowable only from the run that
+	// produced it, and the action that needs it runs in a conversation of its own.
+	Notes string `json:"notes,omitempty"`
 }
 
 type actionListRun struct {
@@ -153,7 +161,15 @@ func (s *ChatService) getActionListHandler(dialogID uuid.UUID) localToolHandler 
 			execRuns = ActionExecRuns{}
 		}
 
-		resp := buildActionListResponse(plan, checkedSet, execRuns)
+		// Same bargain as the run column: a notes file that cannot be read costs
+		// the agent its predecessors' results, not the plan it came here to read.
+		notes, err := s.readActionPlanNotes(planID)
+		if err != nil {
+			slog.Warn("read action plan notes", "plan_id", planID, "error", err)
+			notes = map[string]string{}
+		}
+
+		resp := buildActionListResponse(plan, checkedSet, execRuns, notes)
 		out, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("marshal action list: %w", err)
@@ -201,7 +217,12 @@ func (s *ChatService) resolveRootDialogID(ctx context.Context, dialogID uuid.UUI
 	return current, nil
 }
 
-func buildActionListResponse(plan storedActionPlan, checked map[string]struct{}, execRuns ActionExecRuns) actionListResponse {
+func buildActionListResponse(
+	plan storedActionPlan,
+	checked map[string]struct{},
+	execRuns ActionExecRuns,
+	notes map[string]string,
+) actionListResponse {
 	resp := actionListResponse{
 		Stages:   make([]actionListStage, 0, len(plan.Stages)),
 		Rollback: make([]actionListAction, 0, len(plan.Rollback)),
@@ -228,6 +249,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{},
 				PRURL:    step.PRURL,
 				Executed: executed,
 				Run:      actionListRunFor(execRuns, key),
+				Notes:    notes[key],
 			})
 		}
 		for checkIdx, check := range stage.Checks {
@@ -254,6 +276,7 @@ func buildActionListResponse(plan storedActionPlan, checked map[string]struct{},
 			PRURL:    step.PRURL,
 			Executed: executed,
 			Run:      actionListRunFor(execRuns, key),
+			Notes:    notes[key],
 		})
 	}
 	return resp
