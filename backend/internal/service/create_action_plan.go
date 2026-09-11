@@ -262,6 +262,9 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 		execPath := actionPlanExecPath(s.actionPlansDir, dialogID)
 		_ = os.Remove(execPath)
 
+		notesPath := actionPlanNotesPath(s.actionPlansDir, dialogID)
+		_ = os.Remove(notesPath)
+
 		return "Action plan saved to " + relPath + unknownCategoryNote(unknown, valid), nil
 	}
 }

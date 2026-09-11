@@ -171,6 +171,39 @@ func TestRemapCommentKeys(t *testing.T) {
 	}
 }
 
+// A note is addressed by position like every other side store, so a reorder that
+// left it behind would show one action's result against another's row.
+func TestRemapNoteKeys(t *testing.T) {
+	t.Parallel()
+
+	perm, err := moveIndex(3, 0, 2)
+	if err != nil {
+		t.Fatalf("moveIndex: %v", err)
+	}
+
+	notes := map[string]string{
+		"s0.step0":   "created vpc-0a91f3",
+		"s0.step1":   "attached subnet-77c2",
+		"s1.step0":   "other stage",
+		"rollback.0": "rollback note",
+	}
+	got := remapActionPlanKeys(notes, 0, ActionPlanScopeSteps, perm)
+	want := map[string]string{
+		"s0.step2":   "created vpc-0a91f3",
+		"s0.step0":   "attached subnet-77c2",
+		"s1.step0":   "other stage",
+		"rollback.0": "rollback note",
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("got[%q] = %q, want %q", key, got[key], value)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d notes, want %d: %#v", len(got), len(want), got)
+	}
+}
+
 func TestReorderActionPlanItems(t *testing.T) {
 	t.Parallel()
 

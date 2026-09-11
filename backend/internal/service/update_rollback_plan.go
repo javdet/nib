@@ -206,8 +206,8 @@ func rollbackDiffers(stored any, next []any) (bool, error) {
 // it: there is nothing to shift when a stage moves.
 var actionPlanRollbackKeyPattern = regexp.MustCompile(`^rollback\.\d+$`)
 
-// dropActionPlanRollbackKeys forgets the checkbox, comment, run and exec-status
-// keys of the rollback entries, leaving every stage key untouched. Stores that
+// dropActionPlanRollbackKeys forgets the checkbox, comment, run, exec-status and
+// executor-note keys of the rollback entries, leaving every stage key untouched. Stores that
 // hold nothing are left alone so a plan being drafted does not grow empty side
 // files.
 func (s *ChatService) dropActionPlanRollbackKeys(dialogID uuid.UUID) error {
@@ -252,6 +252,16 @@ func (s *ChatService) dropActionPlanRollbackKeys(dialogID uuid.UUID) error {
 	}
 	if kept := filterActionExecRuns(execRuns, keep); len(kept) != len(execRuns) {
 		if err := s.WriteActionPlanExecRuns(dialogID, kept); err != nil {
+			return err
+		}
+	}
+
+	notes, err := s.readActionPlanNotes(dialogID)
+	if err != nil {
+		return err
+	}
+	if kept := filterActionPlanMap(notes, keep); len(kept) != len(notes) {
+		if err := s.writeActionPlanNotes(dialogID, kept); err != nil {
 			return err
 		}
 	}

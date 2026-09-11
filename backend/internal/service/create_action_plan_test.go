@@ -161,6 +161,10 @@ func TestCreateActionPlanHandler(t *testing.T) {
 		if err := os.WriteFile(commentsPath, []byte(`{"s0.step0":"note"}`), 0o644); err != nil {
 			t.Fatalf("write comments: %v", err)
 		}
+		notesPath := actionPlanNotesPath(dir, dialogID)
+		if err := os.WriteFile(notesPath, []byte(`{"s0.step0":"created vpc-0a91f3"}`), 0o644); err != nil {
+			t.Fatalf("write notes: %v", err)
+		}
 
 		_, err := handler(ctx, map[string]any{"plan": samplePlan})
 		if err != nil {
@@ -184,6 +188,11 @@ func TestCreateActionPlanHandler(t *testing.T) {
 		}
 		if _, err := os.Stat(commentsPath); !os.IsNotExist(err) {
 			t.Fatal("expected comments file to be removed on plan overwrite")
+		}
+		// The actions are different work now; a result reported by the ones they
+		// replaced would be handed to whoever executes these.
+		if _, err := os.Stat(notesPath); !os.IsNotExist(err) {
+			t.Fatal("expected notes file to be removed on plan overwrite")
 		}
 	})
 

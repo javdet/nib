@@ -327,6 +327,21 @@ dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
 `data/summaries/{id}.txt`, `data/action_plans/{id}.json`, `data/plan_state/{id}.json`,
 `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`.
 
+An action plan carries side files beside it, all keyed by the same dialog id and by the positional
+row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),
+`.comments.json` (their comments), `.runs.json` (the execute dialog per row), `.exec.json` (the last
+run's status) and `.notes.json` (what that run reported). Every one of them is positional, so all of
+them are remapped together whenever a stage is rewritten, reordered or replaced — `create` clears
+them, the HTTP `PUT` clears none.
+
+`.notes.json` is the exception to "artifacts are for the operator": it is the executors' own memory.
+A finished action sub-agent's final message is recorded there and handed to the sub-agents that run
+the later actions through `get_action_list`, which is how a resource id one action creates reaches
+the action that needs it. It is deliberately unreachable from the HTTP API — its accessors are
+unexported for exactly that reason — and a successful run's text is kept out of the plan chat, which
+shows only that the action is done plus a link to the transcript. A failure, a question or a
+cancellation still says why in the chat.
+
 They are keyed by the **root** dialog of a lineage, not by the dialog that wrote them: a sub-agent's
 transcript is its own while every plan artifact belongs to the plan. That split is `toolBinding`
 (`dialogID` for the transcript, `planID` for the plan), and `resolveRootDialogID` is what walks

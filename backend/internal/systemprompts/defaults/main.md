@@ -118,7 +118,10 @@ changes, and stages get replanned and reordered with the numbers moving with the
   verification checks, each carrying the `number` the operator sees beside it —
   `1.1` for an action, `1.C1` for a check, `R1` for a rollback entry — plus
   whether it has been done. `executed` is the operator's checkbox; `run` is the
-  last sub-agent attempt, which is a weaker claim.
+  last sub-agent attempt, which is a weaker claim. `notes` is what that attempt
+  reported — the values it produced, the checks it made. A successful action
+  reports there rather than into this chat, so that is where you look when asked
+  what an action actually did or what it created.
 
 Quote the operator's own numbers back to them (`stage 2`, `1.3`, `R1`) so you are
 both looking at the same row.

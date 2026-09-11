@@ -124,6 +124,11 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 	}
 
 	s.finishActionExecRun(planID, key, status, errMsg)
+	// A code action reports into its own execute dialog, which the actions after
+	// it never see, so its account of the work is recorded on the action the same
+	// way a sub-agent's is. Both callers may reach this for one delivery; writing
+	// the same note twice is a no-op.
+	s.recordActionNote(planID, key, codeActionNoteText(res))
 	s.releaseExecutionLeaseForContainer(planID, key, res.JobName)
 
 	kind := domain.ActivityActionExecDone
@@ -135,6 +140,24 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 		Action: key,
 		Status: string(status),
 	})
+}
+
+// codeActionNoteText is what a code action leaves for the actions after it. It
+// is built from the agent's own result rather than reused from
+// formatAgentResultMessage: the log tail, the cost and the turn count are there
+// for the operator, while the branch is a value a later action genuinely needs
+// and lives nowhere else. The pull request is left out on purpose -- it is
+// written onto the action as `pr_url`, which get_action_list already returns.
+func codeActionNoteText(res AgentRunResult) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(res.Result))
+	if branch := strings.TrimSpace(res.TargetBranch); branch != "" {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		fmt.Fprintf(&b, "Branch: %s", branch)
+	}
+	return b.String()
 }
 
 func agentRunMessageName(jobName string) string {

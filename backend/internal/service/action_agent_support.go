@@ -175,6 +175,13 @@ func actionExecMessageName(key string, attempt int) string {
 // formatActionResultMessage renders the outcome. The link is a fragment the chat
 // panel intercepts to open the subagent's dialog: there is no route to a dialog
 // by id, so a plain URL would go nowhere.
+//
+// A successful run reports only that it is done. Its text is working notes for
+// the actions that follow -- recorded on the action and read back through
+// get_action_list -- rather than something the operator has to wade through, and
+// the transcript link is there for anyone who does want it. Every other outcome
+// keeps its body: a question, a failure and a cancellation are all things
+// somebody has to act on.
 func formatActionResultMessage(key string, dialogID uuid.UUID, status ActionExecStatus, body string) string {
 	number := actionPlanNumberForKey(key)
 	if number == "" {
@@ -192,7 +199,7 @@ func formatActionResultMessage(key string, dialogID uuid.UUID, status ActionExec
 	default:
 		fmt.Fprintf(&b, "**%s failed** ❌\n", number)
 	}
-	if text := strings.TrimSpace(body); text != "" {
+	if text := strings.TrimSpace(body); text != "" && status != ActionExecDone {
 		b.WriteString("\n" + text + "\n")
 	}
 	if dialogID != uuid.Nil {

@@ -276,6 +276,12 @@ func TestUpdateRollbackPlanHandler_dropsRollbackKeysOnlyWhenTheListChanges(t *te
 	if err := svc.WriteActionPlanRuns(planID, map[string]string{"rollback.1": uuid.NewString()}); err != nil {
 		t.Fatalf("write runs: %v", err)
 	}
+	if err := svc.writeActionPlanNotes(planID, map[string]string{
+		"rollback.1": "restored the snapshot from 2026-09-01",
+		"s0.step0":   "created vpc-0a91f3",
+	}); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
 
 	// Re-derived identically: everything survives.
 	out, err := handler(ctx, map[string]any{"rollback": rollbackEntries()})
@@ -320,6 +326,15 @@ func TestUpdateRollbackPlanHandler_dropsRollbackKeysOnlyWhenTheListChanges(t *te
 	}
 	if len(runs) != 0 {
 		t.Fatalf("runs = %v, want the rollback run key dropped", runs)
+	}
+	// A rewritten R1 is different work; inheriting the result the old one
+	// reported would tell the next agent a rollback had run that has not.
+	notes, err := svc.readActionPlanNotes(planID)
+	if err != nil {
+		t.Fatalf("read notes: %v", err)
+	}
+	if len(notes) != 1 || notes["s0.step0"] != "created vpc-0a91f3" {
+		t.Fatalf("notes = %v, want only the stage key", notes)
 	}
 }
 
