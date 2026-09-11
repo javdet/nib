@@ -13,6 +13,7 @@ const baseInput: PlanExportInput = {
 	createdAt: '2024-01-01T09:00:00.000Z',
 	updatedAt: '2024-01-02T10:30:00.000Z',
 	summary: 'Roll out the API deployment to production.',
+	report: null,
 	dag: '```mermaid\ngraph TD\n  A --> B\n```',
 	plan: null,
 	checked: [],
@@ -146,6 +147,35 @@ describe('buildPlanMarkdown', () => {
 		expect(markdown).toContain(
 			'    - `terraform/prod/main.tf`: bump `version` to `1.33.9`',
 		)
+	})
+
+	it('omits the report section when the plan has none', () => {
+		const markdown = buildPlanMarkdown(baseInput)
+
+		expect(markdown).not.toContain('## Report')
+	})
+
+	it('renders the report between the summary and the DAG', () => {
+		const markdown = buildPlanMarkdown({
+			...baseInput,
+			report: '## Outcome\n\nEvery action landed.',
+		})
+
+		expect(markdown).toContain('## Report')
+		expect(markdown).toContain('## Outcome')
+		expect(markdown).toContain('Every action landed.')
+		expect(markdown.indexOf('## Summary')).toBeLessThan(
+			markdown.indexOf('## Report'),
+		)
+		expect(markdown.indexOf('## Report')).toBeLessThan(
+			markdown.indexOf('## DAG'),
+		)
+	})
+
+	it('omits the report section when it is only whitespace', () => {
+		const markdown = buildPlanMarkdown({ ...baseInput, report: '  \n ' })
+
+		expect(markdown).not.toContain('## Report')
 	})
 })
 

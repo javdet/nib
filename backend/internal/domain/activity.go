@@ -22,6 +22,12 @@ const (
 	ActivityActionExecStarted AgentActivityKind = "action_exec_started"
 	ActivityActionExecDone    AgentActivityKind = "action_exec_done"
 	ActivityActionExecFailed  AgentActivityKind = "action_exec_failed"
+
+	// ActivityReportUpdated says a plan's closing report has been written. Like
+	// the kinds above it is published against the plan dialog rather than the
+	// subagent's own, because the report belongs to the plan and the plan page
+	// is what listens.
+	ActivityReportUpdated AgentActivityKind = "report_updated"
 )
 
 type AgentActivity struct {

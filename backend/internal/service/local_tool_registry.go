@@ -72,6 +72,7 @@ func init() {
 		registerCreateDAGTool,
 		registerCreatePlanContractTool,
 		registerCreateSummaryTool,
+		registerSetReportTool,
 		registerCreateTableTool,
 		registerSetCategoryTool,
 		registerCreateActionPlanTool,
@@ -211,6 +212,17 @@ func registerCreateSummaryTool(s *ChatService, catalog *toolCatalog, b toolBindi
 	}
 	catalog.localHandlers[CreateSummaryToolName] = s.createSummaryHandler(b.planID)
 	catalog.tools = append(catalog.tools, CreateSummaryToolDef())
+}
+
+// registerSetReportTool binds set_report to the plan rather than the transcript:
+// the report is a plan artifact, and the agent that writes it runs in a dialog of
+// its own.
+func registerSetReportTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
+	if b.planID == uuid.Nil || !localToolAllowed(allow, SetReportToolName) {
+		return
+	}
+	catalog.localHandlers[SetReportToolName] = s.setReportHandler(b.planID)
+	catalog.tools = append(catalog.tools, SetReportToolDef())
 }
 
 func registerCreateTableTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {

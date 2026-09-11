@@ -64,6 +64,8 @@ export async function mockDialogList(
 export interface PlanMockOptions {
 	dialog: Dialog
 	summary?: string
+	/** The closing report. Undefined means the plan has none, which is a 404. */
+	report?: string
 	dag?: string
 	actionPlan?: ReturnType<typeof makeActionPlan> | null
 	planState?: ReturnType<typeof makePlanState>
@@ -82,6 +84,22 @@ export async function mockPlan(page: Page, options: PlanMockOptions) {
 	await mockJson(page, `${base}/summary`, {
 		content: options.summary ?? '',
 	})
+	// A plan with no report answers 404, which is what makes the Report card
+	// absent. The POST route is registered after the GET so it wins for POST and
+	// falls through to it for GET.
+	if (options.report === undefined) {
+		await mockJson(page, `${base}/report`, { error: 'report not found' }, {
+			status: 404,
+		})
+	} else {
+		await mockJson(page, `${base}/report`, { content: options.report })
+	}
+	await mockJson(
+		page,
+		`${base}/report`,
+		{ status: 'started' },
+		{ status: 202, method: 'POST' },
+	)
 	await mockJson(page, `${base}/dag`, { content: options.dag ?? '' })
 	await mockJson(
 		page,

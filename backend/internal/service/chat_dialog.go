@@ -278,6 +278,7 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 	files := []string{
 		filepath.Join(s.dagsDir, id+".md"),
 		filepath.Join(s.summariesDir, id+".txt"),
+		filepath.Join(s.reportsDir, id+".md"),
 		filepath.Join(s.actionPlansDir, id+".json"),
 		actionPlanChecksPath(s.actionPlansDir, dialogID),
 		actionPlanCommentsPath(s.actionPlansDir, dialogID),

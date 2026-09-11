@@ -160,6 +160,7 @@ test.describe('Finish and cancel a plan', () => {
 	}) => {
 		await openPlan(page)
 		apiGuard.allow('PUT', `${BASE}/action-plan/checks`)
+		apiGuard.allow('POST', `${BASE}/report`)
 		await mockStatefulPlan(page)
 
 		await expect(page.getByText('0 / 4 (0%)')).toBeVisible()
@@ -167,7 +168,12 @@ test.describe('Finish and cancel a plan', () => {
 		const request = page.waitForRequest(
 			(r) => r.url().endsWith('/action-plan/checks') && r.method() === 'PUT',
 		)
+		const reportRequest = page.waitForRequest(
+			(r) => r.url().endsWith('/report') && r.method() === 'POST',
+		)
 		await finishButton(page).click()
+		// Finishing is also what commissions the report.
+		await reportRequest
 
 		// Rollback items stay out of it, exactly as the progress bar counts them.
 		expect((await request).postDataJSON()).toMatchObject({
@@ -180,6 +186,38 @@ test.describe('Finish and cancel a plan', () => {
 		).toBeVisible()
 		await expect(finishButton(page)).toBeDisabled()
 		await expect(cancelButton(page)).toBeDisabled()
+	})
+
+	test('finishes even when the report agent cannot be started', async ({
+		page,
+		apiGuard,
+	}) => {
+		await openPlan(page)
+		apiGuard.allow('PUT', `${BASE}/action-plan/checks`)
+		apiGuard.allow('POST', `${BASE}/report`)
+		await mockStatefulPlan(page)
+		await page.route(
+			(url) => url.pathname === `${BASE}/report`,
+			async (route) => {
+				if (route.request().method() !== 'POST') return route.fallback()
+				await route.fulfill({
+					status: 500,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'llm unreachable' }),
+				})
+			},
+		)
+
+		await finishButton(page).click()
+
+		// The report is a by-product: losing it must not surface as a failure,
+		// and must not roll the finished state back.
+		await expect(page.getByText('4 / 4 (100%)')).toBeVisible()
+		await expect(page.getByText('Failed to finish the plan')).toHaveCount(0)
+		await page.getByRole('button', { name: 'Detailed' }).click()
+		await expect(
+			page.getByRole('row', { name: 'Status FINISHED' }),
+		).toBeVisible()
 	})
 
 	test('leaves both buttons inactive on an already finished plan', async ({
