@@ -11,6 +11,7 @@ export type PlanStatus =
 	| 'done'
 	| 'reopened'
 	| 'rolled_back'
+	| 'cancelled'
 
 export interface Dialog {
 	id: string
@@ -67,6 +68,7 @@ export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
 	done: 'FINISHED',
 	reopened: 'REOPENED',
 	rolled_back: 'ROLLED BACK',
+	cancelled: 'CANCELLED',
 }
 
 export const SUMMARY_MARKDOWN = [

@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -48,6 +49,7 @@ import {
 	updateActionPlanComments,
 	reorderActionPlanItems,
 	updatePlanSchedule,
+	updatePlanStatus,
 	updateDialogSummary,
 	updateDialogTitle,
 	updateDialogCategories,
@@ -69,6 +71,7 @@ import { ActionPlanView } from '../components/action-plan-view'
 import { DagView } from '../components/dag-view'
 import { PlanMetaTable } from '../components/plan-meta-table'
 import { PlanProgressBar } from '../components/plan-progress-bar'
+import { buildPlanItemKeys } from '../lib/plan-item-keys'
 import {
 	buildPlanMarkdown,
 	planMarkdownFileName,
@@ -169,6 +172,14 @@ export function WorkplaceDetail() {
 	const [planStatus, setPlanStatus] = useState<PlanStatus>('draft')
 	const [planScheduledAt, setPlanScheduledAt] = useState(0)
 	const [savingSchedule, setSavingSchedule] = useState(false)
+	// Which of the two terminal actions is in flight, so each button can label
+	// its own progress rather than both reacting to one boolean.
+	const [planAction, setPlanAction] = useState<'finish' | 'cancel' | null>(null)
+	const savingPlanStatus = planAction !== null
+	const [confirmCancelOpen, setConfirmCancelOpen] = useState(false)
+	// Finish and Cancel report into their own slot: the page-level error state
+	// replaces the whole view, which would blank the plan on a failed click.
+	const [planActionError, setPlanActionError] = useState<string | null>(null)
 	const [commentDialogKey, setCommentDialogKey] = useState<string | null>(null)
 	const [commentDraft, setCommentDraft] = useState('')
 	const [savingComment, setSavingComment] = useState(false)
@@ -791,6 +802,69 @@ export function WorkplaceDetail() {
 		[id, savingSchedule, planScheduledAt, planStatus],
 	)
 
+	// Finishing ticks every action and then makes the plan itself finished. The
+	// checks write is what the server derives 'done' from, so the explicit status
+	// write is only the fallback for a plan with nothing countable in it.
+	const handleFinishPlan = useCallback(async () => {
+		if (!id || savingPlanStatus) return
+
+		const keys = buildPlanItemKeys(actionPlan)
+		const prevChecked = actionPlanChecked
+		const prevStatus = planStatus
+
+		setActionPlanChecked(keys)
+		setPlanStatus('done')
+		setPlanAction('finish')
+		setPlanActionError(null)
+		try {
+			const result = await updateActionPlanChecks(id, keys)
+			setActionPlanChecked(result.checked)
+			if (result.planStatus === 'done') {
+				setPlanStatus(result.planStatus)
+			} else {
+				const { status } = await updatePlanStatus(id, 'done')
+				setPlanStatus(status)
+			}
+			bumpDialogsVersion()
+		} catch (err) {
+			setActionPlanChecked(prevChecked)
+			setPlanStatus(prevStatus)
+			setPlanActionError(
+				err instanceof Error ? err.message : 'Failed to finish the plan',
+			)
+		} finally {
+			setPlanAction(null)
+		}
+	}, [
+		id,
+		savingPlanStatus,
+		actionPlan,
+		actionPlanChecked,
+		planStatus,
+		bumpDialogsVersion,
+	])
+
+	const handleCancelPlan = useCallback(async () => {
+		if (!id || savingPlanStatus) return
+
+		const prevStatus = planStatus
+		setPlanAction('cancel')
+		setPlanActionError(null)
+		try {
+			const { status } = await updatePlanStatus(id, 'cancelled')
+			setPlanStatus(status)
+			setConfirmCancelOpen(false)
+			bumpDialogsVersion()
+		} catch (err) {
+			setPlanStatus(prevStatus)
+			setPlanActionError(
+				err instanceof Error ? err.message : 'Failed to cancel the plan',
+			)
+		} finally {
+			setPlanAction(null)
+		}
+	}, [id, savingPlanStatus, planStatus, bumpDialogsVersion])
+
 	// The decompose sub-agent's transcript is where the research behind the
 	// summary and the DAG lives. Nothing else links to it, so the Summary card
 	// does.
@@ -947,6 +1021,13 @@ export function WorkplaceDetail() {
 		processingPlan || fanoutRunning || !canProcessPlan
 	const showProcessPlanHero =
 		!actionPlan && !processingPlan && !fanoutRunning
+	// Both statuses are terminal, so neither button has anything left to do.
+	const planClosed = planStatus === 'done' || planStatus === 'cancelled'
+	// Finishing means "every action is done", which only has meaning once the
+	// plan has been processed into an action list.
+	const finishDisabled =
+		!actionPlan || processingPlan || fanoutRunning || planClosed || savingPlanStatus
+	const cancelDisabled = planClosed || savingPlanStatus
 
 	return (
 		<div className="space-y-6">
@@ -1043,6 +1124,39 @@ export function WorkplaceDetail() {
 							<Pencil className="h-4 w-4" />
 						</IconButton>
 					</div>
+				)}
+			</div>
+
+			<div className="flex flex-col items-center gap-2">
+				<div className="flex items-center justify-center gap-3">
+					<Button
+						type="button"
+						size="lg"
+						className={cn(
+							'min-w-[10rem] font-semibold',
+							!finishDisabled &&
+								'bg-success text-success-foreground hover:bg-success/90 elev-3',
+						)}
+						onClick={() => void handleFinishPlan()}
+						disabled={finishDisabled}
+					>
+						{planAction === 'finish' ? 'Finishing...' : 'Finish'}
+					</Button>
+					<Button
+						type="button"
+						size="lg"
+						variant="destructive"
+						className="min-w-[10rem] font-semibold"
+						onClick={() => setConfirmCancelOpen(true)}
+						disabled={cancelDisabled}
+					>
+						Cancel
+					</Button>
+				</div>
+				{planActionError && (
+					<p className="rounded-md border border-destructive/35 bg-destructive/12 px-3 py-2 text-sm text-destructive">
+						{planActionError}
+					</p>
 				)}
 			</div>
 
@@ -1421,6 +1535,42 @@ export function WorkplaceDetail() {
 					</CardContent>
 				)}
 			</Card>
+
+			<Dialog
+				open={confirmCancelOpen}
+				onOpenChange={(open) => {
+					if (!open && !savingPlanStatus) setConfirmCancelOpen(false)
+				}}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Cancel this plan?</DialogTitle>
+						<DialogDescription>
+							The plan is marked CANCELLED and stops there — ticking actions
+							afterwards will not move it on. Nothing already executed is
+							undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setConfirmCancelOpen(false)}
+							disabled={savingPlanStatus}
+						>
+							Keep plan
+						</Button>
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={() => void handleCancelPlan()}
+							disabled={savingPlanStatus}
+						>
+							{planAction === 'cancel' ? 'Cancelling...' : 'Cancel plan'}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog
 				open={commentDialogKey !== null}

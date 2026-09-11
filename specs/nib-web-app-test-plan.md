@@ -82,7 +82,7 @@ one blanks the entire app — which looks exactly like an application bug. `isAp
 `tests/fixtures/nib-test.ts` is the shared predicate.
 
 Reference fixtures: a plan in each `PlanStatus` (`draft`, `scheduled`, `in_progress`, `done`,
-`reopened`, `rolled_back`), an action plan with ≥2 stages and both `command` and `code` steps, a
+`reopened`, `rolled_back`, `cancelled`), an action plan with ≥2 stages and both `command` and `code` steps, a
 message list containing an unanswered `ask_question` tool call, and a `mcp.json` raw body with
 comments and an unknown top-level key.
 

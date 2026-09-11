@@ -98,7 +98,7 @@ backend:
 | `nib_plans_refresh_timestamp_seconds` | gauge | — |
 | `nib_plan_status_transitions_total` | counter | `from`, `to` |
 
-Статусы: `draft`, `scheduled`, `in_progress`, `done`, `reopened`, `rolled_back`.
+Статусы: `draft`, `scheduled`, `in_progress`, `done`, `reopened`, `rolled_back`, `cancelled`.
 Публикуются все шесть, в том числе нулевые.
 
 Статус плана лежит не в Postgres, а в `data/plan_state/{dialogID}.json` (и по

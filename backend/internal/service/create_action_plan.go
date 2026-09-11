@@ -98,6 +98,9 @@ const (
 	// ActionPlanStatusReopened marks a finished plan whose item was later unchecked.
 	ActionPlanStatusReopened   ActionPlanStatus = "reopened"
 	ActionPlanStatusRolledBack ActionPlanStatus = "rolled_back"
+	// ActionPlanStatusCancelled marks a plan the operator abandoned. Like
+	// rolled_back it is terminal: checkbox progress never moves a plan out of it.
+	ActionPlanStatusCancelled ActionPlanStatus = "cancelled"
 )
 
 // actionPlanStatuses is every valid status. It is the one list: validation and
@@ -110,6 +113,7 @@ var actionPlanStatuses = []ActionPlanStatus{
 	ActionPlanStatusDone,
 	ActionPlanStatusReopened,
 	ActionPlanStatusRolledBack,
+	ActionPlanStatusCancelled,
 }
 
 func isValidActionPlanStatus(status ActionPlanStatus) bool {

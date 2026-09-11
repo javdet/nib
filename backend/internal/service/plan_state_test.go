@@ -254,6 +254,23 @@ func TestSyncPlanStatusForChecks(t *testing.T) {
 			t.Fatalf("status = %q, want rolled_back", status)
 		}
 	})
+
+	t.Run("cancelled is never changed automatically", func(t *testing.T) {
+		if err := svc.WritePlanState(parentID, PlanState{
+			Status:      ActionPlanStatusCancelled,
+			ScheduledAt: 0,
+		}); err != nil {
+			t.Fatalf("write plan state: %v", err)
+		}
+
+		status, err := svc.SyncPlanStatusForChecks(ctx, planChildID, allItems)
+		if err != nil {
+			t.Fatalf("sync plan status: %v", err)
+		}
+		if status != ActionPlanStatusCancelled {
+			t.Fatalf("status = %q, want cancelled", status)
+		}
+	})
 }
 
 func TestSyncPlanStatusForChecksWithoutPlanFile(t *testing.T) {
@@ -320,6 +337,8 @@ func TestNextPlanStatusForChecks(t *testing.T) {
 		{"reopened completed", ActionPlanStatusReopened, 3, 3, ActionPlanStatusDone},
 		{"reopened partial", ActionPlanStatusReopened, 1, 3, ActionPlanStatusReopened},
 		{"rolled_back completed", ActionPlanStatusRolledBack, 3, 3, ActionPlanStatusRolledBack},
+		{"cancelled completed", ActionPlanStatusCancelled, 3, 3, ActionPlanStatusCancelled},
+		{"cancelled partial", ActionPlanStatusCancelled, 1, 3, ActionPlanStatusCancelled},
 		{"unknown plan size", ActionPlanStatusDraft, 0, 0, ActionPlanStatusDraft},
 		{"unknown plan size started", ActionPlanStatusDraft, 1, 0, ActionPlanStatusInProgress},
 		{"unknown plan size never finishes", ActionPlanStatusInProgress, 3, 0, ActionPlanStatusInProgress},

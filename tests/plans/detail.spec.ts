@@ -213,8 +213,10 @@ test.describe('Plan summary', () => {
 		await openPlan(page)
 
 		await page.getByRole('button', { name: 'Edit summary', exact: true }).click()
-		await page.getByRole('textbox', { name: 'Summary' }).fill('Discard me')
-		await page.getByRole('button', { name: 'Cancel' }).click()
+		const summary = page.getByRole('textbox', { name: 'Summary' })
+		await summary.fill('Discard me')
+		// Scoped to the editor: the plan header carries a Cancel button too.
+		await summary.locator('..').getByRole('button', { name: 'Cancel' }).click()
 
 		await expect(page.getByRole('heading', { name: 'Goal' })).toBeVisible()
 		await expect(page.getByText('Discard me')).toHaveCount(0)
