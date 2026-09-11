@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/img/nib-logo-transparent.png" alt="Nib logo" width="400">
+</p>
+
 # NIB - Neuro Infrastructure Builder
 
 ## Overview

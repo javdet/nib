@@ -296,9 +296,57 @@ func buildActionTargetBranch(taskID string, dialogID uuid.UUID) string {
 	return actionRunBranchPrefix + dialogID.String()
 }
 
+// buildActionRepoURL joins the company-wide git base URL with the repository
+// named on the action step. The plan panel accepts a repository as a bare name
+// ("infra"), as an owner path ("my-org/infra") or as the full clone URL people
+// copy out of the browser, so anything that already carries the base is used as
+// it stands: appending it would hand the agent
+// "https://github.com/my-org/https://github.com/my-org/infra" as REPO_URL.
 func buildActionRepoURL(baseURL, repository string) string {
-	return strings.TrimSuffix(strings.TrimSpace(baseURL), "/") +
-		"/" + strings.Trim(strings.TrimSpace(repository), "/")
+	base := strings.TrimSuffix(strings.TrimSpace(baseURL), "/")
+	repo := strings.TrimSpace(repository)
+	switch {
+	case repo == "":
+		return base
+	case isAbsoluteRepoURL(repo):
+		return strings.TrimSuffix(repo, "/")
+	case base == "":
+		return strings.Trim(repo, "/")
+	}
+
+	// A pasted URL can also arrive without its scheme ("github.com/my-org/infra"),
+	// which still repeats the base host and owner.
+	if rest, ok := trimPrefixFold(repo, stripURLScheme(base)+"/"); ok && strings.Trim(rest, "/") != "" {
+		return base + "/" + strings.Trim(rest, "/")
+	}
+	return base + "/" + strings.Trim(repo, "/")
+}
+
+// isAbsoluteRepoURL reports whether repository already spells out a clone
+// target: a scheme-prefixed URL or an scp-style "git@host:org/repo" address.
+func isAbsoluteRepoURL(repository string) bool {
+	if strings.HasPrefix(strings.ToLower(repository), "git@") {
+		return true
+	}
+	scheme, rest, ok := strings.Cut(repository, "://")
+	return ok && scheme != "" && rest != "" && !strings.ContainsAny(scheme, "/@ ")
+}
+
+// stripURLScheme drops the "scheme://" prefix, leaving host and path.
+func stripURLScheme(raw string) string {
+	if _, rest, ok := strings.Cut(raw, "://"); ok {
+		return rest
+	}
+	return raw
+}
+
+// trimPrefixFold is strings.TrimPrefix with a case-insensitive match, since git
+// hosts treat the host and the owner segment case-insensitively.
+func trimPrefixFold(s, prefix string) (string, bool) {
+	if len(s) < len(prefix) || !strings.EqualFold(s[:len(prefix)], prefix) {
+		return "", false
+	}
+	return s[len(prefix):], true
 }
 
 // resolveActionTaskID returns the task id of the plan dialog, falling back to

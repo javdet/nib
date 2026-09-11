@@ -13,7 +13,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
-import { Textarea } from '@/components/ui/textarea'
 import { fieldClasses } from '@/components/ui/input'
 import {
 	Tooltip,
@@ -1191,7 +1190,9 @@ export function ChatPanel() {
 							inputDisabled && 'cursor-not-allowed bg-muted/30 opacity-60',
 						)}
 					>
-						<Textarea
+						{/* Bare textarea: the frame above is the field surface and owns the
+						    focus ring, so this must not bring one of its own. */}
+						<textarea
 							ref={textareaRef}
 							value={draft}
 							onChange={handleDraftChange}
@@ -1201,7 +1202,14 @@ export function ChatPanel() {
 							placeholder="Message…"
 							rows={2}
 							disabled={inputDisabled}
-							className="min-h-[60px] min-w-0 resize-none overflow-hidden rounded-none border-0 bg-transparent py-0 shadow-none hover:border-0 focus-visible:outline-none disabled:bg-transparent disabled:opacity-100"
+							// No flex-1: a flex-basis of 0 would override the inline height
+							// the autosize hook sets, pinning the composer to one row.
+							className={cn(
+								'min-h-[60px] w-full min-w-0 resize-none overflow-hidden',
+								'border-0 bg-transparent px-3 py-0 text-sm text-foreground',
+								'outline-none placeholder:text-muted-foreground/70',
+								'disabled:cursor-not-allowed',
+							)}
 							role="combobox"
 							aria-autocomplete="list"
 							aria-expanded={isSkillMenuOpen}

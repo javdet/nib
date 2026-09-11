@@ -175,3 +175,44 @@ func TestMigrateConfigAgentDefaults(t *testing.T) {
 		t.Fatalf("migrateConfig() authType = %q, want %q", cfg.AuthType, AuthTypeAPIKey)
 	}
 }
+
+func TestNormalizeConfigDefaultImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{
+			name: "disabled keeps an empty image",
+			cfg:  Config{Type: TypeDisabled},
+			want: "",
+		},
+		{
+			name: "local defaults to the published agent image",
+			cfg:  Config{Type: TypeLocal},
+			want: DefaultAgentImage,
+		},
+		{
+			name: "remote defaults to the published agent image",
+			cfg:  Config{Type: TypeRemote, Platform: PlatformDocker, Image: "   "},
+			want: DefaultAgentImage,
+		},
+		{
+			name: "an explicit image is kept",
+			cfg:  Config{Type: TypeLocal, Image: "agent-runner:local"},
+			want: "agent-runner:local",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := NormalizeConfig(tt.cfg).Image; got != tt.want {
+				t.Fatalf("Image = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

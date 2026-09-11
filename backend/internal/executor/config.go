@@ -22,6 +22,10 @@ const (
 	defaultJobTTLSeconds     = 3600
 )
 
+// DefaultAgentImage is the agent-runner image used when the executor is
+// enabled without an explicit image.
+const DefaultAgentImage = "javdet/nib-agent:latest"
+
 // ConfigStore manages the executor.json file.
 type ConfigStore struct {
 	mu                    sync.RWMutex
@@ -203,6 +207,9 @@ func NormalizeConfig(cfg Config) Config {
 	cfg.AgentRequestMemory = strings.TrimSpace(cfg.AgentRequestMemory)
 	cfg.AgentMCPConfig = strings.TrimSpace(cfg.AgentMCPConfig)
 	cfg.Image = strings.TrimSpace(cfg.Image)
+	if cfg.Type != TypeDisabled && cfg.Image == "" {
+		cfg.Image = DefaultAgentImage
+	}
 	cfg.LLMModel = strings.TrimSpace(cfg.LLMModel)
 	cfg.Agent = Agent(strings.ToLower(strings.TrimSpace(string(cfg.Agent))))
 	cfg.AuthType = AuthType(strings.ToLower(strings.TrimSpace(string(cfg.AuthType))))
