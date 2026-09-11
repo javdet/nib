@@ -120,6 +120,7 @@ export type PlanStatus =
 	| 'done'
 	| 'reopened'
 	| 'rolled_back'
+	| 'cancelled'
 
 export interface ActionStep {
 	// number is the operator-facing label the backend derives from the item's
@@ -500,6 +501,21 @@ export function updatePlanSchedule(
 	return api.put<PlanState>(
 		`/dialogs/${encodeURIComponent(id)}/plan-state/schedule`,
 		{ scheduledAt },
+	)
+}
+
+/**
+ * Sets the plan status outright. Every other status change is derived from
+ * checkbox progress on the server; this is the operator overriding that, which
+ * is what finishing and cancelling a plan by hand need.
+ */
+export function updatePlanStatus(
+	id: string,
+	status: PlanStatus,
+): Promise<{ status: PlanStatus }> {
+	return api.put<{ status: PlanStatus }>(
+		`/dialogs/${encodeURIComponent(id)}/plan-state/status`,
+		{ status },
 	)
 }
 

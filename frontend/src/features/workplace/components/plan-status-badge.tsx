@@ -35,6 +35,11 @@ export const STATUS_STYLES: Record<
 		className:
 			'border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300',
 	},
+	cancelled: {
+		label: 'CANCELLED',
+		className:
+			'border-rose-500/30 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+	},
 }
 
 export function getPlanStatusLabel(status: PlanStatus): string {

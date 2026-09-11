@@ -11,7 +11,7 @@ import (
 // It is duplicated rather than imported because this package is a leaf: it must
 // not depend on internal/service, which records into it. The drift risk is
 // covered by a test in internal/service that asserts the two lists agree.
-var PlanStatuses = []string{"draft", "scheduled", "in_progress", "done", "reopened", "rolled_back"}
+var PlanStatuses = []string{"draft", "scheduled", "in_progress", "done", "reopened", "rolled_back", "cancelled"}
 
 type planMetrics struct {
 	byStatus        *prometheus.GaugeVec

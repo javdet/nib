@@ -1,29 +1,15 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type { ActionPlan } from '@/features/dialogs/api/dialogs'
+import { buildPlanItemKeys } from '../lib/plan-item-keys'
 
 interface PlanProgressBarProps {
 	plan: ActionPlan | null
 	checked: string[]
 }
 
-function buildProgressKeys(plan: ActionPlan | null): string[] {
-	if (!plan) return []
-
-	const keys: string[] = []
-	plan.stages.forEach((stage, stageIdx) => {
-		stage.steps.forEach((_, stepIdx) => {
-			keys.push(`s${stageIdx}.step${stepIdx}`)
-		})
-		stage.checks.forEach((_, checkIdx) => {
-			keys.push(`s${stageIdx}.check${checkIdx}`)
-		})
-	})
-	return keys
-}
-
 export function PlanProgressBar({ plan, checked }: PlanProgressBarProps) {
-	const keys = useMemo(() => buildProgressKeys(plan), [plan])
+	const keys = useMemo(() => buildPlanItemKeys(plan), [plan])
 	const checkedSet = useMemo(() => new Set(checked), [checked])
 
 	const total = keys.length

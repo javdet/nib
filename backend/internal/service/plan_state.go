@@ -125,9 +125,9 @@ func planProgress(plan storedActionPlan, checked []string) (done, total int) {
 // Completing every stage step and check finishes the plan (done); unchecking an
 // item afterwards moves it to reopened. Setting the first checkbox still promotes
 // a draft or scheduled plan to in_progress, and a plan that has been rolled back
-// is never moved automatically.
+// or cancelled is never moved automatically.
 func nextPlanStatusForChecks(current ActionPlanStatus, done, total int) ActionPlanStatus {
-	if current == ActionPlanStatusRolledBack {
+	if current == ActionPlanStatusRolledBack || current == ActionPlanStatusCancelled {
 		return current
 	}
 
