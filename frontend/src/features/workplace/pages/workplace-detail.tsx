@@ -36,6 +36,7 @@ import {
 	getDialog,
 	getDialogActionPlan,
 	getDialogDag,
+	getDialogReport,
 	getDialogSummary,
 	getPlanState,
 	getPlanFanout,
@@ -50,6 +51,7 @@ import {
 	reorderActionPlanItems,
 	updatePlanSchedule,
 	updatePlanStatus,
+	startPlanReport,
 	updateDialogSummary,
 	updateDialogTitle,
 	updateDialogCategories,
@@ -159,6 +161,7 @@ export function WorkplaceDetail() {
 	const { selectMode } = useMode()
 	const [dialog, setDialog] = useState<DialogItem | null>(null)
 	const [summaryContent, setSummaryContent] = useState<string | null>(null)
+	const [reportContent, setReportContent] = useState<string | null>(null)
 	const [dagContent, setDagContent] = useState<string | null>(null)
 	const [fanoutRun, setFanoutRun] = useState<FanoutRun | null>(null)
 	// The plan's decompose transcript, when it has one. Only an orchestrator plan
@@ -191,6 +194,9 @@ export function WorkplaceDetail() {
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
 	const [summaryExpanded, setSummaryExpanded] = useState(true)
+	// The report is the closing record of a finished plan, not something the
+	// operator works from, so it starts out of the way.
+	const [reportExpanded, setReportExpanded] = useState(false)
 	const [dagExpanded, setDagExpanded] = useState(true)
 	const [actionListExpanded, setActionListExpanded] = useState(true)
 	const [stagesExpanded, setStagesExpanded] = useState(true)
@@ -219,6 +225,7 @@ export function WorkplaceDetail() {
 			const [
 				dialogData,
 				summary,
+				report,
 				dag,
 				planState,
 				actionPlanData,
@@ -227,6 +234,7 @@ export function WorkplaceDetail() {
 			] = await Promise.all([
 				getDialog(dialogId),
 				getDialogSummary(dialogId),
+				getDialogReport(dialogId),
 				getDialogDag(dialogId),
 				getPlanState(dialogId),
 				getDialogActionPlan(dialogId),
@@ -235,6 +243,7 @@ export function WorkplaceDetail() {
 			])
 			setDialog(dialogData)
 			setSummaryContent(summary)
+			setReportContent(report)
 			setDagContent(dag)
 			setFanoutRun(run)
 			setActionPlan(actionPlanData?.plan ?? null)
@@ -246,6 +255,7 @@ export function WorkplaceDetail() {
 		} catch (err) {
 			setDialog(null)
 			setSummaryContent(null)
+			setReportContent(null)
 			setDagContent(null)
 			setFanoutRun(null)
 			setActionPlan(null)
@@ -295,6 +305,14 @@ export function WorkplaceDetail() {
 		const close = openDialogActivity(id, (ev) => {
 			if (ev.kind === 'action_plan_updated') {
 				setLiveActionPlanVersion((v) => v + 1)
+				return
+			}
+			// The report is written by a sub-agent minutes after Finish, so this
+			// event is the only thing that puts it on screen without a reload.
+			if (ev.kind === 'report_updated') {
+				void getDialogReport(id)
+					.then(setReportContent)
+					.catch(() => {})
 				return
 			}
 			if (
@@ -503,6 +521,7 @@ export function WorkplaceDetail() {
 			createdAt: dialog.createdAt,
 			updatedAt: dialog.updatedAt,
 			summary: summaryContent,
+			report: reportContent,
 			dag: dagContent,
 			plan: actionPlan,
 			checked: actionPlanChecked,
@@ -515,6 +534,7 @@ export function WorkplaceDetail() {
 		planStatus,
 		planScheduledAt,
 		summaryContent,
+		reportContent,
 		dagContent,
 		actionPlan,
 		actionPlanChecked,
@@ -825,6 +845,11 @@ export function WorkplaceDetail() {
 				const { status } = await updatePlanStatus(id, 'done')
 				setPlanStatus(status)
 			}
+			// Deliberately not awaited and deliberately outside the catch below:
+			// the report is a by-product of finishing, so a report that fails to
+			// start must not read to the operator as a Finish that failed. It
+			// arrives later over SSE.
+			void startPlanReport(id).catch(() => {})
 			bumpDialogsVersion()
 		} catch (err) {
 			setActionPlanChecked(prevChecked)
@@ -1288,6 +1313,42 @@ export function WorkplaceDetail() {
 					</CardContent>
 				)}
 			</Card>
+
+			{/* Only rendered once the sub-agent has written something: there is
+			    no pending state, so an absent card means no report yet. */}
+			{reportContent && (
+				<Card>
+					<CardHeader>
+						<div
+							role="button"
+							tabIndex={0}
+							aria-expanded={reportExpanded}
+							className="flex cursor-pointer items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onClick={() => setReportExpanded((prev) => !prev)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault()
+									setReportExpanded((prev) => !prev)
+								}
+							}}
+						>
+							{reportExpanded ? (
+								<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+							) : (
+								<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+							)}
+							<CardTitle>Report</CardTitle>
+						</div>
+					</CardHeader>
+					{reportExpanded && (
+						<CardContent>
+							<div className="text-sm">
+								<MarkdownMessage content={reportContent} />
+							</div>
+						</CardContent>
+					)}
+				</Card>
+			)}
 
 			{/* The glass sheet is the whole section, not a panel inside a card:
 			    the DAG is drawn on it the way it would be on a board. */}

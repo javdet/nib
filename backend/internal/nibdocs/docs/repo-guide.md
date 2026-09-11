@@ -104,8 +104,8 @@ unresolved.
 
 Modes: `main` (orchestrator; routes to sub-agents), `decompose` (task → DAG), `plan` (DAG → action
 plan), `execute` (carry out one action), `discuss` (read-only investigation), `incident`. Overlay
-prompts `plan_stage`, `rollback_stage`, `execute_action` and `decompose_subagent` are appended to
-their base mode's prompt.
+prompts `plan_stage`, `rollback_stage`, `execute_action`, `execute_report` and `decompose_subagent`
+are appended to their base mode's prompt.
 
 Every prompt is compiled into the binary from `internal/systemprompts/defaults/{mode}.md`.
 **Only `discuss` is editable at runtime**; its override is `{DATA_DIR}/prompts/discuss.md`
@@ -308,6 +308,22 @@ force-stops the holder — cancelling a sub-agent's context, or stopping a conta
 loop holding the lease is wedged. `ReconcileStuckRuns` sweeps records a previous process left
 `running` at boot, without which a restart would block execution permanently.
 
+Pressing **Finish** on a plan launches one more sub-agent, the only one the operator starts
+directly rather than the orchestrator: `StartReportAgent`
+([report_agent.go](backend/internal/service/report_agent.go)) runs in `execute` mode under the
+`execute_report` overlay, reads the finished plan with `get_action_list` and writes
+`data/reports/{root}.md` with `set_report`. The plan page renders it in a collapsed Report card,
+refreshed by the `report_updated` activity event — without which a report written minutes after
+the button was pressed would only appear on a reload.
+
+Two things about it are deliberate. It does **not** take the execution lease: it reads the plan and
+writes prose, changes no managed system, and holding it to the one-execution rule would mean a plan
+finished while a last action was still running silently loses its report; a per-plan claim plus an
+"already written" check are what stop it running twice. And `set_report` is in **no** mode allow
+list — the report agent is handed a literal two-tool catalog, and `actionAgentAllowSet` deletes the
+name as well, because the per-action executors run in `execute` mode too and a mode list cannot
+tell the two apart.
+
 System prompts, rules, and skills are markdown files under `data/`, rendered as `text/template`
 ([prompttpl](backend/internal/prompttpl/render.go), with Helm-style `toYaml`/`nindent`) against
 prompt variables from Postgres plus the current selection (project/environment/cloud/location).
@@ -324,8 +340,8 @@ there is no default-vs-override split for them.
 
 A `Dialog` UUID is the unit of work. Beyond the Postgres transcript, artifacts are files keyed by
 dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
-`data/summaries/{id}.txt`, `data/action_plans/{id}.json`, `data/plan_state/{id}.json`,
-`data/plan_fanout/{id}.json`, `data/subagents/{id}.json`.
+`data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json`,
+`data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`.
 
 An action plan carries side files beside it, all keyed by the same dialog id and by the positional
 row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),

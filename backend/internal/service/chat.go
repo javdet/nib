@@ -116,6 +116,7 @@ type ChatService struct {
 	allowToolsDir    string
 	dagsDir          string
 	summariesDir     string
+	reportsDir       string
 	actionPlansDir   string
 	planContractsDir string
 	planFanoutDir    string
@@ -219,6 +220,7 @@ func NewChatService(
 		allowToolsDir:    mode.ResolveDir(dataDir, allowToolsDir),
 		dagsDir:          filepath.Join(dataDir, "dags"),
 		summariesDir:     filepath.Join(dataDir, "summaries"),
+		reportsDir:       filepath.Join(dataDir, "reports"),
 		actionPlansDir:   filepath.Join(dataDir, "action_plans"),
 		planContractsDir: filepath.Join(dataDir, "plan_contracts"),
 		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),

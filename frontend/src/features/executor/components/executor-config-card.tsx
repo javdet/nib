@@ -654,7 +654,7 @@ export function ExecutorConfigCard() {
 									id={llmModelId}
 									value={llmModel}
 									onChange={(e) => setLlmModel(e.target.value)}
-									placeholder="anthropic/claude-sonnet-4-5"
+									placeholder="anthropic/claude-sonnet-5"
 									disabled={saving}
 								/>
 							</div>

@@ -71,6 +71,12 @@ func (s *ChatService) actionAgentAllowSet(ctx context.Context, categories []stri
 	// has no dialog to report into and its work would vanish. A code action goes
 	// through ExecuteCodeAction, which does pass one.
 	delete(allow, RunExecutorToolName)
+	// set_report closes the plan. It belongs to the one subagent launched when
+	// the operator presses Finish, not to an agent carrying out a single row --
+	// which would otherwise overwrite the plan's report with its own account of
+	// one action. It is in no mode allow list, so this only guards against an
+	// operator adding the name to data/tools/execute.json by hand.
+	delete(allow, SetReportToolName)
 	return allow, nil
 }
 

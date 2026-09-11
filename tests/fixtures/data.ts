@@ -71,6 +71,16 @@ export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
 	cancelled: 'CANCELLED',
 }
 
+export const REPORT_MARKDOWN = [
+	'## Outcome',
+	'',
+	'Billing reached **stage** and every check passed.',
+	'',
+	'## Results',
+	'',
+	'- namespace `billing-stage`',
+].join('\n')
+
 export const SUMMARY_MARKDOWN = [
 	'## Goal',
 	'',

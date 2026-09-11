@@ -25,7 +25,10 @@ const EditableName = "discuss"
 // decompose_subagent narrows the decompose prompt for the subagent the
 // orchestrator launches: its answer is relayed, and running the plan is the
 // orchestrator's job.
-var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent"}
+// execute_report turns the execute prompt around for the subagent launched when
+// the operator finishes a plan: it reads the finished action list and writes the
+// report rather than carrying anything out.
+var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent", "execute_report"}
 
 const mdSuffix = ".md"
 

@@ -27,6 +27,7 @@ var localSystemToolNames = []string{
 	CreateDAGToolName,
 	CreatePlanContractToolName,
 	CreateSummaryToolName,
+	SetReportToolName,
 	CreateTableToolName,
 	CreateActionPlanToolName,
 	UpdateActionPlanToolName,

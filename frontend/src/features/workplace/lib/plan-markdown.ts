@@ -18,6 +18,8 @@ export interface PlanExportInput {
 	createdAt: string
 	updatedAt: string
 	summary: string | null
+	/** The closing report, when the plan has been finished and one was written. */
+	report: string | null
 	dag: string | null
 	plan: ActionPlan | null
 	checked: string[]
@@ -216,6 +218,14 @@ export function buildPlanMarkdown(input: PlanExportInput): string {
 	lines.push('')
 	lines.push(input.summary?.trim() || PLACEHOLDER)
 	lines.push('')
+	// Unlike the sections around it the report has no placeholder: most plans
+	// have not been finished, and an empty heading on every export is noise.
+	if (input.report?.trim()) {
+		lines.push('## Report')
+		lines.push('')
+		lines.push(input.report.trim())
+		lines.push('')
+	}
 	lines.push('## DAG')
 	lines.push('')
 	lines.push(input.dag?.trim() || PLACEHOLDER)

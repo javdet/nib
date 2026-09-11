@@ -80,6 +80,7 @@ export type AgentActivityKind =
 	| 'action_exec_started'
 	| 'action_exec_done'
 	| 'action_exec_failed'
+	| 'report_updated'
 
 export interface AgentActivity {
 	kind: AgentActivityKind
@@ -354,6 +355,27 @@ export function updateDialogSummary(
 			summary: content,
 		})
 		.then((r) => r.content)
+}
+
+/** A plan's closing report, written by the sub-agent that Finish launches. */
+export function getDialogReport(id: string): Promise<string | null> {
+	return api
+		.get<{ content: string }>(`/dialogs/${encodeURIComponent(id)}/report`)
+		.then((r) => r.content)
+		.catch((err) => {
+			if (err instanceof ApiError && err.status === 404) return null
+			throw err
+		})
+}
+
+/**
+ * Launches the report sub-agent. It answers 202 and runs on for minutes; the
+ * finished report arrives as a `report_updated` activity event.
+ */
+export function startPlanReport(id: string): Promise<void> {
+	return api
+		.post<void>(`/dialogs/${encodeURIComponent(id)}/report`, {})
+		.then(() => undefined)
 }
 
 export function getDialogActionPlan(

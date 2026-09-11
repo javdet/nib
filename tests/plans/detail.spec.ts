@@ -3,6 +3,7 @@ import { mockDialogList, mockEmptyWorkspace, mockPlan } from '../fixtures/mock-a
 import {
 	DAG_MARKDOWN,
 	PLAN_STATUS_LABELS,
+	REPORT_MARKDOWN,
 	SUMMARY_MARKDOWN,
 	makeActionPlan,
 	makeDialog,
@@ -37,6 +38,39 @@ test.describe('Plan detail', () => {
 		await expect(page.getByRole('button', { name: /^Summary/ })).toBeVisible()
 		await expect(page.getByRole('button', { name: 'DAG' })).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Action List' })).toBeVisible()
+	})
+
+	test('shows no report card on a plan that has none', async ({ page }) => {
+		await openPlan(page)
+
+		await expect(page.getByRole('button', { name: /^Summary/ })).toBeVisible()
+		await expect(page.getByRole('button', { name: /^Report/ })).toHaveCount(0)
+	})
+
+	test('shows the report collapsed and expands it to rendered markdown', async ({
+		page,
+	}) => {
+		await openPlan(page, { report: REPORT_MARKDOWN })
+
+		const header = page.getByRole('button', { name: /^Report/ })
+		await expect(header).toBeVisible()
+		// Unlike Summary it starts closed: the plan is finished, and the report
+		// is a record rather than something the operator works from.
+		await expect(header).toHaveAttribute('aria-expanded', 'false')
+		await expect(
+			page.getByText('Billing reached stage and every check passed.'),
+		).toHaveCount(0)
+
+		await header.click()
+
+		await expect(header).toHaveAttribute('aria-expanded', 'true')
+		await expect(
+			page.getByRole('heading', { name: 'Outcome' }),
+		).toBeVisible()
+		await expect(
+			page.getByText('Billing reached stage and every check passed.'),
+		).toBeVisible()
+		await expect(page.getByText('namespace billing-stage')).toBeVisible()
 	})
 
 	// 4.2

@@ -225,6 +225,10 @@ func NewRouter(d Deps) chi.Router {
 				r.Get("/dag", dialogs.DAG())
 				r.Get("/summary", dialogs.Summary())
 				r.Put("/summary", dialogs.UpdateSummary())
+				r.Get("/report", dialogs.Report())
+				// The report subagent answers 202 and runs on past this request,
+				// so like the fan-out it takes no write deadline.
+				r.Post("/report", dialogs.StartReport())
 				r.Get("/events", dialogs.Events())
 				r.Get("/plan-state", dialogs.PlanState())
 				r.Put("/plan-state/schedule", dialogs.SetPlanSchedule())
