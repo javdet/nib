@@ -177,6 +177,15 @@ func TestBuildActionRepoURL(t *testing.T) {
 		{name: "leading slash on repository", baseURL: "https://github.com/my-org", repository: "/infra", want: "https://github.com/my-org/infra"},
 		{name: "surrounding whitespace", baseURL: " https://github.com/my-org ", repository: " infra ", want: "https://github.com/my-org/infra"},
 		{name: "nested repository path", baseURL: "https://gitlab.com", repository: "group/subgroup/infra", want: "https://gitlab.com/group/subgroup/infra"},
+		{name: "full clone url is not appended", baseURL: "https://github.com/my-org", repository: "https://github.com/my-org/infra", want: "https://github.com/my-org/infra"},
+		{name: "full clone url from another owner", baseURL: "https://github.com/my-org", repository: "https://github.com/other-org/infra.git", want: "https://github.com/other-org/infra.git"},
+		{name: "full clone url with trailing slash", baseURL: "https://github.com/my-org", repository: " https://github.com/my-org/infra/ ", want: "https://github.com/my-org/infra"},
+		{name: "ssh clone url", baseURL: "https://github.com/my-org", repository: "git@github.com:my-org/infra.git", want: "git@github.com:my-org/infra.git"},
+		{name: "scheme-less repeat of the base", baseURL: "https://github.com/my-org", repository: "github.com/my-org/infra", want: "https://github.com/my-org/infra"},
+		{name: "scheme-less repeat ignores case", baseURL: "https://github.com/My-Org", repository: "GitHub.com/my-org/infra", want: "https://github.com/My-Org/infra"},
+		{name: "host prefix without a repository is appended", baseURL: "https://github.com/my-org", repository: "github.com/my-org", want: "https://github.com/my-org/github.com/my-org"},
+		{name: "empty repository keeps the base", baseURL: "https://github.com/my-org", repository: "  ", want: "https://github.com/my-org"},
+		{name: "empty base keeps the repository", baseURL: "", repository: "/my-org/infra", want: "my-org/infra"},
 	}
 
 	for _, tt := range tests {

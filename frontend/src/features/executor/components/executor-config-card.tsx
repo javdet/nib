@@ -43,6 +43,10 @@ const AGENT_LABELS: Record<ExecutorAgent, string> = {
 	codex: 'Codex',
 }
 
+// Mirrors executor.DefaultAgentImage on the backend: the image an enabled
+// executor falls back to when none is configured.
+const DEFAULT_AGENT_IMAGE = 'javdet/nib-agent:latest'
+
 const AUTH_TYPE_LABELS: Record<ExecutorAuthType, string> = {
 	api_key: 'API KEY',
 	oauth_token: 'OAUTH TOKEN',
@@ -312,6 +316,9 @@ export function ExecutorConfigCard() {
 									onChange={(e) => {
 										const next = e.target.value as ExecutorType
 										setType(next)
+										if (next !== 'disabled') {
+											setImage((prev) => prev || DEFAULT_AGENT_IMAGE)
+										}
 										if (next !== 'remote') {
 											setPlatform('')
 											return
@@ -625,7 +632,7 @@ export function ExecutorConfigCard() {
 									id={imageId}
 									value={image}
 									onChange={(e) => setImage(e.target.value)}
-									placeholder="agent-runner:local"
+									placeholder={DEFAULT_AGENT_IMAGE}
 									disabled={saving}
 								/>
 								<p className="text-xs text-muted-foreground">
