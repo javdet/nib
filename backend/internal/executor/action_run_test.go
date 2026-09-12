@@ -192,15 +192,38 @@ func TestBuildActionRunEnvAuth(t *testing.T) {
 	}
 }
 
-func TestBuildActionRunEnvDefaultsGitProvider(t *testing.T) {
+func TestBuildActionRunEnvNormalizesGitProvider(t *testing.T) {
 	t.Parallel()
 
-	req := validActionRunRequest()
-	req.GitProvider = ""
+	tests := []struct {
+		name     string
+		provider string
+		want     string
+	}{
+		{name: "blank", provider: "", want: "github"},
+		{name: "github", provider: "GitHub", want: "github"},
+		{name: "unknown", provider: "bitbucket", want: "github"},
+		{name: "gitlab", provider: "GitLab", want: "gitlab"},
+		{name: "self-hosted gitlab", provider: "self-hosted gitlab", want: "gitlab"},
+	}
 
-	env := envMap(t, buildActionRunEnv(Config{AuthType: AuthTypeAPIKey}, Secrets{}, req, "nib-12345678"))
-	if env["GIT_PROVIDER"] != "github" {
-		t.Fatalf("GIT_PROVIDER = %q, want github", env["GIT_PROVIDER"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := validActionRunRequest()
+			req.GitProvider = tt.provider
+
+			env := envMap(t, buildActionRunEnv(Config{AuthType: AuthTypeAPIKey}, Secrets{}, req, "nib-12345678"))
+			if env["GIT_PROVIDER"] != tt.want {
+				t.Errorf("GIT_PROVIDER = %q, want %q", env["GIT_PROVIDER"], tt.want)
+			}
+			// The container derives GITLAB_TOKEN/GL_TOKEN from this one, so the
+			// wire name stays GITHUB_TOKEN whatever the provider is.
+			if env["GITHUB_TOKEN"] != req.GitToken {
+				t.Errorf("GITHUB_TOKEN = %q, want %q", env["GITHUB_TOKEN"], req.GitToken)
+			}
+		})
 	}
 }
 

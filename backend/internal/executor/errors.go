@@ -15,7 +15,7 @@ var (
 	ErrRepoURLRequired                = errors.New("repository URL is required")
 	ErrBranchRequired                 = errors.New("base branch is required")
 	ErrTaskPromptRequired             = errors.New("task prompt is required")
-	ErrSecretsIncomplete              = errors.New("executor secrets are not fully configured (EXECUTOR_LLM_API_KEY, EXECUTOR_GIT_API_TOKEN, and LLM model in settings or EXECUTOR_LLM_MODEL)")
+	ErrSecretsIncomplete              = errors.New("executor secrets are not fully configured (EXECUTOR_LLM_API_KEY, a git API token secret selected in executor settings, and an LLM model in settings or EXECUTOR_LLM_MODEL)")
 	ErrInvalidAgent                   = errors.New("invalid executor agent")
 	ErrAgentUnavailable               = errors.New("executor agent is not available yet")
 	ErrInvalidAuthType                = errors.New("invalid executor auth type")

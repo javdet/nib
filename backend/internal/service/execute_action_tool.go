@@ -131,7 +131,9 @@ func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid
 		return fmt.Sprintf("%s is a code action, but the executor is disabled; switch it on in executor settings to run code actions", number), false, nil
 	case errors.Is(err, ErrActionRepositoryRequired):
 		return fmt.Sprintf("%s is a code action with no repository set; add one to the plan first", number), false, nil
-	case errors.Is(err, ErrExecutorTokenSecretRequired), errors.Is(err, ErrExecutorSecretMissing):
+	case errors.Is(err, ErrExecutorTokenSecretRequired),
+		errors.Is(err, ErrExecutorGitTokenSecretRequired),
+		errors.Is(err, ErrExecutorSecretMissing):
 		return fmt.Sprintf("%s could not start: %s", number, err.Error()), false, nil
 	case errors.Is(err, ErrExecutionBusy):
 		return executionBusyMessage(err), false, nil

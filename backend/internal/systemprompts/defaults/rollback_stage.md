@@ -17,7 +17,7 @@ you waited. They are finished and settled, and they are shown to you under
   rollback landed, and put them at the end.
 * **One `code` rollback entry per repository.** Every repository the stages touch gets
   exactly one entry describing the complete revert for that repository in a single
-  pull request, with its own `pr_title`. Never one entry per file, per stage or per
+  pull request (merge request on GitLab), with its own `pr_title`. Never one entry per file, per stage or per
   environment. Take repository names from the `code` steps of the stages, spelled
   exactly as they are spelled there.
 * **Name the point of no return.** When a step cannot be undone — a deleted volume, a

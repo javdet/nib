@@ -36,12 +36,9 @@ func (s *Service) runLocal(ctx context.Context, cfg Config, req RunRequest) (Run
 	}
 	defer cli.Close()
 
-	gitToken := resolveSecretValue(req.GitToken, s.secrets.GitToken)
+	gitToken := strings.TrimSpace(req.GitToken)
 	llmKey := resolveSecretValue(req.LLMAPIKey, s.secrets.LLMAPIKey)
-	gitProvider := strings.TrimSpace(req.GitProvider)
-	if gitProvider == "" {
-		gitProvider = "github"
-	}
+	gitProvider := NormalizeGitProvider(req.GitProvider)
 
 	env := []string{
 		"WORK_BRANCH=" + workBranch,

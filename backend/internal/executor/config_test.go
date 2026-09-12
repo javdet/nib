@@ -216,3 +216,45 @@ func TestNormalizeConfigDefaultImage(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeConfigGitTokenSecretName(t *testing.T) {
+	t.Parallel()
+
+	got := NormalizeConfig(Config{Type: TypeLocal, GitTokenSecretName: "  MY_GIT_TOKEN  "})
+	if got.GitTokenSecretName != "MY_GIT_TOKEN" {
+		t.Fatalf("NormalizeConfig() gitTokenSecretName = %q, want %q", got.GitTokenSecretName, "MY_GIT_TOKEN")
+	}
+
+	// The Kubernetes branch clears every k8s-only field; the git token applies to
+	// every enabled type, so switching platforms must not silently drop the pick.
+	got = NormalizeConfig(Config{Type: TypeLocal, Platform: PlatformKubernetes, GitTokenSecretName: "MY_GIT_TOKEN"})
+	if got.GitTokenSecretName != "MY_GIT_TOKEN" {
+		t.Fatalf("NormalizeConfig() dropped gitTokenSecretName on a local config")
+	}
+	got = NormalizeConfig(Config{Type: TypeRemote, Platform: PlatformKubernetes, GitTokenSecretName: "MY_GIT_TOKEN"})
+	if got.GitTokenSecretName != "MY_GIT_TOKEN" {
+		t.Fatalf("NormalizeConfig() dropped gitTokenSecretName on a remote kubernetes config")
+	}
+}
+
+func TestParseConfigGitTokenSecretName(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := parseConfig(`{"type":"local","gitTokenSecretName":"MY_GIT_TOKEN"}`)
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.GitTokenSecretName != "MY_GIT_TOKEN" {
+		t.Fatalf("parseConfig() gitTokenSecretName = %q, want %q", cfg.GitTokenSecretName, "MY_GIT_TOKEN")
+	}
+
+	// An executor.json written before the field existed still parses; the empty
+	// value is what makes the run-time error tell the operator to pick a secret.
+	cfg, err = parseConfig(`{"type":"local","image":"agent-runner:local"}`)
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if cfg.GitTokenSecretName != "" {
+		t.Fatalf("parseConfig() gitTokenSecretName = %q, want empty", cfg.GitTokenSecretName)
+	}
+}

@@ -35,7 +35,7 @@ own container, with its own toolchain, not here.
 - Use `list_variables` to read company and infrastructure variables (company name, VCS, CI/CD, task tracker, wiki, messenger, tool categories) instead of guessing them.
 - Use `knowledge_search` to learn how our infrastructure is organized before diving into repos or live systems.
 - Use `tool_search` to discover which MCP tools can answer the question, then call them.
-- Use GitHub tools to read IaC and application config when the answer lives in code.
+- Use your git hosting tools (GitHub or GitLab) to read IaC and application config when the answer lives in code.
 - If you cannot find settings in our repos, cite the official documentation defaults.
 - Never retry a failed tool call more than once. If a resource is not found on the first attempt, acknowledge it and move on.
 - When querying metrics, logs, or traces, always specify a limited time range.

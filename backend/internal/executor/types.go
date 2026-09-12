@@ -232,6 +232,11 @@ type Config struct {
 	Agent            Agent    `json:"agent"`
 	AuthType         AuthType `json:"authType"`
 	TokenSecretName  string   `json:"tokenSecretName"`
+	// GitTokenSecretName references a prompt_secrets entry holding the git API
+	// token the agent container clones, pushes and opens the pull/merge request
+	// with. Optional only on remote Kubernetes, where the agent Job takes its
+	// credentials from AgentSecretName instead.
+	GitTokenSecretName string `json:"gitTokenSecretName"`
 	BaseURL          string   `json:"baseURL"`
 	Image            string   `json:"image"`
 	LLMModel         string   `json:"llmModel"`
@@ -240,11 +245,13 @@ type Config struct {
 	WebhookBaseURL string `json:"webhookBaseURL"`
 }
 
-// Secrets holds executor credentials loaded from environment variables.
+// Secrets holds executor credentials loaded from environment variables. The git
+// API token is deliberately absent: it is selected by name in executor settings
+// (Config.GitTokenSecretName) and read from the encrypted secret store, so an
+// env fallback would be a second, invisible source of truth for one credential.
 type Secrets struct {
 	LLMAPIKey    string
 	LLMModel     string
-	GitToken     string
 	WebhookToken string
 }
 

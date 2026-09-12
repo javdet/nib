@@ -37,6 +37,7 @@ type executorConfigPayload struct {
 	Agent                     executor.Agent               `json:"agent"`
 	AuthType                  executor.AuthType            `json:"authType"`
 	TokenSecretName           string                       `json:"tokenSecretName"`
+	GitTokenSecretName        string                       `json:"gitTokenSecretName"`
 	BaseURL                     string `json:"baseURL"`
 	WebhookBaseURL              string `json:"webhookBaseURL"`
 	Image                       string `json:"image"`
@@ -64,6 +65,7 @@ type executorConfigResponse struct {
 	Agent                     executor.Agent                      `json:"agent"`
 	AuthType                  executor.AuthType                   `json:"authType"`
 	TokenSecretName           string                              `json:"tokenSecretName"`
+	GitTokenSecretName        string                              `json:"gitTokenSecretName"`
 	BaseURL                   string                              `json:"baseURL"`
 	WebhookBaseURL            string                              `json:"webhookBaseURL"`
 	Image                     string                              `json:"image"`
@@ -97,6 +99,7 @@ func newExecutorConfigResponse(cfg executor.Config) executorConfigResponse {
 		Agent:                     cfg.Agent,
 		AuthType:                  cfg.AuthType,
 		TokenSecretName:           cfg.TokenSecretName,
+		GitTokenSecretName:        cfg.GitTokenSecretName,
 		BaseURL:                   cfg.BaseURL,
 		WebhookBaseURL:            cfg.WebhookBaseURL,
 		Image:                     cfg.Image,
@@ -147,6 +150,7 @@ func (h *ExecutorHandler) UpdateConfig() http.HandlerFunc {
 			Agent:                     req.Agent,
 			AuthType:                  req.AuthType,
 			TokenSecretName:           req.TokenSecretName,
+			GitTokenSecretName:        req.GitTokenSecretName,
 			BaseURL:                   req.BaseURL,
 			WebhookBaseURL:            req.WebhookBaseURL,
 			Image:                     req.Image,

@@ -117,6 +117,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrActionNotCode),
 		errors.Is(err, service.ErrActionRepositoryRequired),
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
+		errors.Is(err, service.ErrExecutorGitTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorSecretMissing):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, service.ErrExecutionBusy),

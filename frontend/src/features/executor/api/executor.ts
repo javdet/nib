@@ -32,6 +32,7 @@ export interface ExecutorConfig {
 	agent: ExecutorAgent
 	authType: ExecutorAuthType
 	tokenSecretName: string
+	gitTokenSecretName: string
 	baseURL: string
 	webhookBaseURL: string
 	image: string
@@ -64,6 +65,7 @@ export interface ExecutorConfigUpdate {
 	agent: ExecutorAgent
 	authType: ExecutorAuthType
 	tokenSecretName: string
+	gitTokenSecretName: string
 	baseURL: string
 	webhookBaseURL: string
 	image: string

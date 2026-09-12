@@ -48,7 +48,7 @@ One paragraph: what was achieved, and whether the plan completed in full.
 
 ## Results
 
-The concrete values the work produced: ids, names, addresses, branches, PR links.
+The concrete values the work produced: ids, names, addresses, branches, pull/merge request links.
 
 ## Verification
 

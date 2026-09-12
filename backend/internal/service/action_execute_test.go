@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/executor"
 )
 
 func testActionPlan() storedActionPlan {
@@ -194,6 +197,126 @@ func TestBuildActionRepoURL(t *testing.T) {
 
 			if got := buildActionRepoURL(tt.baseURL, tt.repository); got != tt.want {
 				t.Fatalf("buildActionRepoURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveActionRunSecrets(t *testing.T) {
+	t.Parallel()
+
+	const (
+		gitSecret = "MY_GIT_TOKEN"
+		llmSecret = "MY_LLM_KEY"
+	)
+
+	kubernetesCfg := executor.Config{
+		Type:               executor.TypeRemote,
+		Platform:           executor.PlatformKubernetes,
+		KubernetesAuthMode: executor.KubernetesAuthModeLocalConfig,
+		AgentSecretName:    "nib-agent",
+	}
+
+	tests := []struct {
+		name         string
+		cfg          executor.Config
+		stored       map[string]string
+		wantErr      error
+		wantGitToken string
+		wantLLMToken string
+	}{
+		{
+			name:    "local without a git token secret selected",
+			cfg:     executor.Config{Type: executor.TypeLocal, TokenSecretName: llmSecret},
+			stored:  map[string]string{llmSecret: "llm-value"},
+			wantErr: ErrExecutorGitTokenSecretRequired,
+		},
+		{
+			name: "local with a git token secret that does not exist",
+			cfg: executor.Config{
+				Type: executor.TypeLocal, GitTokenSecretName: gitSecret, TokenSecretName: llmSecret,
+			},
+			stored:  map[string]string{llmSecret: "llm-value"},
+			wantErr: ErrExecutorSecretMissing,
+		},
+		{
+			name:    "local without an LLM token secret selected",
+			cfg:     executor.Config{Type: executor.TypeLocal, GitTokenSecretName: gitSecret},
+			stored:  map[string]string{gitSecret: "git-value"},
+			wantErr: ErrExecutorTokenSecretRequired,
+		},
+		{
+			name: "local happy path",
+			cfg: executor.Config{
+				Type: executor.TypeLocal, GitTokenSecretName: gitSecret, TokenSecretName: llmSecret,
+			},
+			stored:       map[string]string{gitSecret: "git-value", llmSecret: "llm-value"},
+			wantGitToken: "git-value",
+			wantLLMToken: "llm-value",
+		},
+		{
+			// A remote Kubernetes job gets its credentials from AgentSecretName,
+			// so neither token is required and the LLM one is never forwarded.
+			name:   "remote kubernetes tolerates no git token secret",
+			cfg:    kubernetesCfg,
+			stored: map[string]string{},
+		},
+		{
+			name: "remote kubernetes tolerates a git token secret that does not exist",
+			cfg: func() executor.Config {
+				cfg := kubernetesCfg
+				cfg.GitTokenSecretName = gitSecret
+				return cfg
+			}(),
+			stored: map[string]string{},
+		},
+		{
+			name: "remote kubernetes forwards a git token it can resolve",
+			cfg: func() executor.Config {
+				cfg := kubernetesCfg
+				cfg.GitTokenSecretName = gitSecret
+				return cfg
+			}(),
+			stored:       map[string]string{gitSecret: "git-value"},
+			wantGitToken: "git-value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			secretSvc := NewSecretService(newFakeSecretRepo(), testCipher(t))
+			for name, value := range tt.stored {
+				if _, err := secretSvc.Create(ctx, SecretInput{Scope: "global", Name: name, Value: value}); err != nil {
+					t.Fatalf("Create %s: %v", name, err)
+				}
+			}
+
+			svc := &ChatService{
+				secretSvc:   secretSvc,
+				executorSvc: newTestExecutorService(t, tt.cfg),
+			}
+
+			gitToken, llmToken, err := svc.resolveActionRunSecrets(ctx)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("resolveActionRunSecrets() error = %v, want %v", err, tt.wantErr)
+				}
+				if errors.Is(err, ErrExecutorSecretMissing) && !strings.Contains(err.Error(), gitSecret) {
+					t.Errorf("error %v does not name the missing secret %q", err, gitSecret)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveActionRunSecrets() error = %v", err)
+			}
+			if gitToken != tt.wantGitToken {
+				t.Errorf("gitToken = %q, want %q", gitToken, tt.wantGitToken)
+			}
+			if llmToken != tt.wantLLMToken {
+				t.Errorf("llmToken = %q, want %q", llmToken, tt.wantLLMToken)
 			}
 		})
 	}

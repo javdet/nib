@@ -61,10 +61,7 @@ func buildActionRunValues(cfg Config, req ActionRunRequest, jobName string) acti
 		agent = AgentClaudeCode
 	}
 
-	gitProvider := strings.TrimSpace(req.GitProvider)
-	if gitProvider == "" {
-		gitProvider = "github"
-	}
+	gitProvider := NormalizeGitProvider(req.GitProvider)
 
 	threadRoot := strings.TrimSpace(req.TaskID)
 	if threadRoot == "" {

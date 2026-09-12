@@ -37,6 +37,8 @@ var (
 	ErrExecutorTokenSecretRequired = errors.New("executor LLM token secret is not configured; select it in executor settings")
 	// ErrExecutorSecretMissing is returned when a secret referenced by executor settings does not exist.
 	ErrExecutorSecretMissing = errors.New("executor secret is not configured")
+	// ErrExecutorGitTokenSecretRequired is returned when no git API token secret is selected in executor settings.
+	ErrExecutorGitTokenSecretRequired = errors.New("executor git API token secret is not configured; select it in executor settings")
 )
 
 // ExecuteCodeAction starts an agent-runner container for a single "code" action
@@ -381,10 +383,16 @@ func (s *ChatService) resolveActionRunSecrets(ctx context.Context) (gitToken, ll
 		return "", "", fmt.Errorf("execute code action: read executor config: %w", err)
 	}
 
+	// A remote Kubernetes job takes its credentials from the operator-managed
+	// Secret named in AgentSecretName (envFrom in the job template), so nib
+	// neither needs nor forwards them.
 	kubernetesRemote := cfg.Type == executor.TypeRemote && cfg.Platform == executor.PlatformKubernetes
 
-	gitToken, err = s.readNamedSecret(ctx, executorGitTokenSecretName)
-	if err != nil {
+	if gitSecret := strings.TrimSpace(cfg.GitTokenSecretName); gitSecret == "" {
+		if !kubernetesRemote {
+			return "", "", ErrExecutorGitTokenSecretRequired
+		}
+	} else if gitToken, err = s.readNamedSecret(ctx, gitSecret); err != nil {
 		if !kubernetesRemote {
 			return "", "", err
 		}

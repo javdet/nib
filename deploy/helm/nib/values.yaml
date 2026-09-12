@@ -22,7 +22,6 @@ secrets:
   atlassianClientSecret: ""
   executorLlmApiKey: ""
   executorLlmModel: ""
-  executorGitApiToken: ""
 
 ## Backend — Go API server (javdet/nib-backend)
 backend:

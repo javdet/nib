@@ -164,11 +164,10 @@ type MCPConfig struct {
 }
 
 // ExecutorConfig holds agent-runner executor settings.
-// LLMAPIKey, LLMModel, GitToken, and WebhookToken come from env; File may come from YAML.
+// LLMAPIKey, LLMModel, and WebhookToken come from env; File may come from YAML.
 type ExecutorConfig struct {
 	LLMAPIKey    string
 	LLMModel     string
-	GitToken     string
 	WebhookToken string
 	File         string `yaml:"file"`
 }
@@ -333,7 +332,6 @@ func Load(path string) (Config, error) {
 	cfg.Executor = ExecutorConfig{
 		LLMAPIKey:    strings.TrimSpace(os.Getenv("EXECUTOR_LLM_API_KEY")),
 		LLMModel:     strings.TrimSpace(os.Getenv("EXECUTOR_LLM_MODEL")),
-		GitToken:     strings.TrimSpace(os.Getenv("EXECUTOR_GIT_API_TOKEN")),
 		WebhookToken: strings.TrimSpace(os.Getenv("AGENT_WEBHOOK_TOKEN")),
 	}
 
