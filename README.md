@@ -132,6 +132,14 @@ Settings → Executor → **Type** selects how agent containers are launched:
 - **Local (Docker socket)** — containers run on the backend host Docker daemon.
 - **Remote** — containers run on a remote platform (currently Kubernetes).
 
+### Git API token
+
+Settings → Executor → **Git API token** selects which entry in Variables → Secrets holds the token the agent container clones, pushes and opens the pull/merge request with. It is a selection, not a fixed name — there is no `EXECUTOR_GIT_API_TOKEN` fallback, so **an install upgrading from an earlier version has to pick the secret once** before the next `code` action will start. A blank selection is only refused when an action is launched, so the executor can be configured before its secrets exist.
+
+The remote Kubernetes executor is the exception: its Jobs take credentials from the Agent Secret (below), so the git API token may be left blank there.
+
+Which provider the token is used against comes from **Version control system** on the Knowledge Base page: anything containing "gitlab" means GitLab, anything else — blank included — means GitHub. GitHub repositories are cloned as `x-access-token` and get pull requests via `gh`; GitLab repositories are cloned as `oauth2` and get merge requests via `glab`. The host is taken from the repository URL, so self-hosted GitLab and GitHub Enterprise work as well; `REPO_URL` must be an `http(s)` URL, since an ssh address cannot be authenticated with a token.
+
 ### Remote Kubernetes executor
 
 When executor type is **Remote** and platform is **Kubernetes**, pressing **Execute action** on a `code` step creates a Kubernetes Job from `backend/internal/executor/templates/job.yaml.tmpl` (override with `{DATA_DIR}/job.yaml.tmpl` if needed).
@@ -145,7 +153,7 @@ Required Kubernetes settings:
 
 - **Image** — agent container image.
 - **Agent Secret Name** — existing Secret in the target namespace mounted via `envFrom`. It must contain agent credentials, for example:
-  - `GITHUB_TOKEN`
+  - `GITHUB_TOKEN`, or equivalently `GITLAB_TOKEN` / `GIT_TOKEN` — supply any one; the container derives the others from it
   - `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
   - optional `WEBHOOK_AUTH_HEADER` (for example `Authorization: Bearer <AGENT_WEBHOOK_TOKEN>`)
 - **Webhook base URL** — must be reachable **from inside the cluster** (not `http://localhost:8080` unless the backend runs in the same pod network). The path `/api/v1/agent-runner/webhook` is appended automatically.

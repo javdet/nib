@@ -214,6 +214,7 @@ func NormalizeConfig(cfg Config) Config {
 	cfg.Agent = Agent(strings.ToLower(strings.TrimSpace(string(cfg.Agent))))
 	cfg.AuthType = AuthType(strings.ToLower(strings.TrimSpace(string(cfg.AuthType))))
 	cfg.TokenSecretName = strings.TrimSpace(cfg.TokenSecretName)
+	cfg.GitTokenSecretName = strings.TrimSpace(cfg.GitTokenSecretName)
 	cfg.BaseURL = strings.TrimSpace(cfg.BaseURL)
 	cfg.WebhookBaseURL = strings.TrimSuffix(strings.TrimSpace(cfg.WebhookBaseURL), "/")
 	if cfg.Agent == "" {
@@ -320,6 +321,7 @@ type rawConfig struct {
 	Agent                     Agent              `json:"agent"`
 	AuthType                  AuthType           `json:"authType"`
 	TokenSecretName           string             `json:"tokenSecretName"`
+	GitTokenSecretName        string             `json:"gitTokenSecretName"`
 	BaseURL                   string             `json:"baseURL"`
 	Image                     string             `json:"image"`
 	LLMModel                  string             `json:"llmModel"`
@@ -352,6 +354,7 @@ func parseConfig(content string) (Config, error) {
 		Agent:                     raw.Agent,
 		AuthType:                  raw.AuthType,
 		TokenSecretName:           raw.TokenSecretName,
+		GitTokenSecretName:        raw.GitTokenSecretName,
 		BaseURL:                   raw.BaseURL,
 		Image:                     raw.Image,
 		LLMModel:                  raw.LLMModel,

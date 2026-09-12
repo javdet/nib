@@ -80,6 +80,7 @@ export function ExecutorConfigCard() {
 	const agentId = useId()
 	const authTypeId = useId()
 	const tokenSecretId = useId()
+	const gitTokenSecretId = useId()
 	const baseURLId = useId()
 	const webhookBaseURLId = useId()
 	const imageId = useId()
@@ -123,6 +124,7 @@ export function ExecutorConfigCard() {
 	const [agent, setAgent] = useState<ExecutorAgent>('claude-code')
 	const [authType, setAuthType] = useState<ExecutorAuthType>('api_key')
 	const [tokenSecretName, setTokenSecretName] = useState('')
+	const [gitTokenSecretName, setGitTokenSecretName] = useState('')
 	const [baseURL, setBaseURL] = useState('')
 	const [webhookBaseURL, setWebhookBaseURL] = useState('')
 	const [image, setImage] = useState('')
@@ -163,6 +165,7 @@ export function ExecutorConfigCard() {
 			agent !== saved.agent ||
 			authType !== saved.authType ||
 			tokenSecretName !== saved.tokenSecretName ||
+			gitTokenSecretName !== saved.gitTokenSecretName ||
 			baseURL !== saved.baseURL ||
 			webhookBaseURL !== saved.webhookBaseURL ||
 			image !== saved.image ||
@@ -192,6 +195,7 @@ export function ExecutorConfigCard() {
 		setAgent(cfg.agent ?? 'claude-code')
 		setAuthType(cfg.authType ?? 'api_key')
 		setTokenSecretName(cfg.tokenSecretName ?? '')
+		setGitTokenSecretName(cfg.gitTokenSecretName ?? '')
 		setBaseURL(cfg.baseURL ?? '')
 		setWebhookBaseURL(cfg.webhookBaseURL ?? '')
 		setImage(cfg.image)
@@ -250,6 +254,10 @@ export function ExecutorConfigCard() {
 					agent,
 					authType: showClaudeCodeSettings ? authType : 'api_key',
 					tokenSecretName: showClaudeCodeSettings ? tokenSecretName : '',
+					// Sent unconditionally: the git token is not agent- or
+					// platform-specific, and gating it would blank the operator's
+					// pick on an agent or platform switch.
+					gitTokenSecretName,
 					baseURL: showApiKeySettings ? baseURL : '',
 					webhookBaseURL,
 					image,
@@ -626,6 +634,29 @@ export function ExecutorConfigCard() {
 
 					{!loading && saved && !isDisabled && showDetails && (
 						<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+							<div className="space-y-2 sm:col-span-2">
+								<Label htmlFor={gitTokenSecretId}>Git API token</Label>
+								<Select
+									id={gitTokenSecretId}
+									value={gitTokenSecretName}
+									onChange={(e) =>
+										setGitTokenSecretName(e.target.value)
+									}
+									disabled={saving}
+								>
+									<option value="">Select a secret…</option>
+									{secrets.map((secret) => (
+										<option key={secret.id} value={secret.name}>
+											{secret.name}
+										</option>
+									))}
+								</Select>
+								<p className="text-xs text-muted-foreground">
+									{showKubernetes
+										? 'Optional here: an agent Job reads its credentials from the Agent Secret instead.'
+										: 'The agent container clones, pushes and opens the pull/merge request with this token.'}
+								</p>
+							</div>
 							<div className="space-y-2">
 								<Label htmlFor={imageId}>Image</Label>
 								<Input

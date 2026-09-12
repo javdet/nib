@@ -215,7 +215,6 @@ func run() error {
 	executorSvc := executor.NewService(executorConfigStore, executor.Secrets{
 		LLMAPIKey:    cfg.Executor.LLMAPIKey,
 		LLMModel:     cfg.Executor.LLMModel,
-		GitToken:     cfg.Executor.GitToken,
 		WebhookToken: cfg.Executor.WebhookToken,
 	})
 	skillSvc := skills.NewService(cfg.DataDir, cfg.Skills.Dir)

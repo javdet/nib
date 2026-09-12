@@ -152,11 +152,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "nib.secretName" . }}
                   key: EXECUTOR_LLM_MODEL
-            - name: EXECUTOR_GIT_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "nib.secretName" . }}
-                  key: EXECUTOR_GIT_API_TOKEN
             - name: SECRETS_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

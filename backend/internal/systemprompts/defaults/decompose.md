@@ -83,7 +83,8 @@ Call `create_plan_contract` with:
   in `decidedBy`. Never put a live secret in `value`: name where it lives, not what
   it is.
 * **Every repository the plan will touch**, as a `shared` entry of kind `repository`
-  whose `decidedBy` names the one stage allowed to open a pull request against it.
+  whose `decidedBy` names the one stage allowed to open a pull request
+  (merge request on GitLab) against it.
   All changes to a repository must land in a single pull request, and a stage
   planner cannot see what its siblings are touching -- so if you do not assign each
   repository to exactly one stage here, two stages will each open one.

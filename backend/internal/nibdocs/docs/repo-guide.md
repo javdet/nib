@@ -178,7 +178,21 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
 - Remote platform: `docker`, `kubernetes` (auth `local_config` — kubeconfig, falling back to
   in-cluster — or `token`), `kubefoundry`.
 - Agent image: `claude-code` or `codex`; auth `api_key` or `oauth_token`, from `EXECUTOR_*`.
+- Credentials are **selected by secret name**, never fixed: the LLM key is `tokenSecretName`, the
+  git API token is `gitTokenSecretName`, both picked in the Executor page from **Variables →
+  Secrets**. There is no `EXECUTOR_GIT_API_TOKEN` fallback — a blank selection is refused at launch
+  with `ErrExecutorGitTokenSecretRequired`, not at save time, so an executor can be configured
+  before its secrets exist. Remote Kubernetes is the exception: the agent Job takes its credentials
+  from the operator-managed Secret in `agentSecretName` (`envFrom`), so the git token may be blank.
 - The runner reports back over a webhook guarded by `AGENT_WEBHOOK_TOKEN`.
+
+Git provider: `GIT_PROVIDER` is derived from the free-text `VersionControlSystem` company variable
+by `executor.NormalizeGitProvider` — anything containing "gitlab" is GitLab, everything else
+including blank is GitHub. The agent container branches on it: GitHub clones as
+`x-access-token:<token>` and opens PRs with `gh`, GitLab clones as `oauth2:<token>` and opens MRs
+with `glab`. The host comes from `REPO_URL` rather than a hardcoded `github.com`, so self-hosted
+GitLab and GitHub Enterprise work; an ssh/scp `REPO_URL` is refused, since a token cannot
+authenticate it.
 
 That container is a **different machine from the backend**, with its own toolchain. What is on the
 backend's PATH says nothing about what the executor can run, and vice versa.

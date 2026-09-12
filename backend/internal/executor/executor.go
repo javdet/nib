@@ -95,11 +95,10 @@ func resolveSecretValue(requestValue, fallback string) string {
 }
 
 func (s *Service) validateRunSecrets(cfg Config, req RunRequest) error {
-	gitToken := resolveSecretValue(req.GitToken, s.secrets.GitToken)
 	llmKey := resolveSecretValue(req.LLMAPIKey, s.secrets.LLMAPIKey)
 	if strings.TrimSpace(llmKey) == "" ||
 		strings.TrimSpace(ResolveLLMModel(cfg, s.secrets)) == "" ||
-		strings.TrimSpace(gitToken) == "" {
+		strings.TrimSpace(req.GitToken) == "" {
 		return ErrSecretsIncomplete
 	}
 	return nil

@@ -2,9 +2,24 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/javdet/nib/internal/executor"
 )
+
+// newTestExecutorService builds an executor service over a throwaway
+// executor.json, so a test can set the secret names the resolvers read.
+func newTestExecutorService(t *testing.T, cfg executor.Config) *executor.Service {
+	t.Helper()
+
+	store := executor.NewConfigStore(t.TempDir(), "executor.json", "")
+	if err := store.Set(cfg); err != nil {
+		t.Fatalf("set executor config: %v", err)
+	}
+	return executor.NewService(store, executor.Secrets{})
+}
 
 func TestResolveRunExecutorRequest(t *testing.T) {
 	t.Parallel()
@@ -15,7 +30,7 @@ func TestResolveRunExecutorRequest(t *testing.T) {
 
 	if _, err := secretSvc.Create(context.Background(), SecretInput{
 		Scope: "global",
-		Name:  executorGitTokenSecretName,
+		Name:  "MY_GIT_TOKEN",
 		Value: "git-token-value",
 	}); err != nil {
 		t.Fatalf("Create git token: %v", err)
@@ -39,7 +54,11 @@ func TestResolveRunExecutorRequest(t *testing.T) {
 				},
 			},
 		},
-		secretSvc:  secretSvc,
+		secretSvc: secretSvc,
+		executorSvc: newTestExecutorService(t, executor.Config{
+			Type:               executor.TypeLocal,
+			GitTokenSecretName: "MY_GIT_TOKEN",
+		}),
 		llmBaseURL: "https://llm.example.com/v1",
 	}
 
@@ -116,6 +135,10 @@ func TestResolveRunExecutorRequestMissingSecret(t *testing.T) {
 			},
 		},
 		secretSvc: NewSecretService(newFakeSecretRepo(), testCipher(t)),
+		executorSvc: newTestExecutorService(t, executor.Config{
+			Type:               executor.TypeLocal,
+			GitTokenSecretName: "MY_GIT_TOKEN",
+		}),
 	}
 
 	_, err := svc.resolveRunExecutorRequest(context.Background(), map[string]any{
@@ -123,8 +146,31 @@ func TestResolveRunExecutorRequestMissingSecret(t *testing.T) {
 		"base_branch": "main",
 		"pr_title":    "PR title",
 	})
-	if err == nil || !strings.Contains(err.Error(), executorGitTokenSecretName) {
-		t.Fatalf("resolveRunExecutorRequest() error = %v, want missing secret message", err)
+	if !errors.Is(err, ErrExecutorSecretMissing) || !strings.Contains(err.Error(), "MY_GIT_TOKEN") {
+		t.Fatalf("resolveRunExecutorRequest() error = %v, want missing secret naming MY_GIT_TOKEN", err)
+	}
+}
+
+func TestResolveRunExecutorRequestNoGitTokenSecretSelected(t *testing.T) {
+	t.Parallel()
+
+	svc := &ChatService{
+		variableRepo: &stubVariableRepo{
+			vars: map[string]map[string]any{
+				"global": {executorVarGitBaseURL: "https://github.com/org/repo.git"},
+			},
+		},
+		secretSvc:   NewSecretService(newFakeSecretRepo(), testCipher(t)),
+		executorSvc: newTestExecutorService(t, executor.Config{Type: executor.TypeLocal}),
+	}
+
+	_, err := svc.resolveRunExecutorRequest(context.Background(), map[string]any{
+		"task_prompt": "do work",
+		"base_branch": "main",
+		"pr_title":    "PR title",
+	})
+	if !errors.Is(err, ErrExecutorGitTokenSecretRequired) {
+		t.Fatalf("resolveRunExecutorRequest() error = %v, want ErrExecutorGitTokenSecretRequired", err)
 	}
 }
 

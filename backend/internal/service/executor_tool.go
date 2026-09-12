@@ -3,13 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/llm"
-	"github.com/javdet/nib/internal/repository"
 )
 
 // ExecutorKubernetesTokenSecretName is the prompt_secrets name holding the Kubernetes API token.
@@ -17,7 +15,6 @@ const ExecutorKubernetesTokenSecretName = "EXECUTOR_KUBERNETES_TOKEN"
 
 const (
 	RunExecutorToolName             = "run_executor"
-	executorGitTokenSecretName      = "EXECUTOR_GIT_API_TOKEN"
 	executorLLMAPIKeySecretName     = "EXECUTOR_LLM_API_KEY"
 	executorVarGitBaseURL           = "GitBaseURL"
 	executorVarVersionControlSystem = "VersionControlSystem"
@@ -145,7 +142,7 @@ func (s *ChatService) resolveExecutorGitSettings(ctx context.Context) (executorG
 	}
 	return executorGitSettings{
 		RepoURL:  repoURL,
-		Provider: strings.TrimSpace(asString(globalVars[executorVarVersionControlSystem])),
+		Provider: executor.NormalizeGitProvider(asString(globalVars[executorVarVersionControlSystem])),
 		Username: strings.TrimSpace(asString(globalVars[executorVarGitUsername])),
 		Email:    strings.TrimSpace(asString(globalVars[executorVarGitEmail])),
 	}, nil
@@ -155,19 +152,27 @@ func (s *ChatService) resolveExecutorSecrets(ctx context.Context) (gitToken, llm
 	if s.secretSvc == nil {
 		return "", "", fmt.Errorf("secret service is not configured")
 	}
-	gitToken, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, "", executorGitTokenSecretName)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return "", "", fmt.Errorf("secret %q is not configured", executorGitTokenSecretName)
-		}
-		return "", "", fmt.Errorf("resolve %q: %w", executorGitTokenSecretName, err)
+	if s.executorSvc == nil {
+		return "", "", fmt.Errorf("executor service is not configured")
 	}
-	llmAPIKey, err = s.secretSvc.GetValueByName(ctx, defaultVariableScope, "", executorLLMAPIKeySecretName)
+	cfg, err := s.executorSvc.ConfigStore().Get()
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return "", "", fmt.Errorf("secret %q is not configured", executorLLMAPIKeySecretName)
-		}
-		return "", "", fmt.Errorf("resolve %q: %w", executorLLMAPIKeySecretName, err)
+		return "", "", fmt.Errorf("read executor config: %w", err)
+	}
+
+	// Both executor entry points read the git token through readNamedSecret so a
+	// missing or deleted secret reads the same whichever one the operator hit.
+	gitSecret := strings.TrimSpace(cfg.GitTokenSecretName)
+	if gitSecret == "" {
+		return "", "", ErrExecutorGitTokenSecretRequired
+	}
+	gitToken, err = s.readNamedSecret(ctx, gitSecret)
+	if err != nil {
+		return "", "", err
+	}
+	llmAPIKey, err = s.readNamedSecret(ctx, executorLLMAPIKeySecretName)
+	if err != nil {
+		return "", "", err
 	}
 	return gitToken, llmAPIKey, nil
 }

@@ -49,8 +49,10 @@ These variables work identically for both agents:
 | `PROMPT` | yes | – | Task instructions |
 | `REPO_URL` | no | – | HTTPS clone URL; omit for MCP-only scratch mode |
 | `TARGET_BRANCH` | if repo | – | Branch to work on and push |
-| `BASE_BRANCH` | no | remote default | Base branch for PR |
-| `GITHUB_TOKEN` | if repo | – | Token for clone, push, PR |
+| `BASE_BRANCH` | no | remote default | Base branch for the PR/MR |
+| `GITHUB_TOKEN` / `GITLAB_TOKEN` / `GIT_TOKEN` | if repo | – | Token for clone, push, PR/MR. Supply any one; the others are derived from it |
+| `GIT_PROVIDER` | no | `github` | `gitlab` clones as `oauth2:` and opens merge requests with `glab`; anything else clones as `x-access-token:` and opens pull requests with `gh` |
+| `GITLAB_HOST` | no | derived | Self-hosted GitLab host for `glab`; normally derived from `REPO_URL` |
 | `MCP_CONFIG` | no | – | Inline JSON with `mcpServers` object |
 | `MCP_CONFIG_FILE` | no | – | Path to MCP JSON file |
 | `SYSTEM_PROMPT_FILE` | no | – | Path to system prompt file |
@@ -65,7 +67,7 @@ These variables work identically for both agents:
 | `TASK_ID` | no | – | Echoed in webhook |
 | `THREAD_ROOT_ID` | no | – | Echoed in webhook |
 | `CHAT_ID` | no | – | Echoed in webhook (required by Nib backend) |
-| `PR_TITLE` / `PR_BODY` | no | derived | PR metadata |
+| `PR_TITLE` / `PR_BODY` | no | derived | PR/MR metadata |
 | `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` | no | defaults | Commit author |
 | `JOB_NAME`, `POD_NAME`, `POD_NAMESPACE` | no | – | Job metadata in webhook |
 | `IMAGE_VERSION` | no | – | Image tag in webhook |
@@ -208,6 +210,23 @@ docker run --rm \
   universal-agent:local
 ```
 
+## Example: GitLab
+
+```bash
+docker run --rm \
+  -e PROMPT="Add a readiness probe to the api Deployment" \
+  -e REPO_URL="https://gitlab.com/group/subgroup/repo.git" \
+  -e TARGET_BRANCH="agent/test-123" \
+  -e GIT_PROVIDER=gitlab \
+  -e GITLAB_TOKEN="$GITLAB_TOKEN" \
+  -e ANTHROPIC_API_KEY="$OPENROUTER_KEY" \
+  universal-agent:local
+```
+
+The token needs the `api` and `write_repository` scopes. For a self-hosted instance just point
+`REPO_URL` at it (`https://git.corp.example:8443/team/repo.git`) — the host is derived from the URL
+and `GITLAB_HOST` is set for `glab` automatically.
+
 ## Design notes
 
 - **Debian slim, not Alpine:** full glibc `curl`, GNU coreutils, and Claude Code needs Node.
@@ -215,3 +234,13 @@ docker run --rm \
 - **bubblewrap** installed for codex sandbox modes inside the container.
 - **Shared entrypoint:** git/PR/webhook logic is agent-agnostic; only auth, MCP prep,
   invocation, and log parsing differ.
+- **`gh` and `glab` both installed:** the provider is a runtime switch, so one image serves
+  GitHub and GitLab rather than shipping two.
+- **One token, several names:** the credential arrives as `GITHUB_TOKEN`, `GITLAB_TOKEN` or
+  `GIT_TOKEN` and is re-exported under all of them plus `GH_TOKEN`/`GL_TOKEN`. `GITHUB_TOKEN`
+  stays the documented wire name because Kubernetes installs supply it through an
+  operator-managed Secret this image does not control, and MCP configs expand `${GITHUB_TOKEN}`.
+  Note that a GitHub MCP server therefore receives the GitLab token when `GIT_PROVIDER=gitlab`.
+- **Credential helper, not a URL with the token in it:** the remote is reset to the clean
+  `REPO_URL` after clone and the token is supplied by a helper keyed to the repository's own
+  host, so it never lands in `.git/config`.

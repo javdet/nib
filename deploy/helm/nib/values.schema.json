@@ -39,8 +39,7 @@
         "atlassianClientId": { "type": "string" },
         "atlassianClientSecret": { "type": "string" },
         "executorLlmApiKey": { "type": "string" },
-        "executorLlmModel": { "type": "string" },
-        "executorGitApiToken": { "type": "string" }
+        "executorLlmModel": { "type": "string" }
       }
     },
     "backend": {

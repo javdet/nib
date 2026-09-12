@@ -22,6 +22,13 @@ CODEX_OUTPUT_TOKENS=0
 REPO_PUSHED=false
 PR_URL=""
 
+# Derived from REPO_URL by resolve_git_host so self-hosted GitLab and GitHub
+# Enterprise authenticate the same way gitlab.com/github.com do.
+GIT_PROVIDER="${GIT_PROVIDER:-github}"
+GIT_HOST=""
+GIT_REPO_PATH=""
+GIT_REMOTE_BASE=""
+
 WORK_DIR=""
 LOG_FILE="/tmp/agent.log"
 MCP_RESOLVED_FILE="/tmp/mcp-config.json"
@@ -62,6 +69,30 @@ normalize_agent_type() {
       ;;
   esac
   log "Agent runtime: ${AGENT_TYPE}"
+}
+
+# Mirrors executor.NormalizeGitProvider in the backend: the setting behind
+# GIT_PROVIDER is a free-text company field, so match loosely and treat anything
+# unrecognised — blank included — as GitHub.
+normalize_git_provider() {
+  local raw
+  raw="$(printf '%s' "${GIT_PROVIDER:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    *gitlab*) GIT_PROVIDER="gitlab" ;;
+    *) GIT_PROVIDER="github" ;;
+  esac
+  export GIT_PROVIDER
+  log "Git provider: ${GIT_PROVIDER}"
+}
+
+# The username half of the token credential: GitHub wants x-access-token,
+# GitLab wants oauth2. Both take the token as the password.
+git_credential_username() {
+  if [ "${GIT_PROVIDER}" = "gitlab" ]; then
+    printf 'oauth2'
+  else
+    printf 'x-access-token'
+  fi
 }
 
 setup_auth_claude() {
@@ -145,6 +176,7 @@ setup_git_identity() {
 
 validate_env() {
   normalize_agent_type
+  normalize_git_provider
 
   if [ -z "${PROMPT:-}" ]; then
     die "PROMPT is required"
@@ -154,44 +186,89 @@ validate_env() {
     if [ -z "${TARGET_BRANCH:-}" ]; then
       die "TARGET_BRANCH is required when REPO_URL is set"
     fi
-    if [ -z "${GITHUB_TOKEN:-}" ]; then
-      die "GITHUB_TOKEN is required when REPO_URL is set"
+    # One credential arrives under whichever name the caller knows; GITHUB_TOKEN
+    # stays the documented wire name because the Kubernetes path takes it from an
+    # operator-managed Secret this image does not control.
+    GIT_TOKEN="${GIT_TOKEN:-${GITHUB_TOKEN:-${GITLAB_TOKEN:-}}}"
+    if [ -z "${GIT_TOKEN}" ]; then
+      die "a git API token is required when REPO_URL is set (GITHUB_TOKEN, GITLAB_TOKEN or GIT_TOKEN)"
     fi
-    export GITHUB_TOKEN
-    export GH_TOKEN="${GITHUB_TOKEN}"
+    # Re-export it under every name the tooling looks for: gh reads
+    # GH_TOKEN/GITHUB_TOKEN, glab reads GITLAB_TOKEN/GL_TOKEN, and MCP configs
+    # still expand ${GITHUB_TOKEN}.
+    export GIT_TOKEN
+    export GITHUB_TOKEN="${GIT_TOKEN}"
+    export GH_TOKEN="${GIT_TOKEN}"
+    export GITLAB_TOKEN="${GIT_TOKEN}"
+    export GL_TOKEN="${GIT_TOKEN}"
   fi
 
   : "${SYSTEM_PROMPT_MODE:=append}"
 }
 
-github_clone_url() {
-  local url="${REPO_URL%.git}"
-  case "$url" in
-    https://github.com/*)
-      echo "https://x-access-token:${GITHUB_TOKEN}@github.com/${url#https://github.com/}"
-      ;;
-    http://github.com/*)
-      echo "https://x-access-token:${GITHUB_TOKEN}@github.com/${url#http://github.com/}"
-      ;;
-    github.com/*)
-      echo "https://x-access-token:${GITHUB_TOKEN}@github.com/${url#github.com/}"
-      ;;
-    *)
-      echo "$url"
-      ;;
+# Splits REPO_URL into the host and the project path. A bare "host/owner/repo"
+# is accepted because GitBaseURL is operator-typed and often pasted without a
+# scheme; an ssh/scp address is refused outright rather than cloned without
+# credentials, which used to fail several steps later with "could not read Username".
+resolve_git_host() {
+  local rest="${REPO_URL%.git}" scheme="https"
+  case "$rest" in
+    https://*) rest="${rest#https://}" ;;
+    http://*) scheme="http"; rest="${rest#http://}" ;;
+    *://*) die "REPO_URL must be an http(s) URL: ${REPO_URL}" ;;
+    *@*:*) die "REPO_URL must be an http(s) clone URL; an ssh address cannot be authenticated with a token: ${REPO_URL}" ;;
   esac
+
+  case "$rest" in
+    */*) GIT_REPO_PATH="${rest#*/}" ;;
+    *) die "REPO_URL has no project path: ${REPO_URL}" ;;
+  esac
+
+  local hostpart="${rest%%/*}"
+  GIT_HOST="${hostpart#*@}"
+  if [ -z "${GIT_HOST}" ] || [ -z "${GIT_REPO_PATH}" ]; then
+    die "could not derive a host and project path from REPO_URL: ${REPO_URL}"
+  fi
+  GIT_REMOTE_BASE="${scheme}://${GIT_HOST}"
+  log "Git host: ${GIT_HOST} (project ${GIT_REPO_PATH})"
+}
+
+authenticated_clone_url() {
+  # Splices the credentials into GIT_REMOTE_BASE rather than assuming https, so
+  # a plain-http host keeps its scheme and still matches the credential helper
+  # key that prepare_workspace registers under GIT_REMOTE_BASE.
+  printf '%s://%s:%s@%s/%s' \
+    "${GIT_REMOTE_BASE%%://*}" "$(git_credential_username)" "${GIT_TOKEN}" \
+    "${GIT_HOST}" "${GIT_REPO_PATH}"
+}
+
+# glab reads GITLAB_TOKEN/GL_TOKEN and GITLAB_HOST straight from the
+# environment, so no `glab auth login` and no writable config dir are needed.
+setup_glab() {
+  [ "${GIT_PROVIDER}" = "gitlab" ] || return 0
+
+  if [ "${GIT_HOST}" != "gitlab.com" ]; then
+    export GITLAB_HOST="${GIT_HOST}"
+    export GITLAB_URI="${GIT_REMOTE_BASE}"
+    log "glab targeting self-hosted ${GIT_REMOTE_BASE}"
+  fi
+  if ! glab auth status >/dev/null 2>&1; then
+    log "WARNING: glab auth status reported a problem; merge request creation may fail"
+  fi
 }
 
 prepare_workspace() {
   if [ -n "${REPO_URL:-}" ]; then
+    resolve_git_host
+    setup_glab
     WORK_DIR="/workspace/repo"
     rm -rf "${WORK_DIR}"
     if [ -n "${BASE_BRANCH:-}" ]; then
       log "Cloning ${REPO_URL} (branch ${BASE_BRANCH})"
-      git clone --branch "${BASE_BRANCH}" --single-branch "$(github_clone_url)" "${WORK_DIR}"
+      git clone --branch "${BASE_BRANCH}" --single-branch "$(authenticated_clone_url)" "${WORK_DIR}"
     else
       log "Cloning ${REPO_URL} (remote default branch)"
-      git clone --single-branch "$(github_clone_url)" "${WORK_DIR}"
+      git clone --single-branch "$(authenticated_clone_url)" "${WORK_DIR}"
     fi
     cd "${WORK_DIR}"
     if [ -z "${BASE_BRANCH:-}" ]; then
@@ -202,9 +279,13 @@ prepare_workspace() {
       log "Detected default BASE_BRANCH=${BASE_BRANCH}"
     fi
     git remote set-url origin "${REPO_URL}"
-    git config --local --replace-all credential.https://github.com.helper ""
-    git config --local --add credential.https://github.com.helper \
-      '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f'
+    # Keyed to the repository's own host, not a hardcoded github.com, so a
+    # self-hosted GitLab or GitHub Enterprise push is authenticated too. The
+    # username is provider-dependent and interpolated now; ${GIT_TOKEN} is
+    # escaped so git's own shell expands it from the environment at push time.
+    git config --local --replace-all "credential.${GIT_REMOTE_BASE}.helper" ""
+    git config --local --add "credential.${GIT_REMOTE_BASE}.helper" \
+      "!f() { echo \"username=$(git_credential_username)\"; echo \"password=\${GIT_TOKEN}\"; }; f"
 
     local ls_remote_status=0
     git ls-remote --exit-code --heads origin "${TARGET_BRANCH}" >/dev/null || ls_remote_status=$?
@@ -906,6 +987,22 @@ git_commit_push_pr() {
   git push -u origin "${TARGET_BRANCH}"
   REPO_PUSHED=true
 
+  open_change_request "${pr_title}" "${pr_body}"
+}
+
+# PR_URL keeps its name whichever provider opened the request: it is the
+# repo.pr_url field of the webhook payload, which the plan panel links from.
+open_change_request() {
+  if [ "${GIT_PROVIDER}" = "gitlab" ]; then
+    open_merge_request "$1" "$2"
+  else
+    open_pull_request "$1" "$2"
+  fi
+}
+
+open_pull_request() {
+  local pr_title="$1" pr_body="$2"
+
   PR_URL="$(gh pr list --head "${TARGET_BRANCH}" --state all --json url --jq '.[0].url // empty' 2>/dev/null || true)"
   if [ -n "${PR_URL}" ]; then
     log "PR already exists: ${PR_URL}"
@@ -919,6 +1016,48 @@ git_commit_push_pr() {
     --title "${pr_title}" \
     --body "${pr_body}")"
   log "PR created: ${PR_URL}"
+}
+
+# glab flag spellings have moved between majors, so the URL is taken from the
+# command output first and only then re-queried; losing it would cost the plan
+# panel its link even though the MR exists.
+glab_existing_mr_url() {
+  glab mr list --source-branch "${TARGET_BRANCH}" --all --output json 2>/dev/null \
+    | jq -r 'if type == "array" then (.[0].web_url // empty) else empty end' 2>/dev/null \
+    || true
+}
+
+open_merge_request() {
+  local mr_title="$1" mr_body="$2"
+  local out="/tmp/glab-mr.out"
+
+  PR_URL="$(glab_existing_mr_url)"
+  if [ -n "${PR_URL}" ]; then
+    log "MR already exists: ${PR_URL}"
+    return 0
+  fi
+
+  log "Creating MR (${TARGET_BRANCH} -> ${BASE_BRANCH})"
+  if ! glab mr create \
+    --source-branch "${TARGET_BRANCH}" \
+    --target-branch "${BASE_BRANCH}" \
+    --title "${mr_title}" \
+    --description "${mr_body}" \
+    --yes >"${out}" 2>&1; then
+    cat "${out}" >&2
+    die "glab mr create failed"
+  fi
+  cat "${out}" >&2
+
+  PR_URL="$(grep -Eo 'https?://[^[:space:]]+/-/merge_requests/[0-9]+' "${out}" | head -n1 || true)"
+  if [ -z "${PR_URL}" ]; then
+    PR_URL="$(glab_existing_mr_url)"
+  fi
+  if [ -n "${PR_URL}" ]; then
+    log "MR created: ${PR_URL}"
+  else
+    log "MR created, but its URL could not be captured"
+  fi
 }
 
 prepare_webhook_payload_files() {

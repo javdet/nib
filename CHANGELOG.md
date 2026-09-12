@@ -4,6 +4,21 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.8.0] - 2026-09-12
+
+### Added
+- GitLab is now supported end to end by the agent container: it installs `glab` alongside `gh`, clones GitLab repositories as `oauth2:<token>`, and opens merge requests instead of pull requests. The provider comes from the **Version control system** field on the Knowledge Base page — anything containing "gitlab" means GitLab, anything else including blank means GitHub. The repository host is now derived from the repository URL rather than assumed to be `github.com`, so self-hosted GitLab and GitHub Enterprise work too.
+- Settings → Executor gained a **Git API token** field that selects which entry in Variables → Secrets the agent container clones, pushes and opens the pull/merge request with, matching how the LLM key and Kubernetes token are already configured.
+
+### Changed
+- **Breaking:** the git API token is no longer read from a secret hardcoded to the name `EXECUTOR_GIT_API_TOKEN`. Open Settings → Executor and select the secret once; until then `code` actions refuse to start with "executor git API token secret is not configured; select it in executor settings". Remote Kubernetes executors are unaffected — their Jobs still take credentials from the Agent Secret.
+- **Breaking:** the `EXECUTOR_GIT_API_TOKEN` environment variable (and the `secrets.executorGitApiToken` Helm value) has been removed. It only ever fed the `run_executor` tool and became a second, invisible source of truth for a credential that is now selected in the UI.
+- The agent container accepts the git token as `GITHUB_TOKEN`, `GITLAB_TOKEN` or `GIT_TOKEN` and derives the rest, so existing Kubernetes Agent Secrets keep working unchanged.
+- Plan, decompose and rollback prompts now say "pull request (merge request on GitLab)" rather than naming `gh pr create`, so a GitLab install is not told to run a GitHub-only command.
+
+### Removed
+- `agent-runner/claude-code-agent/`, an unreferenced GitHub-only copy of the agent image that no build or compose stack used; `agent-runner/universal-agent` is the only published `nib-agent` image.
+
 ## [v0.7.10] - 2026-09-10
 
 ### Added
