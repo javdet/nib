@@ -4,9 +4,11 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
-## [Unreleased]
+## [v0.8.0] - 2026-09-13
 
 ### Added
+- GitLab is now supported end to end by the agent container: it installs `glab` alongside `gh`, clones GitLab repositories as `oauth2:<token>`, and opens merge requests instead of pull requests. The provider comes from the **Version control system** field on the Knowledge Base page — anything containing "gitlab" means GitLab, anything else including blank means GitHub. The repository host is now derived from the repository URL rather than assumed to be `github.com`, so self-hosted GitLab and GitHub Enterprise work too.
+- Settings → Executor gained a **Git API token** field that selects which entry in Variables → Secrets the agent container clones, pushes and opens the pull/merge request with, matching how the LLM key and Kubernetes token are already configured.
 - **Statistics page.** A new **Statistics** entry in the sidebar, next to Help, showing task metrics broken down by status, token usage and cost as both figures and charts, over a selectable range (24 hours to 12 months). Also covers LLM calls and failures, average call duration, a per-model / per-mode / per-operation breakdown, the most expensive tasks, and container agent runs.
 - **Token usage is now recorded.** Prompt, cached, completion and reasoning tokens were previously returned by the provider and thrown away — `llm.AssistantMessage` did not carry them. Every LLM call now writes a row to the new `llm_usage` table with its dialog, plan, mode, model, tokens, duration and outcome.
 - **Cost is now stored where the provider reports it.** nib still carries no rate card, so cost is recorded only where a gateway prices the call (OpenRouter returns `usage.cost`; the OpenAI platform does not) and from the agent-runner webhook, which already reported `total_cost_usd`. An unreported cost is stored as NULL and shown as a dash, never as `$0.00`.
@@ -15,20 +17,12 @@ and the project uses the version in the root `VERSION` file.
 - `GET /api/v1/stats?from=&to=&bucket=` returns the whole dashboard in one response. `bucket` is one of `hour`, `day`, `week`, `month`, and a range is capped at 400 buckets.
 
 ### Changed
-- The agent-runner webhook now parses the `input_tokens` and `output_tokens` the container was already sending and had been silently discarding, and persists each finished run to `agent_run_usage`. A retried delivery no longer risks double-counting cost: the insert sits behind the existing job-name de-duplication and a unique index enforces it in the database.
-- Usage rows deliberately carry no foreign key to `chat_dialogs`. Statistics are kept indefinitely, and `ON DELETE CASCADE` would erase the record of what a task cost as soon as its dialog was deleted.
-
-## [v0.8.0] - 2026-09-12
-
-### Added
-- GitLab is now supported end to end by the agent container: it installs `glab` alongside `gh`, clones GitLab repositories as `oauth2:<token>`, and opens merge requests instead of pull requests. The provider comes from the **Version control system** field on the Knowledge Base page — anything containing "gitlab" means GitLab, anything else including blank means GitHub. The repository host is now derived from the repository URL rather than assumed to be `github.com`, so self-hosted GitLab and GitHub Enterprise work too.
-- Settings → Executor gained a **Git API token** field that selects which entry in Variables → Secrets the agent container clones, pushes and opens the pull/merge request with, matching how the LLM key and Kubernetes token are already configured.
-
-### Changed
 - **Breaking:** the git API token is no longer read from a secret hardcoded to the name `EXECUTOR_GIT_API_TOKEN`. Open Settings → Executor and select the secret once; until then `code` actions refuse to start with "executor git API token secret is not configured; select it in executor settings". Remote Kubernetes executors are unaffected — their Jobs still take credentials from the Agent Secret.
 - **Breaking:** the `EXECUTOR_GIT_API_TOKEN` environment variable (and the `secrets.executorGitApiToken` Helm value) has been removed. It only ever fed the `run_executor` tool and became a second, invisible source of truth for a credential that is now selected in the UI.
 - The agent container accepts the git token as `GITHUB_TOKEN`, `GITLAB_TOKEN` or `GIT_TOKEN` and derives the rest, so existing Kubernetes Agent Secrets keep working unchanged.
 - Plan, decompose and rollback prompts now say "pull request (merge request on GitLab)" rather than naming `gh pr create`, so a GitLab install is not told to run a GitHub-only command.
+- The agent-runner webhook now parses the `input_tokens` and `output_tokens` the container was already sending and had been silently discarding, and persists each finished run to `agent_run_usage`. A retried delivery no longer risks double-counting cost: the insert sits behind the existing job-name de-duplication and a unique index enforces it in the database.
+- Usage rows deliberately carry no foreign key to `chat_dialogs`. Statistics are kept indefinitely, and `ON DELETE CASCADE` would erase the record of what a task cost as soon as its dialog was deleted.
 
 ### Removed
 - `agent-runner/claude-code-agent/`, an unreferenced GitHub-only copy of the agent image that no build or compose stack used; `agent-runner/universal-agent` is the only published `nib-agent` image.
