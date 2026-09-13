@@ -42,6 +42,10 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "resource not found")
 	case errors.Is(err, repository.ErrAlreadyExists):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, service.ErrInvalidStatsRange):
+		// The message names the offending parameter and, for the bucket cap,
+		// what to do about it, so it is passed through rather than flattened.
+		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, systemprompts.ErrInvalidName):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, systemprompts.ErrNotEditable):

@@ -149,7 +149,28 @@ func (p *OpenAIProvider) CompleteWithTools(ctx context.Context, messages []Messa
 	return AssistantMessage{
 		Content:   msg.Content,
 		ToolCalls: toolCallsFromOpenAI(msg.ToolCalls),
+		Usage:     usageFromCompletion(resp),
 	}, nil
+}
+
+// usageFromCompletion lifts the usage block the provider already returns. The
+// model is read off the response rather than from config here: a gateway may
+// route to a variant, and the statistics are only worth keeping if they name
+// what actually ran.
+func usageFromCompletion(resp *openai.ChatCompletion) Usage {
+	if resp == nil {
+		return Usage{}
+	}
+	u := resp.Usage
+	return Usage{
+		Model:              resp.Model,
+		PromptTokens:       int(u.PromptTokens),
+		CachedPromptTokens: int(u.PromptTokensDetails.CachedTokens),
+		CompletionTokens:   int(u.CompletionTokens),
+		ReasoningTokens:    int(u.CompletionTokensDetails.ReasoningTokens),
+		TotalTokens:        int(u.TotalTokens),
+		CostUSD:            costFromUsageJSON(u.RawJSON()),
+	}
 }
 
 func messagesToOpenAI(messages []Message) ([]openai.ChatCompletionMessageParamUnion, error) {

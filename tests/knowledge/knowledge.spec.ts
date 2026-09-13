@@ -48,7 +48,7 @@ test.describe('Knowledgebase', () => {
 			'Acme',
 		)
 		await expect(page.getByText('Document upload')).toBeVisible()
-		await expect(page.getByText('Chunks: 12')).toBeVisible()
+		await expect(page.getByText(/12 chunks/)).toBeVisible()
 	})
 
 	// 10.2
@@ -78,9 +78,11 @@ test.describe('Knowledgebase', () => {
 		await openKnowledge(page)
 
 		await expect(
-			page.getByText(/replaces all chunks in the/),
+			page.getByText(/replaces all chunks in/),
 		).toBeVisible()
-		await expect(page.getByText('Only one document is kept at a time.')).toBeVisible()
+		await expect(
+			page.getByText(/only one document is kept at a time/),
+		).toBeVisible()
 	})
 
 	// 10.5

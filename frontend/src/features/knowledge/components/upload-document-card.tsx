@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react'
-import { Eye, FileUp, Loader2, Sparkles, Upload } from 'lucide-react'
+import {
+	Eye,
+	FileUp,
+	Loader2,
+	Sparkles,
+	TriangleAlert,
+	Upload,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,6 +29,20 @@ interface UploadDocumentCardProps {
 	onRepositoriesChange: (value: string) => void
 	generating: boolean
 	onGenerate: () => void
+}
+
+// Chunks, current file and embedding model read as one muted line beside the
+// picker, so the card does not grow a metadata block per collection.
+function collectionSummary(collection: KnowledgeCollection): string {
+	const parts = [`${collection.chunkCount} chunks`]
+	if (collection.sourceUri) parts.push(collection.sourceUri)
+	if (collection.embeddingModel) {
+		const dimensions = collection.dimensions
+			? ` (${collection.dimensions}d)`
+			: ''
+		parts.push(`${collection.embeddingModel}${dimensions}`)
+	}
+	return parts.join(' · ')
 }
 
 export function UploadDocumentCard({
@@ -63,125 +84,110 @@ export function UploadDocumentCard({
 	}
 
 	const displayCollection = trimmedCollection || 'default'
+	const summary = selectedCollection
+		? collectionSummary(selectedCollection)
+		: null
 
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>Document upload</CardTitle>
+			<CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+				<div className="min-w-0">
+					<CardTitle>Document upload</CardTitle>
+					<p className="mt-1.5 flex items-start gap-1.5 text-sm text-muted-foreground">
+						<TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+						<span>
+							Uploading or generating replaces all chunks in{' '}
+							<strong className="font-medium text-foreground">
+								{displayCollection}
+							</strong>
+							{' — '}only one document is kept at a time.
+						</span>
+					</p>
+				</div>
+				<Button
+					variant="outline"
+					size="sm"
+					className="shrink-0"
+					onClick={() => setViewOpen(true)}
+					disabled={!isValidKnowledgeCollectionName(displayCollection)}
+				>
+					<Eye className="h-4 w-4" />
+					View current
+				</Button>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="space-y-2">
 					<Label htmlFor="kb-collection">Collection</Label>
-					<CollectionSelect
-						collections={collections}
-						value={collection}
-						onChange={onCollectionChange}
-						disabled={busy}
-					/>
-				</div>
-
-				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
-					Uploading or generating replaces all chunks in the{' '}
-					<strong>{displayCollection}</strong> collection. Only one document is
-					kept at a time.
-				</div>
-
-				{isNewCollection && isCollectionValid && (
-					<div className="rounded-md border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-950 dark:text-blue-100">
-						New collection &mdash; will be created on upload.
-					</div>
-				)}
-
-				{selectedCollection && (
-					<div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
-						<p>
-							<span className="text-muted-foreground">Collection:</span>{' '}
-							{selectedCollection.name}
-						</p>
-						<p>
-							<span className="text-muted-foreground">Chunks:</span>{' '}
-							{selectedCollection.chunkCount}
-						</p>
-						{selectedCollection.sourceUri && (
-							<p>
-								<span className="text-muted-foreground">Current file:</span>{' '}
-								{selectedCollection.sourceUri}
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+						<div className="w-64 max-w-full shrink-0">
+							<CollectionSelect
+								collections={collections}
+								value={collection}
+								onChange={onCollectionChange}
+								disabled={busy}
+							/>
+						</div>
+						{summary !== null ? (
+							<p
+								className="min-w-[10rem] flex-1 truncate text-xs text-muted-foreground"
+								title={summary}
+							>
+								{summary}
 							</p>
-						)}
-						{selectedCollection.embeddingModel && (
-							<p>
-								<span className="text-muted-foreground">Embeddings:</span>{' '}
-								{selectedCollection.embeddingModel}
-								{selectedCollection.dimensions
-									? ` (${selectedCollection.dimensions}d)`
-									: ''}
-							</p>
+						) : (
+							isNewCollection &&
+							isCollectionValid && (
+								<p className="min-w-[10rem] flex-1 truncate text-xs text-muted-foreground">
+									New collection &mdash; created on upload.
+								</p>
+							)
 						)}
 					</div>
-				)}
+				</div>
 
-				<div className="space-y-3">
+				<div className="flex flex-wrap items-center gap-2">
 					<Input
 						ref={inputRef}
 						type="file"
+						aria-label="Document file"
 						accept=".md,.txt,.markdown,text/plain,text/markdown"
-						className="min-w-0 cursor-pointer py-1.5"
+						className="min-w-[14rem] flex-1 cursor-pointer py-1.5"
 						onChange={handleFileChange}
 						disabled={busy}
 					/>
-					<div className="flex justify-end gap-2">
-						<Button
-							variant="outline"
-							onClick={() => setViewOpen(true)}
-							disabled={!isValidKnowledgeCollectionName(displayCollection)}
-						>
-							<Eye className="h-4 w-4" />
-							View current
-						</Button>
-						<Button
-							onClick={handleUpload}
-							disabled={busy || !selectedName || !isCollectionValid}
-						>
-							{uploading ? (
-								<>
-									<Upload className="h-4 w-4 animate-pulse" />
-									Uploading…
-								</>
-							) : (
-								<>
-									<FileUp className="h-4 w-4" />
-									Upload &amp; index
-								</>
-							)}
-						</Button>
-					</div>
+					<Button
+						className="ml-auto shrink-0"
+						onClick={handleUpload}
+						disabled={busy || !selectedName || !isCollectionValid}
+					>
+						{uploading ? (
+							<>
+								<Upload className="h-4 w-4 animate-pulse" />
+								Uploading…
+							</>
+						) : (
+							<>
+								<FileUp className="h-4 w-4" />
+								Upload &amp; index
+							</>
+						)}
+					</Button>
 				</div>
 
-				{selectedName && !uploading && (
-					<p className="break-all text-xs text-muted-foreground">
-						Ready: {selectedName}
-					</p>
-				)}
-
-				<div className="space-y-3 border-t pt-4">
-					<div className="space-y-2">
-						<Label htmlFor="kb-repositories">Repositories</Label>
+				<div className="space-y-2 border-t pt-4">
+					<Label htmlFor="kb-repositories">Repositories</Label>
+					<div className="flex flex-wrap items-center gap-2">
 						<Input
 							id="kb-repositories"
 							value={repositories}
 							onChange={(e) => onRepositoriesChange(e.target.value)}
 							placeholder="myorg/infra, https://github.com/myorg/helm-charts"
+							className="min-w-[14rem] flex-1"
 							disabled={busy}
 							autoComplete="off"
 						/>
-						<p className="text-xs text-muted-foreground">
-							Comma-separated, as <code>owner/repo</code> or a full URL. The
-							agent reads these and writes the document to{' '}
-							<strong>{displayCollection}</strong>.
-						</p>
-					</div>
-					<div className="flex justify-end">
 						<Button
+							className="ml-auto shrink-0"
 							onClick={onGenerate}
 							disabled={busy || !hasRepositories || !isCollectionValid}
 						>
@@ -198,6 +204,11 @@ export function UploadDocumentCard({
 							)}
 						</Button>
 					</div>
+					<p className="text-xs text-muted-foreground">
+						Comma-separated, as <code>owner/repo</code> or a full URL. The agent
+						reads these and writes the document to{' '}
+						<strong className="font-medium">{displayCollection}</strong>.
+					</p>
 				</div>
 
 				<ViewDocumentDialog

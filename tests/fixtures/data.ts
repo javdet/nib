@@ -199,3 +199,62 @@ export function makeAskQuestionMessages(
 		},
 	]
 }
+
+/**
+ * Empty statistics payload.
+ *
+ * Cost fields are null rather than 0 on purpose: that is what the backend sends
+ * when no provider priced a call, and the UI is expected to render a dash there
+ * rather than "$0.00".
+ */
+export function makeStatistics(overrides: Record<string, unknown> = {}) {
+	return {
+		range: {
+			from: '2026-08-14T00:00:00Z',
+			to: '2026-09-13T00:00:00Z',
+			bucket: 'day',
+		},
+		plans: {
+			total: 0,
+			createdInRange: 0,
+			asOf: '2026-09-13T00:00:00Z',
+			currentByStatus: [],
+			byMode: [],
+			createdSeries: [],
+			transitionSeries: [],
+		},
+		usage: {
+			totals: {
+				calls: 0,
+				costedCalls: 0,
+				failedCalls: 0,
+				promptTokens: 0,
+				cachedPromptTokens: 0,
+				completionTokens: 0,
+				reasoningTokens: 0,
+				totalTokens: 0,
+				costUsd: null,
+				avgDurationMs: 0,
+			},
+			series: [],
+			byModel: [],
+			byMode: [],
+			byOperation: [],
+			topPlans: [],
+		},
+		agentRuns: {
+			totals: {
+				runs: 0,
+				costedRuns: 0,
+				turns: 0,
+				inputTokens: 0,
+				outputTokens: 0,
+				costUsd: null,
+				avgDurationMs: 0,
+			},
+			byStatus: [],
+			series: [],
+		},
+		...overrides,
+	}
+}

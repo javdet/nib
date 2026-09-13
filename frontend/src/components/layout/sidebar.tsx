@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router'
 import {
+	BarChart3,
 	BookOpen,
 	Braces,
 	Building2,
@@ -169,6 +170,12 @@ export function Sidebar() {
 			<Separator className="hairline" />
 
 			<div className="shrink-0 space-y-1 p-2">
+				<SidebarNavItem
+					to="/statistics"
+					label="Statistics"
+					icon={BarChart3}
+					collapsed={collapsed}
+				/>
 				<SidebarHelpMenu collapsed={collapsed} />
 				{collapsed ? (
 					<Tooltip>

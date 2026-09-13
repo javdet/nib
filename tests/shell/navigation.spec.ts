@@ -30,6 +30,9 @@ test.describe('Application shell', () => {
 		for (const item of NAV) {
 			await expect(nav.getByRole('link', { name: item.label })).toBeVisible()
 		}
+		// Statistics sits in the sidebar footer beside Help, which is outside the
+		// <nav> landmark -- so it is asserted here rather than in NAV above.
+		await expect(page.getByRole('link', { name: 'Statistics' })).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Help' })).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Collapse' })).toBeVisible()
 

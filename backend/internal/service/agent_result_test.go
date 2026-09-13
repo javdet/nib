@@ -16,7 +16,7 @@ func TestFormatAgentResultMessageSuccess(t *testing.T) {
 		PRURL:        "https://github.com/org/repo/pull/42",
 		DurationMS:   125000,
 		NumTurns:     8,
-		TotalCostUSD: 0.42,
+		TotalCostUSD: costPtr(0.42),
 	})
 
 	if !strings.Contains(got, "Updated postgres_version to 17.") {
@@ -84,7 +84,7 @@ func TestCodeActionNoteText(t *testing.T) {
 				Result:       "Bumped the chart to 1.4.2.",
 				TargetBranch: "nib/DO-236",
 				PRURL:        "https://github.com/org/repo/pull/42",
-				TotalCostUSD: 0.42,
+				TotalCostUSD: costPtr(0.42),
 				NumTurns:     8,
 			},
 			want: "Bumped the chart to 1.4.2.\n\nBranch: nib/DO-236",
@@ -129,3 +129,7 @@ func TestCodeActionNoteText(t *testing.T) {
 		})
 	}
 }
+
+// costPtr builds the optional cost the webhook now carries: nil means the
+// agent reported no price, which is not the same as a free run.
+func costPtr(v float64) *float64 { return &v }

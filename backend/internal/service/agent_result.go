@@ -33,8 +33,10 @@ type AgentRunResult struct {
 	PRURL        string
 	DurationMS   int
 	NumTurns     int
-	TotalCostUSD float64
+	TotalCostUSD *float64
 	SessionID    string
+	InputTokens  int
+	OutputTokens int
 }
 
 // AppendAgentResult stores the agent's conclusion as an assistant message in the
@@ -80,6 +82,12 @@ func (s *ChatService) AppendAgentResult(ctx context.Context, dialogID uuid.UUID,
 	if err != nil {
 		return domain.DialogMessage{}, fmt.Errorf("append agent result: %w", err)
 	}
+
+	// Deliberately after the dedup return above: the container retries this
+	// webhook with curl, and recording before that check would multiply the
+	// cost by the number of retries. The partial unique index on job_name is
+	// the second line of defence, for deliveries that carry no job name.
+	s.recordAgentRun(ctx, dialogID, res)
 
 	s.finishCodeActionRun(ctx, dialog, res)
 
@@ -221,8 +229,8 @@ func formatAgentResultFooter(res AgentRunResult) string {
 	if res.NumTurns > 0 {
 		usageParts = append(usageParts, fmt.Sprintf("%d turns", res.NumTurns))
 	}
-	if res.TotalCostUSD > 0 {
-		usageParts = append(usageParts, fmt.Sprintf("$%.4f", res.TotalCostUSD))
+	if res.TotalCostUSD != nil && *res.TotalCostUSD > 0 {
+		usageParts = append(usageParts, fmt.Sprintf("$%.4f", *res.TotalCostUSD))
 	}
 	if len(usageParts) > 0 {
 		lines = append(lines, strings.Join(usageParts, " · "))

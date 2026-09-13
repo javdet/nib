@@ -29,14 +29,14 @@ func NewMetered(inner Client, model string) Client {
 func (m *MeteredClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	start := time.Now()
 	out, err := m.inner.Complete(ctx, systemPrompt, userPrompt)
-	metrics.RecordLLMRequest(metrics.LLMOpComplete, m.model, outcomeFor(err), time.Since(start))
+	metrics.RecordLLMRequest(metrics.LLMOpComplete, m.model, OutcomeFor(err), time.Since(start))
 	return out, err
 }
 
 func (m *MeteredClient) CompleteWithTools(ctx context.Context, messages []Message, tools []ToolDef) (AssistantMessage, error) {
 	start := time.Now()
 	msg, err := m.inner.CompleteWithTools(ctx, messages, tools)
-	metrics.RecordLLMRequest(metrics.LLMOpCompleteWithTools, m.model, outcomeFor(err), time.Since(start))
+	metrics.RecordLLMRequest(metrics.LLMOpCompleteWithTools, m.model, OutcomeFor(err), time.Since(start))
 	if err == nil {
 		metrics.AddLLMToolCallsReturned(m.model, len(msg.ToolCalls))
 	}
@@ -46,16 +46,19 @@ func (m *MeteredClient) CompleteWithTools(ctx context.Context, messages []Messag
 func (m *MeteredClient) Embed(ctx context.Context, texts []string) ([][]float32, int, error) {
 	start := time.Now()
 	vectors, tokens, err := m.inner.Embed(ctx, texts)
-	metrics.RecordLLMRequest(metrics.LLMOpEmbed, m.model, outcomeFor(err), time.Since(start))
+	metrics.RecordLLMRequest(metrics.LLMOpEmbed, m.model, OutcomeFor(err), time.Since(start))
 	if err == nil {
 		metrics.AddLLMEmbeddingTokens(m.model, tokens)
 	}
 	return vectors, tokens, err
 }
 
-// outcomeFor classifies a provider error into a bounded label. The provider's
+// OutcomeFor classifies a provider error into a bounded label. The provider's
 // own message is deliberately unused: it is free text and would be unbounded.
-func outcomeFor(err error) string {
+//
+// Exported because the usage statistics store the same vocabulary as the
+// nib_llm_requests_total outcome label, and the two must not drift.
+func OutcomeFor(err error) string {
 	if err == nil {
 		return metrics.OutcomeSuccess
 	}
