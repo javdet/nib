@@ -377,6 +377,13 @@ func run() error {
 			TimeoutMinutes: cfg.Agent.ActionExecTimeoutMinutes,
 		},
 	)
+	// Statistics are wired after construction rather than as a 23rd positional
+	// argument to NewChatService, and they are optional: with no writer set the
+	// recording calls are no-ops, which is what keeps the service tests working.
+	statsRepo := postgres.NewStatsRepo(pool)
+	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
+	statsSvc := service.NewStatsService(statsRepo, chatSvc)
+
 	if cfg.Agent.ActionExecConcurrency > 1 {
 		slog.Warn("agent.actionExecConcurrency is clamped to 1; one execution runs at a time",
 			"configured", cfg.Agent.ActionExecConcurrency)
@@ -471,6 +478,7 @@ func run() error {
 		IncludedTools:  includedToolsAppSvc,
 		ToolCategories: toolCategorySvc,
 		Selection:      selectionStore,
+		Stats:          statsSvc,
 
 		SystemPrompts: systemPromptsSvc,
 		Rules:         rulesSvc,

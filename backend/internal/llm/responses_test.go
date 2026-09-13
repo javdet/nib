@@ -279,3 +279,55 @@ func TestResponsesCompleteUsesInstructions(t *testing.T) {
 		t.Errorf("input = %v, want ping", got["input"])
 	}
 }
+
+// An incomplete response hit the output cap: it was generated and billed, so
+// its usage must reach the caller even though the call is reported as an error.
+// Dropping it would hide exactly the spend the statistics exist to surface.
+func TestCompleteWithToolsCarriesUsageOnIncompleteResponse(t *testing.T) {
+	body := `{
+		"id": "resp_1",
+		"model": "gpt-5.6",
+		"status": "incomplete",
+		"incomplete_details": {"reason": "max_output_tokens"},
+		"output": [],
+		"usage": {
+			"input_tokens": 1200,
+			"input_tokens_details": {"cached_tokens": 400},
+			"output_tokens": 800,
+			"output_tokens_details": {"reasoning_tokens": 700},
+			"total_tokens": 2000
+		}
+	}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	provider := NewResponsesProvider(ClientOptions{
+		APIKey:  "test",
+		Model:   "gpt-5.6",
+		BaseURL: srv.URL,
+	})
+
+	msg, err := provider.CompleteWithTools(context.Background(),
+		[]Message{{Role: "user", Content: "hi"}}, nil)
+	if err == nil {
+		t.Fatal("CompleteWithTools() error = nil, want an incomplete-response error")
+	}
+	if msg.Usage.TotalTokens != 2000 {
+		t.Errorf("Usage.TotalTokens = %d, want 2000 carried out alongside the error", msg.Usage.TotalTokens)
+	}
+	if msg.Usage.PromptTokens != 1200 || msg.Usage.CompletionTokens != 800 {
+		t.Errorf("Usage prompt/completion = %d/%d, want 1200/800",
+			msg.Usage.PromptTokens, msg.Usage.CompletionTokens)
+	}
+	if msg.Usage.CachedPromptTokens != 400 || msg.Usage.ReasoningTokens != 700 {
+		t.Errorf("Usage cached/reasoning = %d/%d, want 400/700",
+			msg.Usage.CachedPromptTokens, msg.Usage.ReasoningTokens)
+	}
+	if msg.Usage.CostUSD != nil {
+		t.Errorf("Usage.CostUSD = %v, want nil: this provider reports no cost", *msg.Usage.CostUSD)
+	}
+}

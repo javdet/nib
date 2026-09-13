@@ -53,6 +53,11 @@ const IncidentDetail = lazy(() =>
 		default: m.IncidentDetail,
 	})),
 )
+const StatisticsPage = lazy(() =>
+	import('@/features/statistics/pages/statistics-page').then((m) => ({
+		default: m.StatisticsPage,
+	})),
+)
 const SystemToolsPage = lazy(() =>
 	import('@/features/system-tools/pages/system-tools-page').then((m) => ({
 		default: m.SystemToolsPage,
@@ -93,6 +98,7 @@ export function App() {
 							<Route path="/tools" element={<ToolsPage />} />
 							<Route path="/skills" element={<SkillsPage />} />
 							<Route path="/variables" element={<VariablesPage />} />
+							<Route path="/statistics" element={<StatisticsPage />} />
 							<Route path="/system-tools" element={<SystemToolsPage />} />
 							<Route path="/task-tracker" element={<RedirectToTools />} />
 							<Route path="/mcp-connections" element={<RedirectToTools />} />

@@ -128,6 +128,11 @@ type ChatService struct {
 	actionExec       ActionExecConfig
 	activity         *ActivityBroker
 
+	// statsWriter is optional: nil in every service test and whenever the
+	// statistics tables are not wired. Set through SetStatsWriter.
+	statsWriter     repository.StatsWriter
+	configuredModel string
+
 	mcpDiscoveryMu    sync.RWMutex
 	mcpDiscoveryCache []mcpDiscoveryResult
 	mcpDiscoveryUntil time.Time
@@ -779,7 +784,11 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 		logAgentRoundStart(roundNum, len(messages), len(catalog.tools), logCtx)
 
 		logSendingCompletionRequest(roundNum, logCtx)
+		started := time.Now()
 		asst, err := s.provider.CompleteWithTools(ctx, messages, catalog.tools)
+		// No dialog and no plan here: POST /api/v1/chat runs a turn that belongs
+		// to neither, so this usage is attributed to the mode alone.
+		s.recordLLMUsage(ctx, nil, nil, modeName, asst.Usage, time.Since(started), err)
 		if err != nil {
 			logCompletionError(roundNum, err, logCtx)
 			return "", fmt.Errorf("completion round %d: %w", roundNum, err)

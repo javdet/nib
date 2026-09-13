@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
@@ -388,7 +389,11 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 		logAgentRoundStart(roundNum, len(messages), len(catalog.tools), logCtx)
 
 		logSendingCompletionRequest(roundNum, logCtx)
+		started := time.Now()
 		asst, err := s.provider.CompleteWithTools(ctx, messages, catalog.tools)
+		// Recorded before the error check: a failed round still consumed the
+		// request, and its outcome is what keeps it from reading as free.
+		s.recordLLMUsage(ctx, &dialogID, &cfg.planID, modeName, asst.Usage, time.Since(started), err)
 		if err != nil {
 			logCompletionError(roundNum, err, logCtx)
 			return domain.ChatResponse{}, fmt.Errorf("completion round %d: %w", roundNum, err)

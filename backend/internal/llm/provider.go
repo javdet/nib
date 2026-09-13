@@ -47,6 +47,24 @@ type ToolCall struct {
 	Arguments string
 }
 
+// Usage is what the provider reported about one call.
+//
+// CachedPromptTokens is a subset of PromptTokens and ReasoningTokens a subset of
+// CompletionTokens -- both providers report them that way, so they are "of
+// which" figures and summing all four double-counts.
+type Usage struct {
+	Model              string
+	PromptTokens       int
+	CachedPromptTokens int
+	CompletionTokens   int
+	ReasoningTokens    int
+	TotalTokens        int
+	// CostUSD is nil unless the provider priced the call itself. OpenRouter
+	// does, the OpenAI platform does not, and nib carries no rate card -- so
+	// nil means "unknown", never "free", and has to survive as a NULL column.
+	CostUSD *float64
+}
+
 // AssistantMessage holds the assistant reply from a tool-capable completion.
 // Callers running an agent loop must copy Reasoning into the assistant Message
 // they append to the history; dropping it loses the model's thinking between
@@ -55,6 +73,7 @@ type AssistantMessage struct {
 	Content   string
 	ToolCalls []ToolCall
 	Reasoning []ReasoningItem
+	Usage     Usage
 }
 
 // Provider abstracts LLM text completion so implementations

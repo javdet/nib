@@ -80,7 +80,11 @@ func (p *ResponsesProvider) CompleteWithTools(ctx context.Context, messages []Me
 		return AssistantMessage{}, wrapAPIError(op, err)
 	}
 	if err := checkResponseStatus(op, resp); err != nil {
-		return AssistantMessage{}, err
+		// Usage is carried out even though this is an error. An incomplete
+		// response is one that hit the output cap: it was generated, it was
+		// billed, and returning a zero message here would make that spend
+		// invisible to the statistics that exist to surface it.
+		return AssistantMessage{Usage: usageFromResponse(resp)}, err
 	}
 
 	asst := assistantFromResponse(resp)
@@ -88,7 +92,9 @@ func (p *ResponsesProvider) CompleteWithTools(ctx context.Context, messages []Me
 	// as a successful empty answer. It means the model spent the whole response
 	// on reasoning, so report it instead of ending the turn silently.
 	if asst.Content == "" && len(asst.ToolCalls) == 0 {
-		return AssistantMessage{}, fmt.Errorf("%s: response carried no output text and no tool calls", op)
+		// Same reasoning: the reasoning tokens this burned were still billed.
+		return AssistantMessage{Usage: asst.Usage},
+			fmt.Errorf("%s: response carried no output text and no tool calls", op)
 	}
 	return asst, nil
 }
@@ -204,6 +210,8 @@ func assistantFromResponse(resp *responses.Response) AssistantMessage {
 	var out AssistantMessage
 	var text strings.Builder
 
+	out.Usage = usageFromResponse(resp)
+
 	for _, item := range resp.Output {
 		switch item.Type {
 		case "message":
@@ -229,4 +237,23 @@ func assistantFromResponse(resp *responses.Response) AssistantMessage {
 
 	out.Content = text.String()
 	return out
+}
+
+// usageFromResponse lifts the usage block the Responses API already returns.
+// The model comes off the response rather than from config: a gateway may route
+// to a variant, and statistics are only worth keeping if they name what ran.
+func usageFromResponse(resp *responses.Response) Usage {
+	if resp == nil {
+		return Usage{}
+	}
+	u := resp.Usage
+	return Usage{
+		Model:              string(resp.Model),
+		PromptTokens:       int(u.InputTokens),
+		CachedPromptTokens: int(u.InputTokensDetails.CachedTokens),
+		CompletionTokens:   int(u.OutputTokens),
+		ReasoningTokens:    int(u.OutputTokensDetails.ReasoningTokens),
+		TotalTokens:        int(u.TotalTokens),
+		CostUSD:            costFromUsageJSON(u.RawJSON()),
+	}
 }

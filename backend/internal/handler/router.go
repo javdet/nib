@@ -34,6 +34,7 @@ type Deps struct {
 	IncludedTools  *service.IncludedToolsService
 	ToolCategories *service.ToolCategoryService
 	Selection      *service.SelectionStore
+	Stats          *service.StatsService
 
 	// File-backed configuration surfaces, edited directly through the API.
 	SystemPrompts *systemprompts.Service
@@ -77,6 +78,7 @@ func NewRouter(d Deps) chi.Router {
 	company := NewCompanyHandler(d.Company)
 	dialogs := NewDialogHandler(d.Dialogs, d.Chat)
 	selection := NewSelectionHandler(d.Selection)
+	stats := NewStatsHandler(d.Stats)
 	toolCategories := NewToolCategoriesHandler(d.ToolCategories)
 	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookToken)
 	execution := NewExecutionHandler(d.Chat)
@@ -96,6 +98,8 @@ func NewRouter(d Deps) chi.Router {
 			r.Delete("/", execution.Stop())
 		})
 		r.Post("/agent-runner/webhook", agentWebhook.Receive())
+
+		r.Get("/stats", stats.Get())
 
 		r.Route("/selection", func(r chi.Router) {
 			r.Get("/", selection.Get())

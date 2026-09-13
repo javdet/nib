@@ -4,6 +4,20 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [Unreleased]
+
+### Added
+- **Statistics page.** A new **Statistics** entry in the sidebar, next to Help, showing task metrics broken down by status, token usage and cost as both figures and charts, over a selectable range (24 hours to 12 months). Also covers LLM calls and failures, average call duration, a per-model / per-mode / per-operation breakdown, the most expensive tasks, and container agent runs.
+- **Token usage is now recorded.** Prompt, cached, completion and reasoning tokens were previously returned by the provider and thrown away — `llm.AssistantMessage` did not carry them. Every LLM call now writes a row to the new `llm_usage` table with its dialog, plan, mode, model, tokens, duration and outcome.
+- **Cost is now stored where the provider reports it.** nib still carries no rate card, so cost is recorded only where a gateway prices the call (OpenRouter returns `usage.cost`; the OpenAI platform does not) and from the agent-runner webhook, which already reported `total_cost_usd`. An unreported cost is stored as NULL and shown as a dash, never as `$0.00`.
+- **Plan status history.** Status changes now append to `plan_status_transitions`, so status over time can be charted. Plan status itself still lives in `data/plan_state/{id}.json` and keeps only the current value, so the history starts accumulating from this release; the current breakdown remains complete.
+- A response the provider cuts short (`incomplete`, i.e. it hit the output-token cap) now reports its token usage alongside the error instead of returning empty. Those tokens were generated and billed, and would otherwise have been invisible.
+- `GET /api/v1/stats?from=&to=&bucket=` returns the whole dashboard in one response. `bucket` is one of `hour`, `day`, `week`, `month`, and a range is capped at 400 buckets.
+
+### Changed
+- The agent-runner webhook now parses the `input_tokens` and `output_tokens` the container was already sending and had been silently discarding, and persists each finished run to `agent_run_usage`. A retried delivery no longer risks double-counting cost: the insert sits behind the existing job-name de-duplication and a unique index enforces it in the database.
+- Usage rows deliberately carry no foreign key to `chat_dialogs`. Statistics are kept indefinitely, and `ON DELETE CASCADE` would erase the record of what a task cost as soon as its dialog was deleted.
+
 ## [v0.8.0] - 2026-09-12
 
 ### Added

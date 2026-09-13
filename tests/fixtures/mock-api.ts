@@ -4,6 +4,7 @@ import {
 	makeActionPlan,
 	makeMessages,
 	makePlanState,
+	makeStatistics,
 	type Dialog,
 	type DialogMessage,
 } from './data'
@@ -126,4 +127,8 @@ export async function mockEmptyWorkspace(page: Page) {
 	await mockJson(page, `${V1}/projects`, [])
 	await mockJson(page, `${V1}/selection`, {})
 	await mockJson(page, `${V1}/execution`, null)
+	// The sidebar links to /statistics from every page, so the shell's
+	// console-error-free assertion needs this route stubbed even when the test
+	// never opens it.
+	await mockJson(page, `${V1}/stats`, makeStatistics())
 }

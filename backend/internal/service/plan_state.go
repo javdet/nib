@@ -62,6 +62,11 @@ func (s *ChatService) WritePlanState(dialogID uuid.UUID, state PlanState) error 
 	// file read is not on any hot path.
 	if previous, err := s.ReadPlanState(dialogID); err == nil {
 		metrics.RecordPlanStatusTransition(string(previous.Status), string(state.Status))
+		// The same transition, persisted. The Prometheus counter answers "how
+		// often" for alerting; this answers "when", which is the only thing the
+		// statistics page can build a status-over-time series from -- plan state
+		// on disk keeps just the current value.
+		s.recordPlanStatusTransition(dialogID, string(previous.Status), string(state.Status))
 	}
 
 	if err := os.MkdirAll(s.planStateDir, 0o755); err != nil {

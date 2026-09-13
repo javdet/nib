@@ -54,10 +54,18 @@ type repoInfo struct {
 }
 
 type usageInfo struct {
-	DurationMS   int     `json:"duration_ms"`
-	NumTurns     int     `json:"num_turns"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
-	SessionID    string  `json:"session_id"`
+	DurationMS int `json:"duration_ms"`
+	NumTurns   int `json:"num_turns"`
+	// TotalCostUSD is a pointer, and 0 is still treated as "unreported" by the
+	// service: agent-entrypoint.sh builds this with jq '... // 0', so an agent
+	// that prices nothing (the Codex path does not) sends 0 rather than
+	// omitting the field. Storing that 0 would let the cost chart claim a run
+	// was free when it merely stayed silent.
+	TotalCostUSD *float64 `json:"total_cost_usd"`
+	SessionID    string   `json:"session_id"`
+	// Already sent by the container and, until now, silently dropped here.
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
 }
 
 func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
@@ -108,6 +116,8 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 			NumTurns:     req.Usage.NumTurns,
 			TotalCostUSD: req.Usage.TotalCostUSD,
 			SessionID:    req.Usage.SessionID,
+			InputTokens:  req.Usage.InputTokens,
+			OutputTokens: req.Usage.OutputTokens,
 		})
 		if err != nil {
 			metrics.RecordAgentRunnerWebhook(metrics.WebhookError)
@@ -123,7 +133,7 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 			strconv.FormatBool(req.Repo.Pushed),
 			req.Usage.DurationMS,
 			req.Usage.NumTurns,
-			req.Usage.TotalCostUSD,
+			costOrZero(req.Usage.TotalCostUSD),
 		)
 
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "ok"})
@@ -142,4 +152,13 @@ func (h *AgentWebhookHandler) authorize(r *http.Request) bool {
 	}
 	token := strings.TrimSpace(strings.TrimPrefix(auth, prefix))
 	return subtle.ConstantTimeCompare([]byte(token), []byte(h.webhookToken)) == 1
+}
+
+// costOrZero feeds the Prometheus counter, which cannot express "unknown" and
+// already ignores a zero.
+func costOrZero(cost *float64) float64 {
+	if cost == nil {
+		return 0
+	}
+	return *cost
 }
