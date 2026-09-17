@@ -151,7 +151,9 @@ var defaultCreateActionPlanParameters = json.RawMessage(`{
                     "repository": { "type": "string" },
                     "pr_title": { "type": "string" },
                     "comment": { "type": "string" },
-                    "categories": { "type": "array", "items": { "type": "string" } }
+                    "categories": { "type": "array", "items": { "type": "string" } },
+                    "downtime": { "type": "string" },
+                    "degraded": { "type": "string" }
                   },
                   "required": ["type", "action", "categories"]
                 }
@@ -182,7 +184,9 @@ var defaultCreateActionPlanParameters = json.RawMessage(`{
               "repository": { "type": "string" },
               "pr_title": { "type": "string" },
               "comment": { "type": "string" },
-              "categories": { "type": "array", "items": { "type": "string" } }
+              "categories": { "type": "array", "items": { "type": "string" } },
+              "downtime": { "type": "string" },
+              "degraded": { "type": "string" }
             },
             "required": ["type", "action", "categories"]
           }
@@ -201,7 +205,7 @@ func CreateActionPlanToolDef(allowToolsDir string, categoryNames []string) llm.T
 	return llm.ToolDef{
 		Name:        CreateActionPlanToolName,
 		Description: "Save a detailed action plan for the current conversation. The plan is stored for rendering in the web interface.",
-		Parameters:  withStepCategories(loadCreateActionPlanParameters(allowToolsDir), categoryNames),
+		Parameters:  withStepFields(loadCreateActionPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 

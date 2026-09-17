@@ -31,6 +31,7 @@ const fullPlan: ActionPlan = {
 					type: 'shell',
 					action: 'Run rollout status',
 					command: 'kubectl rollout status deployment/api',
+					degraded: 'api runs at reduced replicas for ~3 minutes',
 				},
 				{
 					type: 'code',
@@ -53,6 +54,7 @@ const fullPlan: ActionPlan = {
 			type: 'shell',
 			action: 'Rollback deployment',
 			command: 'kubectl rollout undo deployment/api',
+			downtime: 'api serves nothing for the ~30s the undo takes',
 		},
 	],
 }
@@ -90,6 +92,42 @@ describe('buildPlanMarkdown', () => {
 		expect(markdown).toContain('### Rollback')
 		expect(markdown).toContain('- [ ] **R1** Action')
 		expect(markdown).toContain('**Comment:** Only if health checks fail')
+		expect(markdown).toContain(
+			'**Degraded:** api runs at reduced replicas for ~3 minutes',
+		)
+		expect(markdown).toContain(
+			'**Downtime:** api serves nothing for the ~30s the undo takes',
+		)
+	})
+
+	// The export shares its precedence with the badge, so a plan that set both
+	// against the prompt's rule reads the same in both places.
+	it('exports only the downtime line for a step carrying both fields', () => {
+		const markdown = buildPlanMarkdown({
+			...baseInput,
+			plan: {
+				stages: [
+					{
+						number: 1,
+						title: 'Deploy',
+						description: 'Deploy the service.',
+						steps: [
+							{
+								type: 'shell',
+								action: 'Stop the database',
+								downtime: 'orders-db refuses every query',
+								degraded: 'reads are slower',
+							},
+						],
+						checks: [],
+					},
+				],
+				rollback: [],
+			},
+		})
+
+		expect(markdown).toContain('**Downtime:** orders-db refuses every query')
+		expect(markdown).not.toContain('**Degraded:**')
 	})
 
 	it('uses placeholders when the action plan is missing', () => {

@@ -50,6 +50,12 @@ type actionListAction struct {
 	// Executed is the operator's checkbox: their judgement that the action is
 	// genuinely done. Nothing sets it automatically.
 	Executed bool `json:"executed"`
+	// Downtime and Degraded carry the impact the planner declared for this
+	// action. Unlike categories and repository, which this projection drops as
+	// planning detail, an agent about to carry an action out has to know that
+	// running it takes the system down.
+	Downtime string `json:"downtime,omitempty"`
+	Degraded string `json:"degraded,omitempty"`
 	// Run is the last sub-agent attempt at this action, when there has been one.
 	// It is deliberately separate from Executed: a sub-agent finishing is not
 	// the same claim as the operator accepting the result.
@@ -116,6 +122,13 @@ type storedActionStep struct {
 	// needs. It decides that sub-agent's MCP tools and nothing else: no view
 	// renders it, and it is never shown to the operator.
 	Categories []string `json:"categories,omitempty"`
+	// Downtime and Degraded are what carrying this step out costs the people
+	// using the system: a non-empty value is both the operator-facing label and
+	// its tooltip. They are mutually exclusive by the plan prompt's rule --
+	// downtime supersedes degraded -- and the web interface enforces that by
+	// precedence rather than trusting the model to have obeyed it.
+	Downtime string `json:"downtime,omitempty"`
+	Degraded string `json:"degraded,omitempty"`
 }
 
 type storedActionCheck struct {
@@ -247,6 +260,8 @@ func buildActionListResponse(
 				Command:  step.Command,
 				PRTitle:  step.PRTitle,
 				PRURL:    step.PRURL,
+				Downtime: step.Downtime,
+				Degraded: step.Degraded,
 				Executed: executed,
 				Run:      actionListRunFor(execRuns, key),
 				Notes:    notes[key],
@@ -274,6 +289,8 @@ func buildActionListResponse(
 			Command:  step.Command,
 			PRTitle:  step.PRTitle,
 			PRURL:    step.PRURL,
+			Downtime: step.Downtime,
+			Degraded: step.Degraded,
 			Executed: executed,
 			Run:      actionListRunFor(execRuns, key),
 			Notes:    notes[key],

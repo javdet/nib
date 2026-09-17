@@ -103,6 +103,14 @@ func (s *ChatService) buildActionSeed(
 	if r := strings.TrimSpace(step.Repository); r != "" {
 		fmt.Fprintf(&b, "Repository: %s\n", r)
 	}
+	// What the planner said this action costs the people using the system. The
+	// agent is the one about to cause it, so it is told before it starts rather
+	// than left to infer it from the action text.
+	if d := strings.TrimSpace(step.Downtime); d != "" {
+		fmt.Fprintf(&b, "Downtime: %s\n", d)
+	} else if d := strings.TrimSpace(step.Degraded); d != "" {
+		fmt.Fprintf(&b, "Degradation: %s\n", d)
+	}
 	b.WriteString("\n" + strings.TrimSpace(step.Action) + "\n")
 	if c := strings.TrimSpace(step.Command); c != "" {
 		b.WriteString("\n### Command\n\n```\n" + c + "\n```\n")

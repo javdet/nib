@@ -140,6 +140,13 @@ export interface ActionStep {
 	// that rebuilds a step keeps it, since dropping it would silently strip the
 	// executor's tools.
 	categories?: string[]
+	// downtime and degraded say what carrying this step out costs the people
+	// using the system. A non-empty value both turns the label on and is the
+	// tooltip behind it, so an empty string is the same as no field at all. The
+	// plan prompt forbids setting both on one step; the UI enforces that by
+	// precedence rather than trusting it (see lib/step-impact.ts).
+	downtime?: string
+	degraded?: string
 }
 
 export interface ActionCheck {

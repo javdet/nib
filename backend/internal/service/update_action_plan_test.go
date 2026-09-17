@@ -572,3 +572,35 @@ func slicesEqual(got, want []string) bool {
 	}
 	return true
 }
+
+// The impact fields are described only by the tool schema: no Go type on the
+// write path names them, so they survive on the strength of the plan document
+// being carried as map[string]any from read to renumber to write. A struct
+// slipped into that path would drop them silently, and the plan the operator
+// reads would lose the only warning it carried.
+func TestUpdateActionPlanHandler_keepsImpactFieldsThroughLaterWrites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc, planID := updateActionPlanFixture(t)
+	handler := svc.updateActionPlanHandler(planID, "")
+
+	content := stageContent("stop the database")
+	content["steps"].([]any)[0].(map[string]any)["downtime"] = "orders-db refuses every query for ~10 minutes"
+
+	if _, err := handler(ctx, map[string]any{"stage": "Configure Cassandra JMX", "content": content}); err != nil {
+		t.Fatalf("first stage: err = %v", err)
+	}
+	// A second stage rewrites the whole document and renumbers it.
+	if _, err := handler(ctx, map[string]any{
+		"stage":   "Setup and connect Cassandra Reaper",
+		"content": stageContent("second stage"),
+	}); err != nil {
+		t.Fatalf("second stage: err = %v", err)
+	}
+
+	stages := readStoredStages(t, svc, planID)
+	step := stages[0]["steps"].([]any)[0].(map[string]any)
+	if got := argString(step["downtime"]); got != "orders-db refuses every query for ~10 minutes" {
+		t.Fatalf("downtime = %q, want it to survive the later write", got)
+	}
+}
