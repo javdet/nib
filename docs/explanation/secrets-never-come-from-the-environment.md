@@ -5,8 +5,7 @@ resolved when the server is called. The obvious next question is why that lookup
 does not also fall back to the backend's own environment, the way almost every
 other tool's config substitution does.
 
-It is deliberate, and the reason is worth understanding before you try to work
-around it.
+It is deliberate. Read the reason before you try to work around it.
 
 ## What the fallback would let you do
 
@@ -41,7 +40,7 @@ are things an operator deliberately put there for this purpose.
 This is an instance of a general rule: *a config file that can name a value and
 a destination must not be able to name values it was not given.*
 
-The alternative designs are worth weighing.
+Two alternatives, and what nib does instead.
 
 **An allow-list of referenceable variables.** Workable, and it is what some
 tools do. It fails on maintenance: every new variable is a decision nobody
@@ -95,9 +94,9 @@ stored values are gone, not merely inaccessible.
 It is not a claim that nib's secrets are safe against an attacker who reaches
 the API. They are not — anyone who can call the API can select a secret for the
 executor, register a server that uses it, and call a tool. The property is
-narrower and worth stating precisely: **editing `mcp.json` does not widen your
-access beyond the secrets someone deliberately stored.** The backend's own
-operating credentials are outside that boundary, and stay there.
+narrower: **editing `mcp.json` does not widen your access beyond the secrets
+someone deliberately stored.** The backend's own operating credentials are
+outside that boundary, and stay there.
 
 For the broader question of who can reach the API at all, nib assumes a trusted
 network or your own authenticating proxy. See [About the

@@ -116,8 +116,8 @@ not connect it. Capability comes from MCP servers and the per-mode tool lists,
 which is a separate subject — see [Modes, tools and the
 catalog](modes-tools-and-the-catalog.md).
 
-It is worth saying because the failure looks the same from the chat: the agent
-knows what to do and does not do it.
+The failure looks the same from the chat either way: the agent knows what to do
+and does not do it.
 
 ## See also
 

@@ -30,7 +30,7 @@ C4Context
   Rel(prom, nib, "Scrapes /metrics", "HTTP")
 ```
 
-Two things about this picture are worth dwelling on.
+Two things about this picture:
 
 **There is one LLM endpoint, not two.** The same base URL serves chat
 completions and embeddings. That is a real constraint rather than an

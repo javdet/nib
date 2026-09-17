@@ -67,12 +67,11 @@ error message is the wrong trade.
 Whatever `llm.api` says, embeddings always go to `/v1/embeddings`. The setting
 governs completions only.
 
-This is worth knowing because it is the seam where the single-endpoint design
-shows. One `baseURL` serves both, so a provider has to implement both — which is
-why Anthropic cannot be used directly, and why a provider switch that looks like
-a one-line change can silently break knowledge search if the embedding model's
-*name* changes. The vectors are fine; the label no longer matches what the
-collections recorded.
+It is the seam where the single-endpoint design shows. One `baseURL` serves
+both, so a provider has to implement both — which is why Anthropic cannot be
+used directly, and why a provider switch that looks like a one-line change can
+silently break knowledge search if the embedding model's *name* changes. The
+vectors are fine; the label no longer matches what the collections recorded.
 
 Separating the completion endpoint from the embedding endpoint would be the
 prerequisite for supporting providers that serve only one of the two. It is a

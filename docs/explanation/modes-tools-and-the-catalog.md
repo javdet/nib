@@ -50,10 +50,9 @@ Narrowing would be a much worse trade if a removed tool were unreachable. It is
 not: everything outside the offered set stays findable through `tool_search`,
 backed by pgvector embeddings of every tool description in the catalog.
 
-This is the design's quiet load-bearing piece. It means the default set can be
-small without the agent being stuck when it needs something unusual — the model
-searches, finds the tool, and calls it. "Included" is better read as *offered up
-front* than as *permitted*.
+It means the default set can be small without the agent being stuck when it
+needs something unusual — the model searches, finds the tool, and calls it.
+"Included" is better read as *offered up front* than as *permitted*.
 
 It also explains why the tool catalog lives in Postgres with embeddings at all,
 which otherwise looks like over-engineering for a list of a few hundred strings.
@@ -88,9 +87,8 @@ orchestrator's tools are stripped in code for exactly this reason, and the
 discuss-only tools are guarded both at registration and by a pass over the allow
 set.
 
-The result is a rule worth internalising: **the JSON files are the floor, not
-the ceiling.** Adding a name to a mode's list may do nothing. Removing one
-always works.
+The result is a rule: **the JSON files are the floor, not the ceiling.** Adding
+a name to a mode's list may do nothing. Removing one always works.
 
 ## The per-plan third layer
 
@@ -111,8 +109,8 @@ and reachable only through search.
 
 **Predicting what the agent can do takes three lookups**, not one: the mode's
 allow list, the mode's included list, and — for a plan — the chosen categories.
-The developer catalog endpoint exists because that calculation is genuinely hard
-to do by hand.
+The developer catalog endpoint exists because that calculation is hard to do by
+hand.
 
 **"Why didn't it use that tool?" has several answers.** Not in the allow list;
 removed from included; its service is not configured; or it simply was not

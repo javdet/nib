@@ -5,8 +5,8 @@ and what each one costs. These pages are for reading away from the keyboard —
 they will not tell you which button to press, and none of them is needed to use
 nib.
 
-They are worth reading when something nib does seems arbitrary. Most of the
-time it is not, and knowing the reason changes what you do next.
+Read them when something nib does seems arbitrary. Most of the time it is not,
+and knowing the reason changes what you do next.
 
 ## The system as a whole
 

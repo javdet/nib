@@ -72,8 +72,8 @@ cannot ask you anything, because you are waiting on the call that contains it.
 So it suspends. The pause is written to a file, the orchestrator relays the
 questions as a question of its own, and your answers are routed back into the
 sub-agent's dangling tool call. It resumes where it stopped. This is the most
-intricate part of the system, and it exists entirely to make one blocking call
-behave like a conversation.
+complicated part of the system, and it exists entirely to make one blocking
+call behave like a conversation.
 
 **What you see:** a plan that goes quiet after "started" is a fan-out or an
 action running, and it will report when it lands. A plan that asks you a

@@ -64,7 +64,7 @@ working default.
 
 ## Step 4 — Check what we are about to start
 
-Before starting anything, let us look at what the stack contains:
+Before starting anything, we can see what the stack contains:
 
 ```bash
 docker compose config --services
