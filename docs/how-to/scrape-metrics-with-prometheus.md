@@ -71,7 +71,7 @@ point your scraper at `http://<host>:9090/metrics`.
 If the scraper runs in the same Compose network, do not publish the port at
 all — scrape `backend:9090` directly and leave it off the host.
 
-## Alerts worth having
+## Alerts to set up
 
 | What you are checking | Query |
 |---|---|

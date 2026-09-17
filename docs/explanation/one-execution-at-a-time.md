@@ -36,7 +36,7 @@ decision back where it belongs — you see what is running, and you decide wheth
 to wait, stop it, or do something else.
 
 The refusal names the holder for exactly that reason. "Busy" would be useless;
-"plan X is executing step 4" is actionable.
+"plan X is executing step 4" is something you can act on.
 
 `agent.actionExecConcurrency` exists in the config and is *clamped to one*. A
 higher value is accepted, logged, and ignored. That is an unusual choice —

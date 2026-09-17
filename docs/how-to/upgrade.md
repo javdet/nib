@@ -47,7 +47,7 @@ with the chart.
 | Tool allow lists | Kept. New built-in tool names are merged in once each; **no name is ever removed**. |
 | Dialogs, variables, secrets, MCP connections, knowledge base | Migrated in place at startup. |
 
-Two consequences worth knowing:
+Two consequences:
 
 - A **prompt override never updates itself.** If you overrode the discuss
   prompt several releases ago, you are still running that text. Delete the

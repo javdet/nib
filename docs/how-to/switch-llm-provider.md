@@ -39,8 +39,8 @@ unless reasoning is off, and the agent loop always sends tools — so on `chat`
 you would be running a reasoning model with its reasoning disabled.
 
 OpenAI model ids carry no provider prefix. If you are arriving from OpenRouter,
-the embedding model's name changes, so do the [rename](#rename-the-embedding-
-model-in-the-database).
+the embedding model's name changes, so do the
+[rename](#rename-the-embedding-model-in-the-database).
 
 ## To move to OpenRouter
 
@@ -84,9 +84,9 @@ Moving to the OpenAI platform, the same rename in reverse.
 The stored vectors stay valid — OpenRouter proxies the same OpenAI model, so
 only the label differs. **Do not re-ingest.**
 
-If you are genuinely changing to a different embedding model, that is not a
-rename: the existing vectors are meaningless against the new one and every
-collection has to be re-ingested.
+If the underlying model is changing, not just its name, that is not a rename:
+the existing vectors are meaningless against the new one and every collection
+has to be re-ingested.
 
 ## Update the knowledge-base container too
 
