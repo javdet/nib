@@ -35,7 +35,9 @@ var defaultUpdateRollbackPlanParameters = json.RawMessage(`{
           "repository": { "type": "string" },
           "pr_title": { "type": "string" },
           "comment": { "type": "string" },
-          "categories": { "type": "array", "items": { "type": "string" } }
+          "categories": { "type": "array", "items": { "type": "string" } },
+          "downtime": { "type": "string" },
+          "degraded": { "type": "string" }
         },
         "required": ["type", "action", "categories"]
       }
@@ -55,7 +57,7 @@ func UpdateRollbackPlanToolDef(allowToolsDir string, categoryNames []string) llm
 			"The rollback is one flat list for the whole plan, so the call replaces it as a whole and must carry every entry. " +
 			"This is how a plan assembled stage by stage gets its rollback, and how the rollback of an existing plan is redone " +
 			"without discarding the operator's checkboxes, comments and action runs.",
-		Parameters: withStepCategories(loadUpdateRollbackPlanParameters(allowToolsDir), categoryNames),
+		Parameters: withStepFields(loadUpdateRollbackPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 

@@ -8,16 +8,19 @@ import {
 	type ReactNode,
 } from 'react'
 import {
+	AlertTriangle,
 	ChevronDown,
 	ChevronUp,
 	FolderGit2,
 	GripVertical,
 	Loader2,
 	MessageSquare,
+	OctagonAlert,
 	Pencil,
 	Play,
 	RotateCcw,
 	Square,
+	type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -37,6 +40,12 @@ import type {
 } from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
 import { actionTypeIcon } from '../lib/action-type-icon'
+import {
+	impactedIndexes,
+	stepImpact,
+	strongestImpact,
+	type ImpactKind,
+} from '../lib/step-impact'
 import {
 	actionPlanItemNumber,
 	actionPlanStageNumber,
@@ -345,6 +354,105 @@ function RepositoryBadge({ step }: { step: ActionStep }) {
 			<FolderGit2 className="size-3.5 shrink-0" aria-hidden />
 			<span className="truncate">{repository}</span>
 		</Badge>
+	)
+}
+
+// The two impact labels. Colours come from the plan status pills so the whole
+// view speaks one palette, and the wording is the operator's, not ours: the
+// planner's sentence is the tooltip, because "downtime" alone does not say what
+// goes down or for how long.
+const IMPACT_STYLES: Record<
+	ImpactKind,
+	{ label: string; className: string; Icon: LucideIcon }
+> = {
+	downtime: {
+		label: 'downtime',
+		className:
+			'border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-300',
+		Icon: OctagonAlert,
+	},
+	degraded: {
+		label: 'degraded',
+		className:
+			'border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300',
+		Icon: AlertTriangle,
+	},
+}
+
+function ImpactBadge({ step }: { step: ActionStep }) {
+	const impact = stepImpact(step)
+	if (!impact) return null
+
+	const { label, className, Icon } = IMPACT_STYLES[impact.kind]
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Badge
+					variant="outline"
+					tabIndex={0}
+					className={cn(
+						'shrink-0 font-medium uppercase tracking-wide',
+						className,
+					)}
+				>
+					<Icon className="size-3.5 shrink-0" aria-hidden />
+					{label}
+				</Badge>
+			</TooltipTrigger>
+			{/* These tooltips hold a whole sentence, unlike every other one in
+			    this file, so they need a width to wrap against. */}
+			<TooltipContent className="max-w-xs">{impact.text}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// ActionRowHeader fills the row's header strip. The strip itself carries no
+// gap, so the badges bring their own.
+function ActionRowHeader({ step }: { step: ActionStep }) {
+	return (
+		<div className="flex min-w-0 items-center gap-2">
+			<ImpactBadge step={step} />
+			<RepositoryBadge step={step} />
+		</div>
+	)
+}
+
+// StageImpactBadge is the rollup on a stage heading: a collapsed or scrolled
+// plan still says which stages take something down, and the tooltip names the
+// rows so the operator can go straight to them.
+function StageImpactBadge({
+	steps,
+	numberOf,
+}: {
+	steps: ActionStep[]
+	numberOf: (index: number) => string
+}) {
+	const kind = strongestImpact(steps)
+	if (!kind) return null
+
+	const { label, className, Icon } = IMPACT_STYLES[kind]
+	const numbers = impactedIndexes(steps, kind).map(numberOf)
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Badge
+					variant="outline"
+					tabIndex={0}
+					className={cn(
+						'shrink-0 px-2 text-[10px] font-medium uppercase tracking-wide',
+						className,
+					)}
+				>
+					<Icon className="size-3 shrink-0" aria-hidden />
+					{label}
+				</Badge>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-xs">
+				{`${label === 'downtime' ? 'Downtime' : 'Degradation'} in ${numbers.join(', ')}`}
+			</TooltipContent>
+		</Tooltip>
 	)
 }
 
@@ -802,8 +910,14 @@ export function ActionPlanView({
 		<div className="space-y-6">
 			{plan.stages.map((stage, stageIdx) => (
 				<section key={`stage-${stageIdx}`} className="space-y-3">
-					<h3 className="text-lg font-semibold">
-						{actionPlanStageNumber(stageIdx)}. {stage.title}
+					<h3 className="flex items-center gap-2 text-lg font-semibold">
+						<span>
+							{actionPlanStageNumber(stageIdx)}. {stage.title}
+						</span>
+						<StageImpactBadge
+							steps={stage.steps}
+							numberOf={(i) => actionPlanItemNumber('step', stageIdx, i)}
+						/>
 					</h3>
 
 					{stage.steps.length > 0 ? (
@@ -839,7 +953,7 @@ export function ActionPlanView({
 											)}
 											checked={checkedSet.has(key)}
 											comment={comments[key] ?? ''}
-											header={<RepositoryBadge step={step} />}
+											header={<ActionRowHeader step={step} />}
 											onToggle={onToggle}
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
@@ -922,7 +1036,13 @@ export function ActionPlanView({
 
 			{plan.rollback.length > 0 ? (
 				<section className="space-y-3">
-					<h3 className="text-lg font-semibold">Rollback</h3>
+					<h3 className="flex items-center gap-2 text-lg font-semibold">
+						<span>Rollback</span>
+						<StageImpactBadge
+							steps={plan.rollback}
+							numberOf={(i) => actionPlanItemNumber('rollback', 0, i)}
+						/>
+					</h3>
 					<ul className="space-y-2">
 						{plan.rollback.map((step, idx) => {
 							const key = `rollback.${idx}`
@@ -933,7 +1053,7 @@ export function ActionPlanView({
 										number={actionPlanItemNumber('rollback', 0, idx)}
 										checked={checkedSet.has(key)}
 										comment={comments[key] ?? ''}
-										header={<RepositoryBadge step={step} />}
+										header={<ActionRowHeader step={step} />}
 										onToggle={onToggle}
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}

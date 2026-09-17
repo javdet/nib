@@ -39,6 +39,11 @@ you waited. They are finished and settled, and they are shown to you under
   performing the revert takes, not from what reading the stages took. The field is
   required on every entry, so one that needs no MCP tools takes `[]`. A `code`
   entry takes `[]` too: it is built in a container with its own fixed tools.
+* **An entry that undoes an outage usually causes one.** The `downtime` and
+  `degraded` rules above apply to your entries unchanged. The stages you are
+  reading carry these fields where they apply: an entry reversing such a step
+  almost always costs the same, so say so rather than leaving the operator to
+  infer it.
 * **Never use `ask_question`.** You do not have it. When you need a decision from the
   user, call `report_blocker` with the question, two or three options, and the
   assumption you will proceed under. Then finish the rollback under that assumption

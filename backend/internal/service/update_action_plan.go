@@ -44,7 +44,9 @@ var defaultUpdateActionPlanParameters = json.RawMessage(`{
               "repository": { "type": "string" },
               "pr_title": { "type": "string" },
               "comment": { "type": "string" },
-              "categories": { "type": "array", "items": { "type": "string" } }
+              "categories": { "type": "array", "items": { "type": "string" } },
+              "downtime": { "type": "string" },
+              "degraded": { "type": "string" }
             },
             "required": ["type", "action", "categories"]
           }
@@ -77,7 +79,7 @@ func UpdateActionPlanToolDef(allowToolsDir string, categoryNames []string) llm.T
 		Description: "Save a single stage of the action plan for the current conversation, leaving the other stages and the rollback untouched. " +
 			"The stage name must be one of the stages of the DAG built during decomposition; an existing stage of that name is replaced. " +
 			"The stage appears in the web interface as soon as the call returns, so call it once per stage while planning instead of waiting for the whole plan.",
-		Parameters: withStepCategories(loadUpdateActionPlanParameters(allowToolsDir), categoryNames),
+		Parameters: withStepFields(loadUpdateActionPlanParameters(allowToolsDir), categoryNames),
 	}
 }
 

@@ -164,7 +164,8 @@ func TestBuildRollbackSeed_carriesThePlanAndNoStageOfItsOwn(t *testing.T) {
 	stages := []storedActionStage{{
 		Number: 1,
 		Title:  "Configure Cassandra JMX",
-		Steps:  []storedActionStep{{Number: "1.1", Type: "shell", Action: "enable jmx"}},
+		Steps: []storedActionStep{{Number: "1.1", Type: "shell", Action: "enable jmx",
+			Downtime: "Cassandra serves nothing for the ~2 minutes the restart takes"}},
 	}}
 
 	seed, err := svc.buildRollbackSeed(planID, stages)
@@ -176,6 +177,11 @@ func TestBuildRollbackSeed_carriesThePlanAndNoStageOfItsOwn(t *testing.T) {
 	}
 	if !strings.Contains(seed, "Configure Cassandra JMX") || !strings.Contains(seed, "Bump the api chart") {
 		t.Fatalf("seed = %q", seed)
+	}
+	// plannedStages types the plan to strip unmodelled keys, so a field the
+	// struct does not carry never reaches the agent being asked to mirror it.
+	if !strings.Contains(seed, "Cassandra serves nothing for the ~2 minutes the restart takes") {
+		t.Fatalf("seed = %q, want the stage step's downtime", seed)
 	}
 	if strings.Contains(seed, "## Your stage") {
 		t.Fatalf("seed = %q, the rollback agent owns no stage", seed)

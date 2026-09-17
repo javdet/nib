@@ -10,6 +10,7 @@ import {
 	actionPlanItemNumber,
 	actionPlanStageNumber,
 } from './action-plan-number'
+import { stepImpact } from './step-impact'
 
 export interface PlanExportInput {
 	title: string
@@ -57,6 +58,15 @@ function appendLabels(lines: string[], step: ActionStep): void {
 	}
 	if (showRepository) {
 		lines.push(`  - **Repository:** ${repository}`)
+	}
+
+	// The export is what goes into a change ticket, and the outage warning is
+	// the line that audience reads it for. stepImpact keeps the same precedence
+	// the badge uses, so the two can never disagree.
+	const impact = stepImpact(step)
+	if (impact) {
+		const label = impact.kind === 'downtime' ? 'Downtime' : 'Degraded'
+		lines.push(`  - **${label}:** ${impact.text}`)
 	}
 }
 
