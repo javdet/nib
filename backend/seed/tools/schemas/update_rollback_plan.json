@@ -39,6 +39,14 @@
               "description": "Tool category name (e.g. kubernetes, monitoring, code-repository)."
             },
             "description": "Tool categories the sub-agent that executes this action will need. They decide which MCP tools that sub-agent is given, so name every surface the action touches and send an empty array when it needs none. A category left out is a tool the executor will not have."
+          },
+          "downtime": {
+            "type": "string",
+            "description": "Set only when performing this action makes a request the system normally serves fail or be refused: the component is stopped, scaled to zero replicas, write-locked, restarted, or something it depends on is down for the duration. One sentence naming exactly what becomes unavailable, for whom, and for roughly how long. It is shown to the operator as the tooltip of a red downtime label on this action, so a vague \"brief downtime\" is worse than nothing. Omit the field entirely when the action causes no outage, and never set it together with `degraded`."
+          },
+          "degraded": {
+            "type": "string",
+            "description": "Set only when the system keeps serving during this action but measurably worse: higher latency, lower throughput, lost redundancy or quorum, resource contention, a backlog building up. One sentence naming exactly what gets slower or weaker and for roughly how long. It is shown to the operator as the tooltip of an amber degraded label on this action. Omit the field entirely when nothing is affected, and use `downtime` instead whenever requests actually fail -- the two are never set on the same action."
           }
         },
         "required": ["type", "action", "categories"]

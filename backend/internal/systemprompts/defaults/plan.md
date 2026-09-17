@@ -118,6 +118,17 @@ Every step and every rollback entry carries `categories`: the tool categories th
 * **A `code` step also takes `[]`.** It is built by a coding agent in a container with its own fixed tools, so categories on a `code` step change nothing.
 * Nothing renders `categories`. The operator never sees it; it exists only to size the executing agent's tool list.
 
+## Downtime and degradation
+Two optional fields sit on a step or a rollback entry: `downtime` and `degraded`. They are how the operator learns, before they start, what carrying the action out costs the people using the system. Set at most one of them, and only when its threshold below is met.
+* **Set `downtime` when performing the action makes a request the system normally serves fail or be refused.** The component is stopped, scaled to zero replicas, write-locked, restarted, or something it depends on is down for the length of the action. If a request that would have succeeded a minute earlier now errors or is rejected, that is downtime.
+* **Set `degraded` when the system keeps serving but measurably worse.** Higher latency, lower throughput, redundancy or quorum lost while a member is out, one replica carrying the whole load, resource contention, a queue backing up. Nothing fails; it is slower, weaker, or closer to the edge than usual.
+* **Set neither when neither applies, which is most actions.** A read-only query, a pull request that is only opened, a manifest committed but not applied, a change behind a flag that is off -- none of these touch what the system serves, and none carry either field. Do not set one "to be safe": a warning on every action is a warning on none.
+* **Never set both on one action.** `downtime` supersedes `degraded`. When part of an action makes requests fail and the rest merely slows things down, it is `downtime`, and the text says what the slower part costs too.
+* **The value is the sentence the operator reads.** It is shown as the tooltip of a red `downtime` or amber `degraded` label above the action, so write it for them: name exactly what becomes unavailable or slower, for whom, and for roughly how long.
+* **Name a component and a duration, never a bare adjective.** "Brief downtime", "possible degradation" and "some impact" tell the operator nothing they can size a maintenance window with. When you cannot put a number on it, say what it depends on: "until the new pods pass readiness, typically 1-2 minutes".
+* **Judge the action, not the stage.** The field belongs on the one action whose execution causes the outage. In a stage of five steps where only the fourth restarts the service, only the fourth carries it.
+* **Rollback entries take both fields under the same rules.** Undoing a change usually costs the same outage as making it, and an operator running a rollback under pressure is exactly the reader who needs to be told before they start.
+
 ## Git hosting MCP rules
 - Don't use `get_repository_tree` from root recursively. Always try to read README.md in root repo first. 
 
@@ -146,6 +157,7 @@ Call `create_action_plan` with a `plan` object matching this schema:
                 {
                     "type": "shell",
                     "categories": ["kubernetes"],
+                    "degraded": "The api runs on a mix of old and new pods for the ~3 minutes the rolling update takes, with one replica fewer than usual serving. Expect elevated p99 latency; no request fails.",
                     "action": "Roll the api deployment to the new image and wait for the rollout to finish. Run it only after the chart pull request is merged and the release pipeline reports success.",
                     "command": "kubectl --context <KUBE_CONTEXT> -n prod set image deployment/api api=registry.local.net/api:1.4.0\nkubectl --context <KUBE_CONTEXT> -n prod rollout status deployment/api --timeout=180s"
                 }
@@ -169,7 +181,8 @@ Call `create_action_plan` with a `plan` object matching this schema:
                 {
                     "type": "web",
                     "categories": [],
-                    "action": "Detailed web actions explanation"
+                    "downtime": "The storefront is switched to the maintenance page while the change is applied: all customer requests are refused for the 5-10 minutes it takes.",
+                    "action": "Put the storefront into maintenance mode from the CDN console, then apply the change and take it back out."
                 },
                 {
                     "type": "curl",
@@ -213,6 +226,7 @@ Call `create_action_plan` with a `plan` object matching this schema:
         {
             "type": "shell",
             "categories": ["kubernetes"],
+            "degraded": "The api again runs at reduced replicas for the ~3 minutes the rollback takes; latency rises, requests keep succeeding.",
             "action": "Roll the api deployment back to the previous revision and wait for it to become ready.",
             "command": "kubectl --context <KUBE_CONTEXT> -n prod rollout undo deployment/api\nkubectl --context <KUBE_CONTEXT> -n prod rollout status deployment/api --timeout=180s"
         }

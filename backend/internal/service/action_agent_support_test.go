@@ -95,3 +95,57 @@ func TestFormatActionResultMessageWithoutADialog(t *testing.T) {
 		t.Errorf("message = %q", got)
 	}
 }
+
+// The agent carrying an action out is the one about to cause the outage, so the
+// impact the planner declared reaches its seed rather than being left for it to
+// infer from the action text.
+func TestBuildActionSeed_carriesTheDeclaredImpact(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		step storedActionStep
+		want string
+	}{
+		{
+			name: "downtime",
+			step: storedActionStep{Type: "shell", Action: "stop postgres", Downtime: "orders-db refuses every query for ~10 minutes"},
+			want: "Downtime: orders-db refuses every query for ~10 minutes",
+		},
+		{
+			name: "degraded",
+			step: storedActionStep{Type: "shell", Action: "compact volumes", Degraded: "reads are slower while compaction runs"},
+			want: "Degradation: reads are slower while compaction runs",
+		},
+		{
+			// downtime supersedes degraded, so a model that set both against the
+			// prompt's rule still gets one line, and it is the severe one.
+			name: "both set",
+			step: storedActionStep{Type: "shell", Action: "stop postgres", Downtime: "orders-db is down", Degraded: "reads are slower"},
+			want: "Downtime: orders-db is down",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &ChatService{
+				summariesDir:     t.TempDir(),
+				dagsDir:          t.TempDir(),
+				planContractsDir: t.TempDir(),
+				actionPlansDir:   t.TempDir(),
+			}
+
+			seed, err := svc.buildActionSeed(uuid.New(), "s0.step0", "1.1", tt.step)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if !strings.Contains(seed, tt.want) {
+				t.Fatalf("seed = %q, want it to hold %q", seed, tt.want)
+			}
+			if tt.name == "both set" && strings.Contains(seed, "Degradation:") {
+				t.Fatalf("seed = %q, downtime supersedes degraded", seed)
+			}
+		})
+	}
+}

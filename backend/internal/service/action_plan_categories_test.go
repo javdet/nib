@@ -22,7 +22,7 @@ var seedSchemaFiles = []string{
 	"update_rollback_plan.json",
 }
 
-func TestWithStepCategories_SeedSchemas(t *testing.T) {
+func TestWithStepFields_SeedSchemas(t *testing.T) {
 	names := []string{"kubernetes", "monitoring"}
 
 	for _, file := range seedSchemaFiles {
@@ -33,7 +33,7 @@ func TestWithStepCategories_SeedSchemas(t *testing.T) {
 			}
 
 			var doc any
-			if err := json.Unmarshal(withStepCategories(json.RawMessage(raw), names), &doc); err != nil {
+			if err := json.Unmarshal(withStepFields(json.RawMessage(raw), names), &doc); err != nil {
 				t.Fatalf("unmarshal injected schema: %v", err)
 			}
 
@@ -69,7 +69,7 @@ func TestWithStepCategories_SeedSchemas(t *testing.T) {
 // The seed files already describe categories, so the injector must refresh the
 // enum on a property that is there rather than skip it -- a static file cannot
 // carry names that come from the toolCategories variable.
-func TestWithStepCategories_RefreshesExistingEnum(t *testing.T) {
+func TestWithStepFields_RefreshesExistingEnum(t *testing.T) {
 	in := json.RawMessage(`{
 	  "type": "object",
 	  "properties": {
@@ -85,7 +85,7 @@ func TestWithStepCategories_RefreshesExistingEnum(t *testing.T) {
 	}`)
 
 	var doc map[string]any
-	if err := json.Unmarshal(withStepCategories(in, []string{"cloud"}), &doc); err != nil {
+	if err := json.Unmarshal(withStepFields(in, []string{"cloud"}), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
@@ -104,11 +104,11 @@ func TestWithStepCategories_RefreshesExistingEnum(t *testing.T) {
 
 // An empty enum would forbid every value, so a catalog that could not be read
 // has to widen the field rather than close it.
-func TestWithStepCategories_NoNamesDropsEnum(t *testing.T) {
+func TestWithStepFields_NoNamesDropsEnum(t *testing.T) {
 	in := json.RawMessage(`{"properties":{"type":{},"action":{},"categories":{"items":{"enum":["stale"]}}}}`)
 
 	var doc map[string]any
-	if err := json.Unmarshal(withStepCategories(in, nil), &doc); err != nil {
+	if err := json.Unmarshal(withStepFields(in, nil), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestWithStepCategories_NoNamesDropsEnum(t *testing.T) {
 	}
 }
 
-func TestWithStepCategories_UnrecognisedDocumentUnchanged(t *testing.T) {
+func TestWithStepFields_UnrecognisedDocumentUnchanged(t *testing.T) {
 	tests := []struct {
 		name string
 		in   json.RawMessage
@@ -130,7 +130,7 @@ func TestWithStepCategories_UnrecognisedDocumentUnchanged(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := withStepCategories(tt.in, []string{"cloud"}); !reflect.DeepEqual([]byte(got), []byte(tt.in)) {
+			if got := withStepFields(tt.in, []string{"cloud"}); !reflect.DeepEqual([]byte(got), []byte(tt.in)) {
 				t.Fatalf("got %s, want the input unchanged", got)
 			}
 		})
