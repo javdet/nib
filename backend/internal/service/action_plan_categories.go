@@ -18,51 +18,54 @@ const stepCategoriesDescription = "Tool categories the sub-agent that executes t
 
 const stepCategoryItemDescription = "Tool category name (e.g. kubernetes, monitoring, code-repository)."
 
-// withStepCategories stamps the per-action `categories` property onto every
-// step-shaped object of a plan tool schema, constrained to names.
+// withStepFields stamps the per-action properties onto every step-shaped object
+// of a plan tool schema: `categories`, constrained to names, and the `downtime`
+// and `degraded` impact fields.
 //
 // It is applied on top of the loaded schema instead of being left to
 // seed/tools/schemas, for two reasons. Those files are copied to the data volume
 // only when absent, so a property added to a seed would never reach an install
-// that already has one. And the valid names come from the toolCategories
+// that already has one -- which is the whole reason the impact fields come
+// through here too. And the valid category names come from the toolCategories
 // variable, which a file on disk cannot follow.
 //
 // A document whose shape it does not recognise comes back unchanged, the same
 // way the schema loaders fall back to their embedded literal.
-func withStepCategories(params json.RawMessage, names []string) json.RawMessage {
+func withStepFields(params json.RawMessage, names []string) json.RawMessage {
 	if len(params) == 0 {
 		return params
 	}
 
 	var doc any
 	if err := json.Unmarshal(params, &doc); err != nil {
-		slog.Warn("action plan schema: parse for category injection", "error", err)
+		slog.Warn("action plan schema: parse for step field injection", "error", err)
 		return params
 	}
-	if !stampStepCategories(doc, names) {
+	if !stampStepSchemas(doc, names) {
 		return params
 	}
 
 	out, err := json.Marshal(doc)
 	if err != nil {
-		slog.Warn("action plan schema: marshal after category injection", "error", err)
+		slog.Warn("action plan schema: marshal after step field injection", "error", err)
 		return params
 	}
 	return json.RawMessage(out)
 }
 
-// stampStepCategories walks a JSON schema and gives every step-shaped object the
-// categories property, reporting whether it found one.
-func stampStepCategories(node any, names []string) bool {
+// stampStepSchemas walks a JSON schema and gives every step-shaped object the
+// per-action properties, reporting whether it found one.
+func stampStepSchemas(node any, names []string) bool {
 	switch n := node.(type) {
 	case map[string]any:
 		found := false
 		if isStepSchema(n) {
 			setStepCategoriesProperty(n, names)
+			setStepImpactProperties(n)
 			found = true
 		}
 		for _, child := range n {
-			if stampStepCategories(child, names) {
+			if stampStepSchemas(child, names) {
 				found = true
 			}
 		}
@@ -70,7 +73,7 @@ func stampStepCategories(node any, names []string) bool {
 	case []any:
 		found := false
 		for _, child := range n {
-			if stampStepCategories(child, names) {
+			if stampStepSchemas(child, names) {
 				found = true
 			}
 		}

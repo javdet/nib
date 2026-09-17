@@ -38,6 +38,11 @@ You cannot see the others and they cannot see you.
   the knowledge base you used to work the stage out are rarely what the executor
   needs. The field is required on every step, so a step that needs no MCP tools
   takes `[]`.
+* **Mark the steps of your stage that cost the system something.** The `downtime`
+  and `degraded` rules above apply to your steps unchanged. You see only your own
+  stage, so judge each step on its own: a step that stops or slows a component
+  carries the field even when a neighbouring stage stops the same component again
+  later.
 * **Never use `ask_question`.** You do not have it, and suspending would strand the
   stages running beside you. When you need a decision from the user, call
   `report_blocker` with the question, two or three options, and the assumption you

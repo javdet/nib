@@ -200,6 +200,37 @@ test.describe('Action list', () => {
 			commandStep.getByRole('button', { name: 'Copy command' }),
 		).toBeVisible()
 	})
+
+	// 6.13 — the impact labels. What the operator has to see before starting is
+	// which rows cost the system something, so this asserts the labels and the
+	// tooltip that says what goes down, not just that a badge exists.
+	test('labels the actions that take the system down or slow it', async ({
+		page,
+	}) => {
+		const plan = makeActionPlan()
+		plan.plan.stages[0].steps[0].downtime =
+			'orders-db refuses every query for ~10 minutes'
+		plan.plan.stages[0].steps[1].degraded = 'chart renders are slower'
+		await openPlan(page, { actionPlan: plan })
+
+		await expect(actionRow(page, '1.1')).toContainText('downtime')
+		await expect(actionRow(page, '1.2')).toContainText('degraded')
+		// A step that declares neither carries no label at all.
+		await expect(actionRow(page, '2.1')).not.toContainText('downtime')
+		await expect(actionRow(page, '2.1')).not.toContainText('degraded')
+
+		// The stage heading rolls the worst of its steps up, so a scrolled plan
+		// still says where the outages are.
+		await expect(
+			page.getByRole('heading', { level: 3, name: /Prepare the release/ }),
+		).toContainText('downtime')
+
+		// The label is only useful with the sentence behind it.
+		await actionRow(page, '1.1').getByText('downtime').hover()
+		await expect(
+			page.getByText('orders-db refuses every query for ~10 minutes'),
+		).toBeVisible()
+	})
 })
 
 test.describe('Action execution', () => {

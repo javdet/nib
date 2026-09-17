@@ -259,7 +259,7 @@ func TestBuildActionListResponse(t *testing.T) {
 				Number: 1,
 				Title:  "Stage",
 				Steps: []storedActionStep{
-					{Type: "shell", Action: "run", Command: "kubectl -n prod get pods"},
+					{Type: "shell", Action: "run", Command: "kubectl -n prod get pods", Degraded: "api reads are slower while the query runs"},
 					{Type: "code", Action: "edit chart", PRTitle: "chore: bump chart version"},
 				},
 				Checks: []storedActionCheck{
@@ -269,7 +269,7 @@ func TestBuildActionListResponse(t *testing.T) {
 		},
 		Rollback: []storedActionStep{
 			{Type: "code", Action: "revert", PRTitle: "chore: revert chart bump"},
-			{Type: "shell", Action: "restart", Command: "kubectl -n prod rollout undo deployment/api"},
+			{Type: "shell", Action: "restart", Command: "kubectl -n prod rollout undo deployment/api", Downtime: "api serves nothing for the ~30s the restart takes"},
 		},
 	}
 	checked := map[string]struct{}{"s0.step0": {}}
@@ -291,6 +291,14 @@ func TestBuildActionListResponse(t *testing.T) {
 	}
 	if resp.Stages[0].Actions[1].Command != "" {
 		t.Fatalf("code step command = %q, want empty", resp.Stages[0].Actions[1].Command)
+	}
+	if got := resp.Stages[0].Actions[0].Degraded; got != "api reads are slower while the query runs" {
+		t.Fatalf("shell step degraded = %q", got)
+	}
+	// The projection copies field by field in two loops, so the rollback scope
+	// is asserted too: it is the one that silently loses a field.
+	if got := resp.Rollback[1].Downtime; got != "api serves nothing for the ~30s the restart takes" {
+		t.Fatalf("rollback entry downtime = %q", got)
 	}
 	if resp.Stages[0].Checks[0].Executed {
 		t.Fatalf("check should not be executed: %#v", resp.Stages[0].Checks[0])
