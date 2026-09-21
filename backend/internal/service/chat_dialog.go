@@ -421,15 +421,16 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 				continue
 			}
 
+			answer := answerWithoutThinking(asst.Content)
 			if _, err := s.dialogRepo.AppendMessage(ctx, dialogID, domain.DialogMessage{
 				Role:    "assistant",
-				Content: asst.Content,
+				Content: answer,
 			}); err != nil {
 				return domain.ChatResponse{}, fmt.Errorf("append final assistant round %d: %w", roundNum, err)
 			}
 			turn.succeeded()
 			return domain.ChatResponse{
-				Response:          asst.Content,
+				Response:          answer,
 				ActionPlanUpdated: actionPlanUpdated,
 			}, nil
 		}
@@ -448,9 +449,11 @@ func (s *ChatService) runPersistingAgentLoop(ctx context.Context, dialogID uuid.
 		}
 		s.transcriptMutex(dialogID).Lock()
 		transcriptLocked = true
+		// The stored row loses the narration, the replayed one below keeps it:
+		// the model still gets to read back what it was thinking this turn.
 		if _, err := s.dialogRepo.AppendMessage(ctx, dialogID, domain.DialogMessage{
 			Role:      "assistant",
-			Content:   asst.Content,
+			Content:   stripThinking(asst.Content),
 			ToolCalls: toolCallsJSON,
 		}); err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("append assistant round %d: %w", roundNum, err)
