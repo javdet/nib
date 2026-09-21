@@ -79,10 +79,7 @@ import {
 	planMarkdownFileName,
 } from '../lib/plan-markdown'
 import { actionPlanNumberForKey } from '../lib/action-plan-number'
-import {
-	executeActionMessage,
-	restartActionMessage,
-} from '../lib/execute-action-message'
+import { executeActionMessage } from '../lib/execute-action-message'
 import {
 	planStageMessage,
 	processPlanMessage,
@@ -777,13 +774,6 @@ export function WorkplaceDetail() {
 	const handleExecuteAction = useCallback(
 		(_step: ActionStep, key: string) => {
 			sendActionCommand(key, executeActionMessage)
-		},
-		[sendActionCommand],
-	)
-
-	const handleRestartAction = useCallback(
-		(key: string) => {
-			sendActionCommand(key, restartActionMessage)
 		},
 		[sendActionCommand],
 	)
@@ -1579,7 +1569,6 @@ export function WorkplaceDetail() {
 							onComment={handleOpenComment}
 							onEdit={handleOpenEditAction}
 							onExecute={handleExecuteAction}
-							onRestart={handleRestartAction}
 							onStop={() => void handleStopExecution()}
 							execRuns={execRuns}
 							onReorder={(scope, stage, from, to) =>
