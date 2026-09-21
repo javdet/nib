@@ -1147,11 +1147,8 @@ export function WorkplaceDetail() {
 					<Button
 						type="button"
 						size="lg"
-						className={cn(
-							'min-w-[10rem] font-semibold',
-							!finishDisabled &&
-								'bg-success text-success-foreground hover:bg-success/90 elev-3',
-						)}
+						variant="success"
+						className="min-w-[10rem] font-semibold"
 						onClick={() => void handleFinishPlan()}
 						disabled={finishDisabled}
 					>
