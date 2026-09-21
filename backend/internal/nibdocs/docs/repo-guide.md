@@ -441,9 +441,9 @@ environment and covers pure `lib/` helpers only — there are no component tests
 
 - Go: clean architecture, interface-driven wiring, wrapped errors (`fmt.Errorf("ctx: %w", err)`),
   `slog` structured logs, table-driven `*_test.go` beside the code. Full guidance in
-  [.claude/rules/go.md](.claude/rules/go.md).
+  [.claude/skills/go/SKILL.md](.claude/skills/go/SKILL.md).
 - TS/React: tabs, single quotes, no semicolons, kebab-case filenames, function components,
-  `handle*`/`is*`/`use*` naming. Full guidance in [.claude/rules/react.md](.claude/rules/react.md).
+  `handle*`/`is*`/`use*` naming.
 - Existing code carries short comments explaining *why* a non-obvious decision was made (caching,
   redaction, deliberate omissions) — match that density rather than narrating what the code does.
 
