@@ -127,6 +127,10 @@ func (s *Service) runActionLocal(ctx context.Context, cfg Config, req ActionRunR
 	}
 	defer cli.Close()
 
+	if err := ensureImage(ctx, cli, cfg.Image); err != nil {
+		return ActionRunResult{}, err
+	}
+
 	resp, err := cli.ContainerCreate(ctx,
 		&container.Config{
 			Image: cfg.Image,

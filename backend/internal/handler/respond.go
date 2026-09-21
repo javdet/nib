@@ -95,6 +95,10 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, executor.ErrNotImplemented):
 		writeError(w, http.StatusNotImplemented, err.Error())
+	case errors.Is(err, executor.ErrImagePull):
+		// The registry or the Docker daemon is what failed, not the request —
+		// the message names the image and the reason, so pass it through.
+		writeError(w, http.StatusBadGateway, err.Error())
 	case errors.Is(err, kb.ErrCollectionMismatch):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, kb.ErrDimensionMismatch):
