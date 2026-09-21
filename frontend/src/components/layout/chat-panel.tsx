@@ -48,6 +48,7 @@ import {
 	parseAnsweredQuestions,
 	type AnsweredQuestion,
 } from '@/features/dialogs/lib/answered-questions'
+import { stripThinking } from '@/features/dialogs/lib/strip-thinking'
 import { parseCreateTableFromToolCalls } from '@/features/dialogs/lib/parse-table'
 import {
 	hasLastUserMessage,
@@ -145,10 +146,14 @@ function toUiMessages(msgs: DialogMessage[]): Message[] {
 			continue
 		}
 		if (m.role === 'assistant') {
-			if (m.content.trim().length > 0) {
+			// Transcripts written before the backend learned to cut it still
+			// carry `<thinking>` narration, so it is stripped on the way out
+			// too -- and a row that was nothing else stops being a bubble.
+			const content = stripThinking(m.content)
+			if (content.trim().length > 0) {
 				out.push({
 					role: 'assistant',
-					content: m.content,
+					content,
 					attachments: m.attachments,
 				})
 			}

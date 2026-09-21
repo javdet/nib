@@ -798,7 +798,7 @@ func (s *ChatService) runAgentLoop(ctx context.Context, sysPrompt, userMessage, 
 
 		if len(asst.ToolCalls) == 0 {
 			turn.succeeded()
-			return asst.Content, nil
+			return answerWithoutThinking(asst.Content), nil
 		}
 
 		if round+1 >= s.maxIterations {
