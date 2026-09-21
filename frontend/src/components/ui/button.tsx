@@ -27,6 +27,11 @@ const buttonVariants = cva(
 					'text-destructive elev-1',
 					'hover:border-destructive/55 hover:bg-destructive/20',
 				),
+				success: cn(
+					'border border-success/35 bg-success/12',
+					'text-success elev-1',
+					'hover:border-success/55 hover:bg-success/20',
+				),
 				outline: cn(
 					'border border-input bg-background/40 elev-1',
 					'hover:border-ring/40 hover:bg-accent hover:text-accent-foreground',

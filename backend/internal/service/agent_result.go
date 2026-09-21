@@ -8,10 +8,15 @@ import (
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
+	"github.com/javdet/nib/internal/textutil"
 	"github.com/google/uuid"
 )
 
 const agentRunMessageNamePrefix = "agent-run:"
+
+// codeActionReportMaxBytes caps what a failed code action spells out in the plan
+// chat; the whole of it is in the execute dialog the report links to.
+const codeActionReportMaxBytes = 4000
 
 // AgentRunResult is the completion payload posted by the claude-code agent entrypoint.
 type AgentRunResult struct {
@@ -131,7 +136,7 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 		errMsg = fmt.Sprintf("the coding agent exited with code %d", res.ExitCode)
 	}
 
-	s.finishActionExecRun(planID, key, status, errMsg)
+	run := s.finishActionExecRun(planID, key, status, errMsg)
 	// A code action reports into its own execute dialog, which the actions after
 	// it never see, so its account of the work is recorded on the action the same
 	// way a sub-agent's is. Both callers may reach this for one delivery; writing
@@ -139,15 +144,34 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 	s.recordActionNote(planID, key, codeActionNoteText(res))
 	s.releaseExecutionLeaseForContainer(planID, key, res.JobName)
 
-	kind := domain.ActivityActionExecDone
-	if status != ActionExecDone {
-		kind = domain.ActivityActionExecFailed
+	// The container's own account lands in its execute dialog, and nothing in the
+	// plan view links to it, so until now finishing a code action turned a row
+	// green in silence while a sub-agent action posted its outcome in the plan
+	// chat. They are the same event to the operator reading it, so they report
+	// the same way -- done plus a link to the transcript, or the reason it is
+	// not done. reportActionResult publishes the activity event this used to
+	// publish on its own and skips a row it has already written, so the
+	// duplicate-delivery caller adds nothing.
+	s.reportActionResult(context.WithoutCancel(ctx), planID, key, run.Attempt, exec.ID,
+		status, codeActionReportText(res, errMsg))
+}
+
+// codeActionReportText is the body of that report. It is dropped on success --
+// the result is working notes for the actions that follow, not something the
+// operator has to read -- so this only ever shows up on a failure, where the
+// exit code alone says nothing about what went wrong and the agent's last words
+// do. The log tail and the usage footer stay in the execute dialog, one link
+// away, and the text is capped because the plan chat is also the orchestrator's
+// context.
+func codeActionReportText(res AgentRunResult, errMsg string) string {
+	parts := make([]string, 0, 2)
+	if errMsg != "" {
+		parts = append(parts, errMsg)
 	}
-	s.activity.Publish(planID, domain.AgentActivity{
-		Kind:   kind,
-		Action: key,
-		Status: string(status),
-	})
+	if result := strings.TrimSpace(res.Result); result != "" {
+		parts = append(parts, textutil.TruncateBytes(result, "\n\n_(truncated)_", codeActionReportMaxBytes))
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // codeActionNoteText is what a code action leaves for the actions after it. It
