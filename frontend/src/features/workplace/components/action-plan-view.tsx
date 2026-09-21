@@ -18,7 +18,6 @@ import {
 	OctagonAlert,
 	Pencil,
 	Play,
-	RotateCcw,
 	Square,
 	type LucideIcon,
 } from 'lucide-react'
@@ -116,9 +115,6 @@ interface ActionPlanViewProps {
 	// run that is wedged, so it is offered on every running row rather than only
 	// on the one the operator started.
 	onStop: () => void
-	// onRestart abandons whatever is running on a row and starts a fresh
-	// sub-agent. Only offered once a row has a run to restart.
-	onRestart: (key: string) => void
 	execRuns: ActionExecRuns
 	onReorder: (scope: ActionPlanScope, stage: number, from: number, to: number) => void
 	reordering?: boolean
@@ -604,7 +600,6 @@ interface ExecutableActionRowProps {
 	onComment: () => void
 	onEdit: () => void
 	onExecute: () => void
-	onRestart: () => void
 	onStop: () => void
 	execRun?: ActionExecRun
 	executeDisabled?: boolean
@@ -625,7 +620,6 @@ function ExecutableActionRow({
 	onComment,
 	onEdit,
 	onExecute,
-	onRestart,
 	onStop,
 	execRun,
 	executeDisabled = false,
@@ -673,15 +667,6 @@ function ExecutableActionRow({
 							onClick={onStop}
 						>
 							<Square className="h-4 w-4" />
-						</HeaderButton>
-					)}
-					{execRun && execRun.status !== 'running' && (
-						<HeaderButton
-							label="Run action again"
-							tooltip="Run again with a new sub-agent"
-							onClick={onRestart}
-						>
-							<RotateCcw className="h-4 w-4" />
 						</HeaderButton>
 					)}
 					<HeaderButton
@@ -787,7 +772,6 @@ export function ActionPlanView({
 	onComment,
 	onEdit,
 	onExecute,
-	onRestart,
 	onStop,
 	execRuns,
 	onReorder,
@@ -958,7 +942,6 @@ export function ActionPlanView({
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
 											onExecute={() => onExecute(step, key)}
-											onRestart={() => onRestart(key)}
 											onStop={onStop}
 											execRun={execRuns[key]}
 											executeDisabled={
@@ -1058,7 +1041,6 @@ export function ActionPlanView({
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
 										onExecute={() => onExecute(step, key)}
-										onRestart={() => onRestart(key)}
 										onStop={onStop}
 										execRun={execRuns[key]}
 										executeDisabled={
