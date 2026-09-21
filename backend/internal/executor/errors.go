@@ -12,6 +12,7 @@ var (
 	ErrKubernetesTokenSecretRequired  = errors.New("kubernetes token secret is required")
 	ErrInvalidJSON                    = errors.New("invalid executor json")
 	ErrImageRequired                  = errors.New("executor image is required")
+	ErrImagePull                      = errors.New("failed to pull executor image")
 	ErrRepoURLRequired                = errors.New("repository URL is required")
 	ErrBranchRequired                 = errors.New("base branch is required")
 	ErrTaskPromptRequired             = errors.New("task prompt is required")

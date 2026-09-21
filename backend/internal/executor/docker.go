@@ -36,6 +36,10 @@ func (s *Service) runLocal(ctx context.Context, cfg Config, req RunRequest) (Run
 	}
 	defer cli.Close()
 
+	if err := ensureImage(ctx, cli, cfg.Image); err != nil {
+		return RunResult{}, err
+	}
+
 	gitToken := strings.TrimSpace(req.GitToken)
 	llmKey := resolveSecretValue(req.LLMAPIKey, s.secrets.LLMAPIKey)
 	gitProvider := NormalizeGitProvider(req.GitProvider)

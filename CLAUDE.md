@@ -178,6 +178,11 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
 - Remote platform: `docker`, `kubernetes` (auth `local_config` — kubeconfig, falling back to
   in-cluster — or `token`), `kubefoundry`.
 - Agent image: `claude-code` or `codex`; auth `api_key` or `oauth_token`, from `EXECUTOR_*`.
+- On `local`, the configured image is pulled when the host's Docker daemon does not already
+  have it, and reused as-is when it does — so a moving tag keeps whatever was pulled first,
+  and `docker pull` is still the way to refresh one. Remote Kubernetes leaves the pull to the
+  kubelet's `imagePullPolicy`. A registry that refuses the pull fails the launch with the
+  registry's own reason rather than a bare "No such image".
 - Credentials are **selected by secret name**, never fixed: the LLM key is `tokenSecretName`, the
   git API token is `gitTokenSecretName`, both picked in the Executor page from **Variables →
   Secrets**. There is no `EXECUTOR_GIT_API_TOKEN` fallback — a blank selection is refused at launch
