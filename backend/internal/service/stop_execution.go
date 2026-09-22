@@ -37,17 +37,14 @@ func (s *ChatService) stopExecutionHandler() localToolHandler {
 			return "nothing is executing right now, so there was nothing to stop", nil
 		}
 
-		number := lease.Number
-		if number == "" {
-			number = lease.Key
-		}
+		subject := leaseSubject(lease)
 		if err != nil {
 			// The lease is released whatever happened, so execution is
 			// unblocked; the leftover container is what the operator needs to
 			// hear about.
 			return fmt.Sprintf("stopped %s and freed the execution slot, but the container may still be running: %s",
-				number, err.Error()), nil
+				subject, err.Error()), nil
 		}
-		return fmt.Sprintf("stopped %s; the execution slot is free and its result was recorded as cancelled", number), nil
+		return fmt.Sprintf("stopped %s; the execution slot is free and its result was recorded as cancelled", subject), nil
 	}
 }

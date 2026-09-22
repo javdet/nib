@@ -192,9 +192,17 @@ Force-stops the execution running right now.
 
 ### `run_subagent`
 
-Launches one of the specialist modes as a sub-agent. The `name` parameter is an
-enum generated from the sub-agent registry, so the list of specialists is
-whatever the registry holds.
+Launches one of the specialists as a sub-agent. The `name` parameter is an enum
+generated from the sub-agent registry, so the list of specialists is whatever the
+registry holds; the arguments are one flat object, and each specialist reads only
+the ones named for it.
+
+`code` is the one specialist that is not a mode of nib's own: it hands `task`,
+`repository`, `branch` and `pr_title` to the coding agent in a container, which
+commits and opens a pull request, and reports back into the chat when it
+finishes. It is how a code change asked for in the chat — typically a correction
+to what a code action produced — is carried out, and it takes the single
+execution slot.
 
 **Root-only.**
 

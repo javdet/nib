@@ -122,6 +122,7 @@ type ChatService struct {
 	planFanoutDir    string
 	planStateDir     string
 	subagentsDir     string
+	codeFixesDir     string
 	attachmentsDir   string
 	maxIterations    int
 	fanout           PlanFanoutConfig
@@ -238,6 +239,7 @@ func NewChatService(
 		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),
 		planStateDir:     filepath.Join(dataDir, "plan_state"),
 		subagentsDir:     filepath.Join(dataDir, "subagents"),
+		codeFixesDir:     filepath.Join(dataDir, "code_fixes"),
 		attachmentsDir:   filepath.Join(dataDir, "attachments"),
 		maxIterations:    maxIterations,
 		fanout:           fanout,

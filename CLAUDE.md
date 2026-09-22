@@ -199,6 +199,12 @@ with `glab`. The host comes from `REPO_URL` rather than a hardcoded `github.com`
 GitLab and GitHub Enterprise work; an ssh/scp `REPO_URL` is refused, since a token cannot
 authenticate it.
 
+Three things launch such a container: the operator pressing *Execute action* on a `code` step, the
+`run_executor` tool in `execute` mode, and `run_subagent` with `name: "code"` — the orchestrator's
+way to make a code change the plan does not contain, typically a correction to what a code action
+produced. All three run the same image; only the last two are reachable from a chat, and a fix takes
+the single execution slot like an action does.
+
 That container is a **different machine from the backend**, with its own toolchain. What is on the
 backend's PATH says nothing about what the executor can run, and vice versa.
 
@@ -312,6 +318,14 @@ generated from the registry in
 - **plan** and **execute** start *asynchronously* and return "started": a fan-out can run for an
   hour and an action for half of one, both longer than the HTTP write deadline. They report into the
   orchestrator's chat through the existing named-message and SSE machinery.
+- **code** ([code_fix.go](backend/internal/service/code_fix.go)) is the odd one out: not an agent of
+  nib's own but an agent-runner container, launched with `StartCodeFix` and reporting through the
+  webhook. It is the chat's way to a code change with no plan row behind it — the operator reads what
+  a code action produced, finds it wrong, and says so. `branch` is what decides where the fix lands:
+  naming the branch a code action pushed to continues it, because `agent-entrypoint.sh` checks an
+  existing remote branch out and reuses the pull request already open on it; omitting it starts
+  `nib/fix-{dialog}`. `run_executor` cannot serve this — its request carries no chat id, so its
+  result has nowhere to land, which is also why `actionAgentAllowSet` withdraws it.
 
 A stage planner cannot suspend the way decompose does — its turn holds state that is not on disk,
 and the wave it belongs to is waiting on its goroutine — so `report_blocker`
@@ -332,8 +346,10 @@ only on a root turn — and `stripSubagentTools` removes them from every sub-age
 whatever an operator's edit to a mode list says.
 
 **One execution at a time**, across every plan, held by the lease in
-[execution_lease.go](backend/internal/service/execution_lease.go) and covering both action
-sub-agents and code-action containers. A second request is refused with a sentence naming what holds
+[execution_lease.go](backend/internal/service/execution_lease.go) and covering action sub-agents,
+code-action containers and chat-requested code fixes. A fix's lease carries `Fix: true` and no row
+key, which is what keeps the force-stop and expiry paths from writing an outcome against a plan row
+that does not exist. A second request is refused with a sentence naming what holds
 it rather than queued, `agent.actionExecConcurrency` is clamped to 1, and `DELETE /api/v1/execution`
 force-stops the holder — cancelling a sub-agent's context, or stopping a container through
 `executor.StopAction`. That route takes no write deadline on purpose: it has to work while the agent
@@ -373,7 +389,8 @@ there is no default-vs-override split for them.
 A `Dialog` UUID is the unit of work. Beyond the Postgres transcript, artifacts are files keyed by
 dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
 `data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json`,
-`data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`.
+`data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`,
+`data/code_fixes/{id}.json`.
 
 An action plan carries side files beside it, all keyed by the same dialog id and by the positional
 row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),
@@ -389,6 +406,12 @@ the action that needs it. It is deliberately unreachable from the HTTP API — i
 unexported for exactly that reason — and a successful run's text is kept out of the plan chat, which
 shows only that the action is done plus a link to the transcript. A failure, a question or a
 cancellation still says why in the chat.
+
+`code_fixes/{root}.json` maps a chat-requested code fix's own dialog id to its run. It exists
+because such a fix has no action row to be recorded on, and the agent-runner webhook needs something
+durable to recognise it by: the container outlives the process that launched it, so `ReconcileStuckRuns`
+sweeps a fix a restart stranded exactly as it sweeps an action. A webhook delivery whose dialog matches
+neither `.runs.json` nor this file is a `run_executor` container and is left alone.
 
 They are keyed by the **root** dialog of a lineage, not by the dialog that wrote them: a sub-agent's
 transcript is its own while every plan artifact belongs to the plan. That split is `toolBinding`

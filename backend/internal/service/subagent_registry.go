@@ -24,6 +24,7 @@ const (
 	SubagentDecompose SubagentName = "decompose"
 	SubagentPlan      SubagentName = "plan"
 	SubagentExecute   SubagentName = "execute"
+	SubagentCode      SubagentName = "code"
 )
 
 // SubagentRequest is run_subagent's arguments after parsing. Every field is read
@@ -45,6 +46,13 @@ type SubagentRequest struct {
 	Item string
 	// Rerun replaces an attempt already running on Item.
 	Rerun bool
+	// Repository is the repository a code change is made in.
+	Repository string
+	// Branch is the branch a code change commits to. Naming one that already
+	// exists continues it and adds to the pull request open on it.
+	Branch string
+	// PRTitle titles the pull request a code change opens.
+	PRTitle string
 }
 
 // SubagentStatus is how a launch ended, from the orchestrator's point of view.
@@ -135,6 +143,21 @@ func init() {
 				"starts. Only one execution runs at a time.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
 				return s.launchExecuteSubagent(ctx, rootID, req.Item, req.Rerun)
+			},
+		},
+		{
+			Name:     SubagentCode,
+			Params:   []string{"task", "repository", "branch", "pr_title"},
+			Required: []string{"task", "repository"},
+			Description: "Makes a change to a repository: hands it to the coding agent in a container, " +
+				"which commits on a branch and opens a pull request. Launch it when the operator asks for " +
+				"code to be written, fixed or changed outside the action plan -- typically because they have " +
+				"read what a code action produced and found it wrong. Name the branch an earlier code action " +
+				"pushed to and the fix lands on top of it, in the pull request already open; omit the branch " +
+				"for a change of its own. Returns as soon as the container starts; the result is posted into " +
+				"this chat. Only one execution runs at a time.",
+			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
+				return s.launchCodeSubagent(ctx, rootID, req)
 			},
 		},
 	}

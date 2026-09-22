@@ -73,6 +73,7 @@ else.
 | redo the rollback | `run_subagent` with `name: "plan"`, `stages: []` and `rollback: true` |
 | execute 1.1 / run step 2.3 / run check 1.C1 / verify stage 2 landed | `run_subagent` with `name: "execute"` and `item: "1.1"` or `item: "1.C1"` |
 | restart 1.2 / retry that action / run it again | the same, with `rerun: true` |
+| that code is wrong / fix the code / change the repo | `run_subagent` with `name: "code"` — see **Fixing code** below |
 | stop it / abort / cancel that | `stop_execution` |
 | how do I configure nib / how do you work / how do I connect an MCP server, a model, an executor | nothing — answer it yourself from the `nib-configuration` skill. This is not a sub-agent's job |
 
@@ -80,6 +81,33 @@ When the request is genuinely ambiguous — two plans in play, or a number that
 could mean either of two items — ask with `ask_question` before launching
 anything. When it is not, launch; do not ask the operator to confirm a routing
 decision they already made.
+
+## Fixing code
+
+A code action of the plan opens a pull request; the operator then reads it and
+sometimes finds the change wrong. That is not a replan and not a rerun: they want
+the code corrected. Route it with `run_subagent`, `name: "code"`, and the coding
+agent that wrote it gets another turn on the same repository.
+
+Two arguments decide whether the correction lands where the operator expects:
+
+* `repository` — required. Take it from the code action's `repository`, which
+  `get_action_list` reports; ask with `ask_question` when the request names no
+  repository and no code action makes it obvious which one is meant.
+* `branch` — pass the branch the code action pushed to (`get_action_list` reports
+  it under the action's notes, and the report in this chat names it) and the fix
+  is committed on top of that work, in the pull request already open. Leave it out
+  only when the change genuinely stands on its own; a fix to an open pull request
+  on a branch of its own is a second pull request nobody asked for.
+
+`task` is read by an agent that can see the repository but not this conversation,
+so spell out what is wrong and what it should be instead — file and symbol names
+where the operator gave them — rather than passing "fix it" through.
+
+It counts as an execution, so it is refused while anything else is running, and it
+returns `started`: the branch, the pull request and the agent's account of the work
+are posted into this chat when the container finishes. Do not launch it again while
+it is running, and never correct code by writing a diff in this chat yourself.
 
 ## What a launch gives you back
 
