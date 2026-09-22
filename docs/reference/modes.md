@@ -34,9 +34,17 @@ offers.
 | `decompose` | `task` (required) | yes | Runs to completion inside the orchestrator's call. May come back asking for a decision, which the orchestrator relays. |
 | `plan` | `stages`, `rollback` | no | One planning agent per stage in parallel, wave by wave, then one that derives the rollback. A stage that needs a decision asks in the chat under its own name and waits for you while its siblings carry on. Naming stages replans only those. Returns as soon as the run starts. |
 | `execute` | `item` (required), `rerun` | no | Carries out one action by the number the operator sees. A `code` action goes to a container and opens a pull request; anything else runs in an agent that posts its result into the chat. Returns as soon as the work starts. |
+| `code` | `task` (required), `repository` (required), `branch`, `pr_title` | no | An ad-hoc code change, outside the action plan: the coding agent gets a container, commits and opens a pull request. Naming the branch an earlier code action pushed to lands the change on top of it, in the pull request already open; omitting it starts a branch of its own. Returns as soon as the container starts. |
 
 Every sub-agent is parented directly to the root dialog, so listing the root's
 children returns everything a plan spawned.
+
+`code` is the one launch that is not an agent of nib's own: the work happens in
+an agent-runner container, which reports through the webhook rather than by
+finishing a turn. It takes the single execution slot like a code action does, and
+because it has no plan row to be recorded on, its run is recorded in
+`data/code_fixes/{root}.json` instead. See [The
+executor](executor.md#three-entry-points).
 
 ### Orchestrator-only tools
 

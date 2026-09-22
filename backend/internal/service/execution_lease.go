@@ -48,6 +48,11 @@ type ExecutionLease struct {
 	Key    string        `json:"key"`
 	Number string        `json:"number"`
 	Kind   ExecutionKind `json:"kind"`
+	// Fix marks an ad-hoc code fix asked for in the chat rather than a row of a
+	// plan: Key and Number are empty for one, and nothing about it is recorded
+	// in the plan files. PlanID is still the chat it was asked for in, which is
+	// where its outcome is reported.
+	Fix bool `json:"fix,omitempty"`
 	// DialogID is the sub-agent's or the container's execute chat, so a
 	// rejection can point at a transcript. Stamped once it exists.
 	DialogID uuid.UUID `json:"dialogId,omitempty"`
@@ -126,11 +131,21 @@ func (s *ChatService) expireStaleContainerLeaseLocked() {
 	slog.Warn("execution lease expired without a result",
 		"plan_id", expired.PlanID, "key", expired.Key, "job", expired.JobName)
 
-	// Off the lock: closing the record takes the plan mutex, and the caller of
-	// this is on its way to starting a run of its own.
+	// Off the lock: closing the record takes a mutex of its own, and the caller
+	// of this is on its way to starting a run of its own.
 	go func() {
-		s.finishActionExecRun(expired.PlanID, expired.Key, ActionExecFailed,
-			"the coding agent never reported back")
+		const reason = "the coding agent never reported back"
+		if expired.Fix {
+			// A fix has no plan row, and the chat it was asked for in is the
+			// only place its silence would otherwise go unnoticed.
+			s.closeCodeFixRun(context.Background(), expired.PlanID, expired.DialogID, codeFixOutcome{
+				Status: ActionExecFailed,
+				Error:  reason,
+				Body:   reason + " within the execution deadline.",
+			})
+			return
+		}
+		s.finishActionExecRun(expired.PlanID, expired.Key, ActionExecFailed, reason)
 		s.activity.Publish(expired.PlanID, domain.AgentActivity{
 			Kind:   domain.ActivityActionExecFailed,
 			Action: expired.Key,
@@ -179,10 +194,34 @@ func (s *ChatService) releaseExecutionLeaseForContainer(planID uuid.UUID, key, j
 	defer s.execLeaseMu.Unlock()
 
 	held := s.execLease
-	if held == nil || held.Kind != ExecutionKindContainer {
+	if held == nil || held.Kind != ExecutionKindContainer || held.Fix {
 		return
 	}
 	if held.PlanID != planID || held.Key != key {
+		return
+	}
+	if jobName != "" && held.JobName != "" && held.JobName != jobName {
+		return
+	}
+	recordLeaseReleasedLocked(held)
+	s.execLease = nil
+}
+
+// releaseExecutionLeaseForFix drops the lease of an ad-hoc code fix, identified
+// by its own dialog and the job it started.
+//
+// It exists beside releaseExecutionLeaseForContainer rather than folding into it
+// because a fix has no plan row to be identified by: the dialog is what the
+// container was given as CHAT_ID and what comes back on the webhook.
+func (s *ChatService) releaseExecutionLeaseForFix(rootID, dialogID uuid.UUID, jobName string) {
+	s.execLeaseMu.Lock()
+	defer s.execLeaseMu.Unlock()
+
+	held := s.execLease
+	if held == nil || !held.Fix {
+		return
+	}
+	if held.PlanID != rootID || held.DialogID != dialogID {
 		return
 	}
 	if jobName != "" && held.JobName != "" && held.JobName != jobName {
@@ -261,12 +300,17 @@ func executionBusyMessage(err error) string {
 // busyExecutionMessage says what is running, in the one sentence an operator or
 // a model needs to decide between waiting and stopping it.
 func busyExecutionMessage(l ExecutionLease) string {
+	const advice = "Only one execution runs at a time: stop it before starting another, " +
+		"or wait for it to finish."
+
+	if l.Fix {
+		return fmt.Sprintf("a code fix is already running (%s, started %s ago). %s",
+			containerSubject(l), humanSince(time.Unix(l.StartedAt, 0)), advice)
+	}
+
 	what := "sub-agent"
 	if l.Kind == ExecutionKindContainer {
-		what = "code action in container " + l.JobName
-		if strings.TrimSpace(l.JobName) == "" {
-			what = "code action in a container"
-		}
+		what = "code action in " + containerSubject(l)
 	}
 
 	number := strings.TrimSpace(l.Number)
@@ -274,9 +318,29 @@ func busyExecutionMessage(l ExecutionLease) string {
 		number = l.Key
 	}
 
-	return fmt.Sprintf("%s is already running (%s, started %s ago). "+
-		"Only one execution runs at a time: stop it before starting another, or wait for it to finish.",
-		number, what, humanSince(time.Unix(l.StartedAt, 0)))
+	return fmt.Sprintf("%s is already running (%s, started %s ago). %s",
+		number, what, humanSince(time.Unix(l.StartedAt, 0)), advice)
+}
+
+// containerSubject names a container in a sentence, since a run started before
+// the job name was stamped on the lease has none to name.
+func containerSubject(l ExecutionLease) string {
+	if job := strings.TrimSpace(l.JobName); job != "" {
+		return "container " + job
+	}
+	return "a container"
+}
+
+// leaseSubject names what a lease covers, for a message that has to say what was
+// stopped.
+func leaseSubject(l ExecutionLease) string {
+	if l.Fix {
+		return "the code fix"
+	}
+	if number := strings.TrimSpace(l.Number); number != "" {
+		return number
+	}
+	return l.Key
 }
 
 // humanSince renders an elapsed time the way a sentence needs it rather than the
@@ -307,6 +371,19 @@ func (s *ChatService) CancelExecution(ctx context.Context) (ExecutionLease, erro
 
 	stopErr := s.stopLeaseHolder(ctx, held)
 	metrics.RecordForceStop(string(held.Kind), stopErr)
+
+	// A code fix has no plan row: there is nothing to close in the plan files,
+	// and its outcome is reported against the fix itself.
+	if held.Fix {
+		s.closeCodeFixRun(context.WithoutCancel(ctx), held.PlanID, held.DialogID, codeFixOutcome{
+			Status: ActionExecCancelled,
+			Error:  "stopped by the operator",
+			Body:   "The operator stopped this code fix.",
+		})
+		slog.Info("code fix stopped by the operator",
+			"plan_id", held.PlanID, "dialog_id", held.DialogID, "error", stopErr)
+		return held, stopErr
+	}
 
 	run := s.finishActionExecRun(held.PlanID, held.Key, ActionExecCancelled, "stopped by the operator")
 	s.activity.Publish(held.PlanID, domain.AgentActivity{

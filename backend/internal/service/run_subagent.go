@@ -43,8 +43,10 @@ func RunSubagentToolDef() llm.ToolDef {
 			},
 			"task": map[string]any{
 				"type": "string",
-				"description": "decompose only. The operator's request verbatim, plus any context you already have. " +
-					"When you are relaying an answer to a question decompose raised, put their answer here.",
+				"description": "decompose and code. For decompose: the operator's request verbatim, plus any " +
+					"context you already have; when you are relaying an answer to a question decompose raised, " +
+					"put their answer here. For code: what the coding agent is to change, spelled out well " +
+					"enough for an agent that can see the repository but not this conversation.",
 			},
 			"stages": map[string]any{
 				"type":  "array",
@@ -66,6 +68,22 @@ func RunSubagentToolDef() llm.ToolDef {
 				"type": "boolean",
 				"description": "execute only. Run the item again from scratch, replacing an attempt still in " +
 					"progress. Use it when the operator asks to restart, repeat or retry.",
+			},
+			"repository": map[string]any{
+				"type": "string",
+				"description": "code only. The repository to change, spelled as the action plan spells one: a " +
+					"bare name (\"infra\"), an owner path (\"my-org/infra\") or the full clone URL.",
+			},
+			"branch": map[string]any{
+				"type": "string",
+				"description": "code only. The branch to commit to. Name the branch an earlier code action " +
+					"pushed to -- get_action_list reports it -- and the change lands on top of that work, in " +
+					"the pull request already open on it. Omit it for a change of its own on a fresh branch.",
+			},
+			"pr_title": map[string]any{
+				"type": "string",
+				"description": "code only. Title for the pull request. Omit it to let the agent derive one " +
+					"from the task.",
 			},
 		},
 		"required": []string{"name"},
@@ -145,16 +163,33 @@ func parseSubagentRequest(spec SubagentSpec, args map[string]any) (SubagentReque
 	if _, ok := reads["rerun"]; ok {
 		req.Rerun = argBool(args["rerun"])
 	}
+	if _, ok := reads["repository"]; ok {
+		req.Repository = strings.TrimSpace(argString(args["repository"]))
+	}
+	if _, ok := reads["branch"]; ok {
+		req.Branch = strings.TrimSpace(argString(args["branch"]))
+	}
+	if _, ok := reads["pr_title"]; ok {
+		req.PRTitle = strings.TrimSpace(argString(args["pr_title"]))
+	}
 
 	for _, needed := range spec.Required {
 		switch needed {
 		case "task":
 			if req.Task == "" {
+				if spec.Name == SubagentCode {
+					return req, `the code sub-agent needs "task": what the coding agent is to change`
+				}
 				return req, `the decompose sub-agent needs "task": the operator's request, in their own words`
 			}
 		case "item":
 			if req.Item == "" {
 				return req, `the execute sub-agent needs "item": the number the web interface shows beside the row, for example 1.1`
+			}
+		case "repository":
+			if req.Repository == "" {
+				return req, `the code sub-agent needs "repository": which repository to change. ` +
+					`A code action of the plan names one, and get_action_list reports it; otherwise ask the operator`
 			}
 		}
 	}

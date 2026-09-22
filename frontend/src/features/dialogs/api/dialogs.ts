@@ -612,6 +612,11 @@ export interface ExecutionLease {
 	key: string
 	number: string
 	kind: 'subagent' | 'container'
+	/**
+	 * An ad-hoc code fix asked for in the chat rather than a row of a plan, so
+	 * `key` and `number` are empty and `planId` is the chat it was asked for in.
+	 */
+	fix?: boolean
 	dialogId?: string
 	jobName?: string
 	containerId?: string

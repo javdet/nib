@@ -286,7 +286,7 @@ func AddFanoutBlockers(n int) {
 
 // AddStuckRunsReconciled records runs closed at boot that a previous process
 // left marked running.
-func AddStuckRunsReconciled(actions, fanouts int) {
+func AddStuckRunsReconciled(actions, fanouts, codeFixes int) {
 	m := active()
 	if m == nil {
 		return
@@ -296,6 +296,9 @@ func AddStuckRunsReconciled(actions, fanouts int) {
 	}
 	if fanouts > 0 {
 		m.execution.stuckReconciled.WithLabelValues("fanout").Add(float64(fanouts))
+	}
+	if codeFixes > 0 {
+		m.execution.stuckReconciled.WithLabelValues("code_fix").Add(float64(codeFixes))
 	}
 }
 

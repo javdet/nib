@@ -125,8 +125,10 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 	}
 	key := findRunKeyByExecID(runs, exec.ID)
 	if key == "" {
-		// Not an action run: run_executor uses the same webhook and has no plan
-		// row behind it.
+		// Not an action row. It may still be an ad-hoc code fix asked for in the
+		// chat, which reports the same way and is recognised by its own record;
+		// run_executor also lands here and has no record at all.
+		s.finishCodeFixRun(context.WithoutCancel(ctx), planID, exec.ID, res)
 		return
 	}
 

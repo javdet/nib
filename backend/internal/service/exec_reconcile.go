@@ -16,8 +16,9 @@ const restartedReason = "the server restarted while this was running"
 
 // ReconcileResult reports what the startup sweep closed.
 type ReconcileResult struct {
-	Actions int
-	Fanouts int
+	Actions   int
+	Fanouts   int
+	CodeFixes int
 }
 
 // ReconcileStuckRuns closes the run records a previous process left behind.
@@ -45,6 +46,12 @@ func (s *ChatService) ReconcileStuckRuns() (ReconcileResult, error) {
 		return out, err
 	}
 	out.Fanouts = fanouts
+
+	fixes, err := s.reconcileStuckCodeFixRuns()
+	if err != nil {
+		return out, err
+	}
+	out.CodeFixes = fixes
 
 	return out, nil
 }
@@ -117,6 +124,45 @@ func (s *ChatService) reconcileStuckFanoutRuns() (int, error) {
 		closed++
 
 		writeJSONFileOrWarn(path, run)
+	}
+	return closed, nil
+}
+
+// reconcileStuckCodeFixRuns closes the ad-hoc code fixes a previous process left
+// running. Their containers report through the same webhook as a code action's,
+// so they are stranded by a restart in the same way -- and, holding the one
+// execution slot, would block every action in every plan.
+func (s *ChatService) reconcileStuckCodeFixRuns() (int, error) {
+	paths, err := filepath.Glob(filepath.Join(s.codeFixesDir, "*.json"))
+	if err != nil {
+		return 0, fmt.Errorf("list code fix records: %w", err)
+	}
+
+	closed := 0
+	now := time.Now().Unix()
+	for _, path := range paths {
+		var runs CodeFixRuns
+		if !readJSONFileOrWarn(path, &runs) {
+			continue
+		}
+
+		changed := false
+		for id, run := range runs {
+			if !run.Active() {
+				continue
+			}
+			run.Status = ActionExecFailed
+			run.FinishedAt = now
+			run.Error = restartedReason
+			runs[id] = run
+			changed = true
+			closed++
+		}
+		if !changed {
+			continue
+		}
+
+		writeJSONFileOrWarn(path, runs)
 	}
 	return closed, nil
 }

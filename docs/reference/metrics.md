@@ -133,7 +133,7 @@ tables](#usage-tables). `nib_llm_embedding_tokens_total` is unaffected.
 time policy refused an operator: a second request is rejected, not queued.
 
 `nib_stuck_runs_reconciled_total` above zero after a start means the previous
-process died mid-execution.
+process died mid-execution. Its `kind` is `action`, `fanout` or `code_fix`.
 
 ## Agent containers
 

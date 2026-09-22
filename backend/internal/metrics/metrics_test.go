@@ -71,7 +71,7 @@ func TestSetup_recordersAreNoopsWithNoDefault(t *testing.T) {
 	RecordAgentTurn("main", OutcomeSuccess, 1, time.Second)
 	RecordToolCall(ToolSourceMCP, "", nil, time.Second)
 	RecordLeaseRejected("container")
-	AddStuckRunsReconciled(1, 1)
+	AddStuckRunsReconciled(1, 1, 1)
 	RecordPlanStatusTransition("draft", "done")
 }
 
