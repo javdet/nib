@@ -156,15 +156,13 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 		return domain.ChatResponse{}, fmt.Errorf("submit tool result: append tool message: %w", err)
 	}
 
-	// A question raised by the plan fan-out is answered by replanning the stages
-	// that raised it, not by resuming this dialog's own turn.
-	resumed, err := s.resumeFanoutFromAnswers(ctx, dialogID, toolCallID, questions, answers)
-	if err != nil {
-		return domain.ChatResponse{}, fmt.Errorf("submit tool result: %w", err)
-	}
-	if resumed {
-		slog.Info("plan fanout resumed from answers", "dialog_id", dialogID, "tool_call_id", toolCallID)
-		return domain.ChatResponse{Response: "Replanning the stages affected by your answers."}, nil
+	// A question raised by the plan fan-out is answered by handing the answer to
+	// the stage subagent blocked on it, not by resuming this dialog's own turn.
+	// That holds for a question nothing is waiting on any more too: running the
+	// loop would only set the orchestrator narrating a stale question back.
+	if resp, handled := s.deliverFanoutAnswer(toolCallID, answers); handled {
+		slog.Info("plan fanout answer delivered", "dialog_id", dialogID, "tool_call_id", toolCallID)
+		return resp, nil
 	}
 
 	// A question a sub-agent raised is answered by resuming that sub-agent. The

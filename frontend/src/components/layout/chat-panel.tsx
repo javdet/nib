@@ -353,10 +353,11 @@ export function ChatPanel() {
 		void reloadMessages(activeDialogId)
 	}, [activeDialogId, reloadMessages])
 
-	// An action sub-agent finishes on its own schedule, so its result can land
-	// while the operator is mid-turn here. Reloading then would replace the
-	// optimistic user bubble and re-show a question they have already answered,
-	// so a busy panel defers the refresh to the end of the turn instead.
+	// An action sub-agent finishes, and a stage planner asks, on their own
+	// schedule, so either can land while the operator is mid-turn here.
+	// Reloading then would replace the optimistic user bubble and re-show a
+	// question they have already answered, so a busy panel defers the refresh to
+	// the end of the turn instead.
 	const [pendingActionRefresh, setPendingActionRefresh] = useState(false)
 
 	const handleActionResult = useCallback(() => {

@@ -55,10 +55,6 @@ func (s *ChatService) buildStageSeed(rootID uuid.UUID, title string) (string, er
 	if upstream := s.upstreamStagesSection(rootID, contract, title); upstream != "" {
 		parts = append(parts, upstream)
 	}
-	if answers := s.stageAnswersSection(rootID, title); answers != "" {
-		parts = append(parts, answers)
-	}
-
 	return strings.Join(parts, "\n\n"), nil
 }
 
@@ -158,35 +154,4 @@ func (s *ChatService) upstreamStagesSection(rootID uuid.UUID, contract PlanContr
 	}
 	return "## Upstream stages\n\nAlready planned and settled. Build on them; do not restate or revise them.\n\n```json\n" +
 		string(data) + "\n```"
-}
-
-// stageAnswersSection replays the user's answers to questions an earlier attempt
-// at this stage raised, so the replanned stage replaces its assumptions. A
-// blocker that carries a kind belongs to another agent, whose title this stage
-// may legitimately share.
-func (s *ChatService) stageAnswersSection(rootID uuid.UUID, title string) string {
-	run, found, err := s.ReadFanoutRun(rootID)
-	if err != nil || !found {
-		return ""
-	}
-	return answersSection(run.Blockers, func(b PlanBlocker) bool {
-		return b.Kind == FanoutStageKindStage && normalizeStageTitle(b.Stage) == normalizeStageTitle(title)
-	})
-}
-
-// answersSection renders the answered blockers a predicate selects.
-func answersSection(blockers []PlanBlocker, mine func(PlanBlocker) bool) string {
-	var lines []string
-	for _, b := range blockers {
-		if !mine(b) || strings.TrimSpace(b.Answer) == "" {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("- %s\n  - Answer: %s\n  - Supersedes your earlier assumption: %s",
-			b.Question, b.Answer, b.Assumption))
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return "## Answers\n\nThe user has answered the questions you raised. These replace the assumptions you made.\n\n" +
-		strings.Join(lines, "\n")
 }

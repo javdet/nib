@@ -180,73 +180,27 @@ func TestFanoutStages_carriesTheStagesARunDoesNotReplan(t *testing.T) {
 	}
 }
 
-// Two stages hitting the same wall is one question for the user, not two, and
-// answering it has to replan both.
-func TestGroupBlockers_foldsTheSameQuestionAcrossStages(t *testing.T) {
+// A stage the previous run left waiting on an answer is not still waiting: the
+// goroutine that would have taken the answer went with the run.
+func TestFanoutStages_abandonsAStageLeftAwaitingInput(t *testing.T) {
 	t.Parallel()
-	blockers := []PlanBlocker{
-		{Stage: "Install Reaper", Question: "Which auth mode?", Options: []string{"jmx", "none"}, Assumption: "jmx"},
-		{Stage: "Verify repairs", Question: "which  AUTH mode?", Options: []string{"none", "mtls"}, Assumption: "jmx"},
-		{Stage: "Install Reaper", Question: "Which schedule?", Assumption: "daily"},
-	}
 
-	got := groupBlockers(blockers)
-	if len(got) != 2 {
-		t.Fatalf("questions = %d, want 2", len(got))
+	previous := FanoutRun{Stages: []FanoutStage{
+		{Title: "A", Wave: 0, Status: FanoutStageAwaitingInput, DialogID: "d-a"},
+	}}
+
+	stages := fanoutStages([][]string{{"A"}}, map[string]struct{}{}, false, previous)
+	if len(stages) == 0 {
+		t.Fatal("no stages")
 	}
-	if len(got[0].Stages) != 2 {
-		t.Fatalf("stages = %v, want both stages on the shared question", got[0].Stages)
-	}
-	// Options from both stages survive, deduplicated.
-	if strings.Join(got[0].Options, ",") != "jmx,none,mtls" {
-		t.Fatalf("options = %v", got[0].Options)
+	if stages[0].Status != FanoutStageFailed || stages[0].Error != abandonedReason {
+		t.Fatalf("A = %#v, want an abandoned row", stages[0])
 	}
 }
 
-// An answered blocker is history, not an open question.
-func TestGroupBlockers_skipsAnsweredQuestions(t *testing.T) {
-	t.Parallel()
-	blockers := []PlanBlocker{
-		{Stage: "A", Question: "Settled?", Assumption: "x", Answer: "yes"},
-		{Stage: "B", Question: "Open?", Assumption: "y"},
-	}
-
-	got := groupBlockers(blockers)
-	if len(got) != 1 || got[0].Question != "Open?" {
-		t.Fatalf("questions = %#v, want only the open one", got)
-	}
-}
-
-// The rollback agent's question folds into the shared one, but it is not a stage
-// and must not be named as one: answering redoes the rollback because the run
-// always does, not because it appears in PendingStages.
-func TestGroupBlockers_marksTheRollbackAgentWithoutNamingItAStage(t *testing.T) {
-	t.Parallel()
-	blockers := []PlanBlocker{
-		{Stage: "Install Reaper", Question: "Which auth mode?", Assumption: "jmx"},
-		{
-			Stage: rollbackStageTitle, Kind: FanoutStageKindRollback,
-			Question: "which  AUTH mode?", Options: []string{"mtls"}, Assumption: "jmx",
-		},
-		{Stage: rollbackStageTitle, Kind: FanoutStageKindRollback, Question: "Snapshots?", Assumption: "yes"},
-	}
-
-	got := groupBlockers(blockers)
-	if len(got) != 2 {
-		t.Fatalf("questions = %d, want 2", len(got))
-	}
-	if len(got[0].Stages) != 1 || got[0].Stages[0] != "Install Reaper" {
-		t.Fatalf("stages = %v, want only the stage that asked", got[0].Stages)
-	}
-	// A question only the rollback agent raised names no stage, so answering it
-	// replans none -- the rollback is redone because every round redoes it.
-	if len(got[1].Stages) != 0 {
-		t.Fatalf("stages = %v, want none for a rollback-only question", got[1].Stages)
-	}
-}
-
-// A round asks two questions. The rest have to survive it, or a question raised
-// by a stage nobody is replanning could never be put to the operator at all.
+// The blocker list is the plan's record of what was asked. A question this run
+// reruns nobody for would be lost outright if it were dropped, since the agent
+// that raised it gets no second chance to.
 func TestCarryBlockers_keepsWhatTheNextRoundStillHasToAsk(t *testing.T) {
 	t.Parallel()
 

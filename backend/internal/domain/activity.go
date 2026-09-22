@@ -15,6 +15,11 @@ const (
 	ActivityPlanStageDone    AgentActivityKind = "plan_stage_done"
 	ActivityPlanStageFailed  AgentActivityKind = "plan_stage_failed"
 	ActivityPlanFanoutDone   AgentActivityKind = "plan_fanout_done"
+	// ActivityPlanQuestion says a stage subagent has posted a question into the
+	// plan dialog, or that the question it was waiting on is settled. A pending
+	// question travels only in the transcript, so without this event the chat
+	// would show it on the next reload and no sooner.
+	ActivityPlanQuestion AgentActivityKind = "plan_question"
 
 	// Action execution events. A per-action subagent runs in its own dialog, so
 	// like the fan-out kinds these are published against the decompose dialog

@@ -73,8 +73,9 @@ type AgentConfig struct {
 	// StageMaxIterations is the completion round budget of a single stage
 	// subagent, which researches one stage rather than a whole plan.
 	StageMaxIterations int `yaml:"stageMaxIterations"`
-	// PlanFanoutTimeoutMinutes bounds a whole fan-out run. It outlives the HTTP
-	// request that starts it, so it needs a deadline of its own.
+	// PlanFanoutTimeoutMinutes budgets the time a fan-out run spends working. It
+	// outlives the HTTP request that starts it, so it needs a bound of its own,
+	// and it does not run down while a stage waits on the operator's answer.
 	PlanFanoutTimeoutMinutes int `yaml:"planFanoutTimeoutMinutes"`
 	// ActionExecConcurrency caps how many action subagents execute at once.
 	ActionExecConcurrency int `yaml:"actionExecConcurrency"`

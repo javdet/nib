@@ -53,36 +53,6 @@ func TestSetFanoutRollback_isNotReachableByTitle(t *testing.T) {
 	}
 }
 
-// Answers come back to the agent that asked, not to whoever shares its title.
-func TestStageAnswersSection_ignoresTheRollbackAgentsBlockers(t *testing.T) {
-	t.Parallel()
-
-	svc := &ChatService{planFanoutDir: t.TempDir()}
-	planID := uuid.New()
-	if err := svc.writeFanoutRun(planID, FanoutRun{
-		RunID: uuid.NewString(),
-		Blockers: []PlanBlocker{
-			{Stage: rollbackStageTitle, Question: "Do snapshots exist?", Assumption: "yes", Answer: "no"},
-			{
-				Stage: rollbackStageTitle, Kind: FanoutStageKindRollback,
-				Question: "Undo the migration how?", Assumption: "restore", Answer: "replay",
-			},
-		},
-	}); err != nil {
-		t.Fatalf("write run: %v", err)
-	}
-
-	stage := svc.stageAnswersSection(planID, rollbackStageTitle)
-	if !strings.Contains(stage, "Do snapshots exist?") || strings.Contains(stage, "Undo the migration how?") {
-		t.Fatalf("stage answers = %q", stage)
-	}
-
-	rollback := svc.rollbackAnswersSection(planID)
-	if !strings.Contains(rollback, "Undo the migration how?") || strings.Contains(rollback, "Do snapshots exist?") {
-		t.Fatalf("rollback answers = %q", rollback)
-	}
-}
-
 func rollbackFanoutFixture(t *testing.T) (*ChatService, uuid.UUID) {
 	t.Helper()
 

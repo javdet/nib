@@ -77,6 +77,7 @@ export type AgentActivityKind =
 	| 'plan_stage_done'
 	| 'plan_stage_failed'
 	| 'plan_fanout_done'
+	| 'plan_question'
 	| 'action_exec_started'
 	| 'action_exec_done'
 	| 'action_exec_failed'
@@ -548,13 +549,15 @@ export function updatePlanStatus(
 	)
 }
 
-export type FanoutStageStatus = 'pending' | 'running' | 'done' | 'failed'
-
-export type FanoutRunStatus =
+export type FanoutStageStatus =
+	| 'pending'
 	| 'running'
+	/** The stage's planner is blocked on a question it put to the operator. */
 	| 'awaiting_input'
 	| 'done'
 	| 'failed'
+
+export type FanoutRunStatus = 'running' | 'done' | 'failed'
 
 export type FanoutStageKind = 'rollback'
 
@@ -594,10 +597,6 @@ export interface FanoutRun {
 	finishedAt?: number
 	stages: FanoutStage[]
 	blockers?: PlanBlocker[]
-	pendingAskId?: string
-	pendingStages?: string[]
-	/** Whether the run the pending answers start also redoes the rollback. */
-	pendingRollback?: boolean
 	error?: string
 }
 

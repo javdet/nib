@@ -17,7 +17,7 @@ var (
 	// agent.actionExecTimeoutMinutes (30), which outlive any HTTP request.
 	runBuckets = []float64{1, 5, 15, 30, 60, 120, 300, 600, 900, 1500, 1800, 2700, 3600, 5400}
 
-	// roundBuckets covers agent.maxIterations (30) and stageMaxIterations (15):
+	// roundBuckets covers agent.maxIterations (30) and stageMaxIterations (20):
 	// how much of the round budget a turn burns before it stops.
 	roundBuckets = []float64{1, 2, 3, 5, 8, 12, 16, 20, 25, 30, 40, 60}
 

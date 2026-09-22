@@ -150,9 +150,16 @@ type ChatService struct {
 	// blockers to while the runner updates their status.
 	fanoutWriteMu sync.Map
 
-	// fanoutCancels holds the cancel func of each in-flight fan-out, keyed by the
-	// dialog it plans, so an operator can stop a run that is going nowhere.
-	fanoutCancels sync.Map
+	// fanoutRuns holds the live state of each in-flight fan-out, keyed by the
+	// dialog it plans: the cancel func an operator stops it with, the desk that
+	// admits one question to the chat at a time, and the count of stages blocked
+	// on an answer. It is process-local on purpose -- a restart is swept by
+	// ReconcileStuckRuns rather than resumed.
+	fanoutRuns sync.Map
+
+	// fanoutWaits holds the stage subagents suspended on a question, keyed by
+	// the synthetic ask_question call the operator answers it under.
+	fanoutWaits sync.Map
 
 	// transcriptWriteMu serialises appends to one dialog's transcript, keyed by
 	// that dialog. An agent round writes its assistant row and the tool results

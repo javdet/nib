@@ -234,7 +234,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 	// success and mark the action done.
 	if resp.Status == "awaiting_input" {
 		question := firstQuestionText(resp.Questions)
-		s.answerPendingAskForSubagent(ctx, dialog.ID, resp.ToolCallID)
+		s.answerPendingAskForSubagent(ctx, dialog.ID, resp.ToolCallID, actionAgentCannotAskReason)
 		finish(ActionExecBlocked, question, question)
 		return
 	}
@@ -242,17 +242,18 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 	finish(ActionExecDone, "", resp.Response)
 }
 
-// answerPendingAskForSubagent closes the ask_question the loop left unanswered.
-// Without it the subagent's transcript keeps an assistant row whose tool call has
-// no result, which the web interface renders as a live question an operator can
-// answer -- resuming the run outside its semaphore and its deadline.
-func (s *ChatService) answerPendingAskForSubagent(ctx context.Context, dialogID uuid.UUID, toolCallID string) {
+// answerPendingAskForSubagent closes the ask_question the loop left unanswered,
+// saying why that sub-agent could not ask. Without it the subagent's transcript
+// keeps an assistant row whose tool call has no result, which the web interface
+// renders as a live question an operator can answer -- resuming the run outside
+// its semaphore and its deadline.
+func (s *ChatService) answerPendingAskForSubagent(ctx context.Context, dialogID uuid.UUID, toolCallID, reason string) {
 	if strings.TrimSpace(toolCallID) == "" {
 		return
 	}
 	if _, err := s.appendMessageLocked(ctx, dialogID, domain.DialogMessage{
 		Role:       "tool",
-		Content:    subagentCannotAskPayload(toolCallID),
+		Content:    subagentCannotAskPayload(reason),
 		ToolCallID: toolCallID,
 		Name:       AskQuestionToolName,
 	}); err != nil {
@@ -268,3 +269,9 @@ func firstQuestionText(questions []domain.Question) string {
 	}
 	return "the sub-agent needed a decision from the operator"
 }
+
+// actionAgentCannotAskReason is what an action sub-agent's dangling question is
+// answered with: the run ends there, and the question reaches the operator as
+// the action's own result instead.
+const actionAgentCannotAskReason = "this sub-agent runs one action and cannot put a question to the operator; " +
+	"the run ended here and the question was reported in the plan chat"

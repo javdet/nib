@@ -105,7 +105,11 @@ func (s *ChatService) reconcileStuckFanoutRuns() (int, error) {
 		run.FinishedAt = now
 		run.Error = restartedReason
 		for i := range run.Stages {
-			if run.Stages[i].Status == FanoutStageRunning {
+			// A stage waiting on an answer is as dead as one mid-completion:
+			// the channel the answer would have arrived on went with the
+			// process.
+			switch run.Stages[i].Status {
+			case FanoutStageRunning, FanoutStageAwaitingInput:
 				run.Stages[i].Status = FanoutStageFailed
 				run.Stages[i].Error = restartedReason
 			}

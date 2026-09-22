@@ -209,10 +209,16 @@ The operator may pick one or type a free-form answer.
 
 ### `report_blocker`
 
-Records a question without interrupting the run.
+Puts one question to the operator and **waits for the answer**, which comes back
+as the call's own result. The question is posted into the plan's chat under the
+name of the stage that raised it, and only one is pending there at a time: a
+second stage asking meanwhile queues behind the first. The other stages keep
+planning throughout. If no answer comes back — the run was stopped, or the wait
+timed out — the call says so and the agent proceeds under the `assumption` it
+stated, so the plan never gains a gap.
 
-**Binding:** stage-scoped. Only a fan-out sub-agent has a stage to report
-against, and only it lacks `ask_question`.
+**Binding:** stage-scoped. Only a fan-out sub-agent has a stage to ask under, and
+only it lacks `ask_question` — a fan-out turn cannot suspend and be resumed.
 
 ### `create_table`
 

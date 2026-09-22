@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,12 @@ import (
 // multiDialogRepo is an in-memory dialog repository that holds more than one
 // dialog, which is what the orchestrator's tests need: every interesting
 // assertion is about which of two dialogs something landed on.
+//
+// It is locked because the real one is a database and the callers are not all
+// on one goroutine: a fan-out posts a stage's question into the plan dialog
+// while the sibling stages are still writing their own transcripts.
 type multiDialogRepo struct {
+	mu       sync.Mutex
 	dialogs  map[uuid.UUID]*domain.Dialog
 	messages map[uuid.UUID][]domain.DialogMessage
 	nextID   int64
@@ -29,6 +35,8 @@ func newMultiDialogRepo() *multiDialogRepo {
 
 // add inserts a dialog directly, for the root a test starts from.
 func (r *multiDialogRepo) add(d domain.Dialog) uuid.UUID {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
 	}
@@ -38,12 +46,18 @@ func (r *multiDialogRepo) add(d domain.Dialog) uuid.UUID {
 }
 
 func (r *multiDialogRepo) CreateDialog(_ context.Context, mode, title string, parentID *uuid.UUID) (domain.Dialog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	d := domain.Dialog{ID: uuid.New(), Mode: mode, Title: title, ParentID: parentID}
 	r.dialogs[d.ID] = &d
 	return d, nil
 }
 
 func (r *multiDialogRepo) GetDialog(_ context.Context, id uuid.UUID) (domain.Dialog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	d, ok := r.dialogs[id]
 	if !ok {
 		return domain.Dialog{}, fmt.Errorf("dialog %s not found", id)
@@ -52,6 +66,9 @@ func (r *multiDialogRepo) GetDialog(_ context.Context, id uuid.UUID) (domain.Dia
 }
 
 func (r *multiDialogRepo) ListChildren(_ context.Context, parentID uuid.UUID) ([]domain.Dialog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	var out []domain.Dialog
 	for _, d := range r.dialogs {
 		if d.ParentID != nil && *d.ParentID == parentID {
@@ -66,10 +83,16 @@ func (r *multiDialogRepo) ListPlanDialogIDs(_ context.Context) ([]uuid.UUID, err
 }
 
 func (r *multiDialogRepo) ListMessages(_ context.Context, dialogID uuid.UUID) ([]domain.DialogMessage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	return append([]domain.DialogMessage(nil), r.messages[dialogID]...), nil
 }
 
 func (r *multiDialogRepo) AppendMessage(_ context.Context, dialogID uuid.UUID, msg domain.DialogMessage) (domain.DialogMessage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.nextID++
 	msg.ID = r.nextID
 	msg.DialogID = dialogID
@@ -79,6 +102,9 @@ func (r *multiDialogRepo) AppendMessage(_ context.Context, dialogID uuid.UUID, m
 }
 
 func (r *multiDialogRepo) UpdateTitle(_ context.Context, id uuid.UUID, title string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if d, ok := r.dialogs[id]; ok {
 		d.Title = title
 	}
@@ -86,6 +112,9 @@ func (r *multiDialogRepo) UpdateTitle(_ context.Context, id uuid.UUID, title str
 }
 
 func (r *multiDialogRepo) SetDialogTaskID(_ context.Context, id uuid.UUID, taskID *string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if d, ok := r.dialogs[id]; ok {
 		d.TaskID = taskID
 	}
@@ -93,6 +122,9 @@ func (r *multiDialogRepo) SetDialogTaskID(_ context.Context, id uuid.UUID, taskI
 }
 
 func (r *multiDialogRepo) SetDialogCategories(_ context.Context, id uuid.UUID, categories []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if d, ok := r.dialogs[id]; ok {
 		d.Categories = categories
 	}
@@ -100,6 +132,9 @@ func (r *multiDialogRepo) SetDialogCategories(_ context.Context, id uuid.UUID, c
 }
 
 func (r *multiDialogRepo) DeleteMessagesAfterSeq(_ context.Context, dialogID uuid.UUID, afterSeq int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	kept := r.messages[dialogID][:0]
 	for _, m := range r.messages[dialogID] {
 		if m.Seq <= afterSeq {

@@ -32,7 +32,7 @@ offers.
 | Name | Parameters | Blocking | Behaviour |
 |---|---|:-:|---|
 | `decompose` | `task` (required) | yes | Runs to completion inside the orchestrator's call. May come back asking for a decision, which the orchestrator relays. |
-| `plan` | `stages`, `rollback` | no | One planning agent per stage in parallel, wave by wave, then one that derives the rollback. Naming stages replans only those. Returns as soon as the run starts. |
+| `plan` | `stages`, `rollback` | no | One planning agent per stage in parallel, wave by wave, then one that derives the rollback. A stage that needs a decision asks in the chat under its own name and waits for you while its siblings carry on. Naming stages replans only those. Returns as soon as the run starts. |
 | `execute` | `item` (required), `rerun` | no | Carries out one action by the number the operator sees. A `code` action goes to a container and opens a pull request; anything else runs in an agent that posts its result into the chat. Returns as soon as the work starts. |
 
 Every sub-agent is parented directly to the root dialog, so listing the root's

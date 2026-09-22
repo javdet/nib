@@ -18,17 +18,20 @@ type FanoutStageStatus string
 const (
 	FanoutStagePending FanoutStageStatus = "pending"
 	FanoutStageRunning FanoutStageStatus = "running"
-	FanoutStageDone    FanoutStageStatus = "done"
-	FanoutStageFailed  FanoutStageStatus = "failed"
+	// FanoutStageAwaitingInput marks a stage whose subagent is blocked on a
+	// question it put to the operator. It is not terminal: the agent is alive
+	// and goes back to running the moment an answer lands.
+	FanoutStageAwaitingInput FanoutStageStatus = "awaiting_input"
+	FanoutStageDone          FanoutStageStatus = "done"
+	FanoutStageFailed        FanoutStageStatus = "failed"
 )
 
 type FanoutRunStatus string
 
 const (
-	FanoutRunRunning       FanoutRunStatus = "running"
-	FanoutRunAwaitingInput FanoutRunStatus = "awaiting_input"
-	FanoutRunDone          FanoutRunStatus = "done"
-	FanoutRunFailed        FanoutRunStatus = "failed"
+	FanoutRunRunning FanoutRunStatus = "running"
+	FanoutRunDone    FanoutRunStatus = "done"
+	FanoutRunFailed  FanoutRunStatus = "failed"
 )
 
 // FanoutStageKind separates the units of planning work a run holds. A DAG stage
@@ -66,9 +69,11 @@ type FanoutStage struct {
 	Carried bool `json:"carried,omitempty"`
 }
 
-// PlanBlocker is a question a stage subagent could not answer for itself. It
-// never stops that stage: the subagent records the assumption it made instead
-// and stores its stage anyway, so a blocker costs a correction, not a gap.
+// PlanBlocker is a question a stage subagent could not answer for itself. The
+// subagent blocks on it: the question goes to the operator naming the stage that
+// raised it, and the answer comes back as the tool's own result. The assumption
+// is what it falls back on when no answer arrives, so a blocker never leaves a
+// gap in the plan.
 type PlanBlocker struct {
 	Stage string `json:"stage"`
 	// Kind is empty for a question raised by a DAG stage, and matches the
@@ -90,14 +95,7 @@ type FanoutRun struct {
 	FinishedAt int64           `json:"finishedAt,omitempty"`
 	Stages     []FanoutStage   `json:"stages"`
 	Blockers   []PlanBlocker   `json:"blockers,omitempty"`
-	// PendingAskID is the synthesised ask_question tool call whose answers the
-	// next run consumes, and PendingStages the stages that run will redo.
-	PendingAskID  string   `json:"pendingAskId,omitempty"`
-	PendingStages []string `json:"pendingStages,omitempty"`
-	// PendingRollback records that the rollback agent is among the work the next
-	// run redoes, so a reloaded page knows what the pending question covers.
-	PendingRollback bool   `json:"pendingRollback,omitempty"`
-	Error           string `json:"error,omitempty"`
+	Error      string          `json:"error,omitempty"`
 }
 
 // Active reports whether a run still owns the plan, so a second fan-out over the
@@ -198,6 +196,16 @@ func (s *ChatService) setFanoutRollback(dialogID uuid.UUID, apply func(*FanoutSt
 		}
 	})
 	return err
+}
+
+// setFanoutStageOfKind records the outcome of whichever unit of work a kind and
+// a title name. The blocker handler is bound to one of the two and knows only
+// that pair, so the choice between the addressing schemes is made here.
+func (s *ChatService) setFanoutStageOfKind(dialogID uuid.UUID, title string, kind FanoutStageKind, apply func(*FanoutStage)) error {
+	if kind == FanoutStageKindStage {
+		return s.setFanoutStage(dialogID, title, apply)
+	}
+	return s.setFanoutRollback(dialogID, apply)
 }
 
 // recordFanoutStage counts a stage that has reached a terminal status. pending
