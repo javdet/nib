@@ -128,10 +128,11 @@ func init() {
 			Name:     SubagentExecute,
 			Params:   []string{"item", "rerun"},
 			Required: []string{"item"},
-			Description: "Carries out one item of the action plan, named by the number the operator sees " +
-				"beside it. A code action goes to the coding agent in a container and opens a pull " +
-				"request; anything else goes to an agent that executes it and posts its result into " +
-				"this chat. Returns as soon as the work starts. Only one execution runs at a time.",
+			Description: "Carries out one item of the action plan -- an action, a verification check or a " +
+				"rollback entry -- named by the number the operator sees beside it. A code action goes to " +
+				"the coding agent in a container and opens a pull request; anything else goes to an agent " +
+				"that carries it out and posts its result into this chat. Returns as soon as the work " +
+				"starts. Only one execution runs at a time.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
 				return s.launchExecuteSubagent(ctx, rootID, req.Item, req.Rerun)
 			},

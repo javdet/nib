@@ -17,8 +17,11 @@ func testActionPlan() storedActionPlan {
 				Number: 1,
 				Title:  "Prepare",
 				Steps: []storedActionStep{
-					{Type: "shell", Action: "check cluster"},
-					{Type: "code", Action: "bump version", Repository: "ansible-roles", PRTitle: "chore: bump"},
+					{Type: "shell", Action: "check cluster", Categories: []string{"kubernetes"}},
+					{Type: "code", Action: "bump version", Repository: "ansible-roles", PRTitle: "chore: bump", Categories: []string{"kubernetes", "git"}},
+				},
+				Checks: []storedActionCheck{
+					{Check: "every pod is Running", Expectation: "3/3 ready"},
 				},
 			},
 			{
@@ -48,7 +51,8 @@ func TestFindActionPlanStep(t *testing.T) {
 		{name: "first stage second step", key: "s0.step1", wantFound: true, wantAction: "bump version"},
 		{name: "second stage", key: "s1.step0", wantFound: true, wantAction: "roll out"},
 		{name: "rollback", key: "rollback.0", wantFound: true, wantAction: "revert"},
-		{name: "check key is not a step", key: "s0.check0"},
+		{name: "check resolves as a step", key: "s0.check0", wantFound: true, wantAction: "every pod is Running"},
+		{name: "check out of range", key: "s0.check9"},
 		{name: "step out of range", key: "s0.step9"},
 		{name: "stage out of range", key: "s9.step0"},
 		{name: "rollback out of range", key: "rollback.9"},
@@ -67,6 +71,73 @@ func TestFindActionPlanStep(t *testing.T) {
 			}
 			if tt.wantFound && step.Action != tt.wantAction {
 				t.Fatalf("findActionPlanStep(%q) action = %q, want %q", tt.key, step.Action, tt.wantAction)
+			}
+		})
+	}
+}
+
+// A check is executed like any other row, so resolving one has to hand back a
+// step the executing path can use: the expectation it is judged against, a type
+// that says it is a verification, and the tools its stage was carried out with.
+func TestFindActionPlanStep_projectsACheckIntoAStep(t *testing.T) {
+	t.Parallel()
+
+	step, ok := findActionPlanStep(testActionPlan(), "s0.check0")
+	if !ok {
+		t.Fatal("findActionPlanStep(s0.check0) not found")
+	}
+	if step.Type != actionTypeCheck {
+		t.Errorf("type = %q, want %q", step.Type, actionTypeCheck)
+	}
+	if step.Expectation != "3/3 ready" {
+		t.Errorf("expectation = %q, want %q", step.Expectation, "3/3 ready")
+	}
+	if got, want := strings.Join(step.Categories, ","), "kubernetes,git"; got != want {
+		t.Errorf("categories = %q, want %q", got, want)
+	}
+	// A check must never be mistaken for a code action: it opens no pull request
+	// and carries no repository.
+	if strings.EqualFold(step.Type, actionTypeCode) {
+		t.Errorf("type = %q, a check is never a code action", step.Type)
+	}
+}
+
+func TestStageCategories(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		stage storedActionStage
+		want  []string
+	}{
+		{
+			name: "union in first-seen order, deduplicated",
+			stage: storedActionStage{Steps: []storedActionStep{
+				{Categories: []string{"kubernetes", "git"}},
+				{Categories: []string{"git", "grafana"}},
+			}},
+			want: []string{"kubernetes", "git", "grafana"},
+		},
+		{
+			name:  "no steps",
+			stage: storedActionStage{},
+		},
+		{
+			name: "blank and empty entries are dropped",
+			stage: storedActionStage{Steps: []storedActionStep{
+				{Categories: []string{"  ", ""}},
+				{Categories: nil},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := stageCategories(tt.stage)
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Fatalf("stageCategories() = %v, want %v", got, tt.want)
 			}
 		})
 	}

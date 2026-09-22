@@ -772,7 +772,7 @@ export function WorkplaceDetail() {
 	)
 
 	const handleExecuteAction = useCallback(
-		(_step: ActionStep, key: string) => {
+		(key: string) => {
 			sendActionCommand(key, executeActionMessage)
 		},
 		[sendActionCommand],

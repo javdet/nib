@@ -110,7 +110,7 @@ interface ActionPlanViewProps {
 	onToggle: (key: string, nextChecked: boolean) => void
 	onComment: (key: string) => void
 	onEdit: (key: string) => void
-	onExecute: (step: ActionStep, key: string) => void
+	onExecute: (key: string) => void
 	// onStop force-stops the execution running right now. It is the way out of a
 	// run that is wedged, so it is offered on every running row rather than only
 	// on the one the operator started.
@@ -544,22 +544,88 @@ function RowBody({ id, checked, children }: RowBodyProps) {
 	)
 }
 
+interface RunControlsProps {
+	execRun?: ActionExecRun
+	onStop: () => void
+}
+
+// The two controls every executable row shows about a run in flight: what it is
+// doing and the way out of it. Stop is offered on any running row rather than
+// only the one this operator started -- it is the only way out of a wedged
+// execution, which holds the single slot for every plan.
+function RunControls({ execRun, onStop }: RunControlsProps) {
+	if (!execRun) return null
+
+	return (
+		<>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<span className="flex h-9 w-9 shrink-0 items-center justify-center">
+						<ExecStatusDot run={execRun} />
+					</span>
+				</TooltipTrigger>
+				<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
+			</Tooltip>
+			{execRun.status === 'running' && (
+				<HeaderButton
+					label="Stop execution"
+					tooltip="Force-stop this execution and free the slot"
+					onClick={onStop}
+				>
+					<Square className="h-4 w-4" />
+				</HeaderButton>
+			)}
+		</>
+	)
+}
+
+interface ExecuteButtonProps {
+	onClick: () => void
+	disabled?: boolean
+	disabledReason?: string
+}
+
+function ExecuteButton({ onClick, disabled, disabledReason }: ExecuteButtonProps) {
+	return (
+		<HeaderButton
+			label="Execute action"
+			tooltip={disabled && disabledReason ? disabledReason : 'Execute action'}
+			onClick={onClick}
+			disabled={disabled}
+		>
+			<span className="flex size-6 items-center justify-center rounded-full border border-current/40">
+				<Play className="ml-0.5 size-3 fill-current" />
+			</span>
+		</HeaderButton>
+	)
+}
+
 interface CheckableRowProps {
 	id: string
 	number: string
 	checked: boolean
 	onToggle: (key: string, nextChecked: boolean) => void
+	onExecute: () => void
+	onStop: () => void
+	execRun?: ActionExecRun
 	dragDisabled?: boolean
 	onGripPointerDown: () => void
 	onGripPointerUp: () => void
 	children: ReactNode
 }
 
+// A check is executed like an action -- a sub-agent takes the reading and reports
+// what it found -- so the row carries the same Execute button and run status. It
+// keeps the dashed surface and skips Edit and Comment: a check is two fields the
+// planner owns, and neither has an editor.
 function CheckableRow({
 	id,
 	number,
 	checked,
 	onToggle,
+	onExecute,
+	onStop,
+	execRun,
 	dragDisabled,
 	onGripPointerDown,
 	onGripPointerUp,
@@ -581,7 +647,12 @@ function CheckableRow({
 				onGripPointerDown={onGripPointerDown}
 				onGripPointerUp={onGripPointerUp}
 			/>
-			<div className="min-w-0 flex-1">
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className="flex h-9 shrink-0 items-center pl-3">
+					<div className="min-w-0 flex-1" />
+					<RunControls execRun={execRun} onStop={onStop} />
+					<ExecuteButton onClick={onExecute} />
+				</div>
 				<RowBody id={id} checked={checked}>
 					{children}
 				</RowBody>
@@ -650,25 +721,7 @@ function ExecutableActionRow({
 			<div className="flex min-w-0 flex-1 flex-col">
 				<div className="flex h-9 shrink-0 items-center pl-3">
 					<div className="flex min-w-0 flex-1 items-center pr-2">{header}</div>
-					{execRun && (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span className="flex h-9 w-9 shrink-0 items-center justify-center">
-									<ExecStatusDot run={execRun} />
-								</span>
-							</TooltipTrigger>
-							<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
-						</Tooltip>
-					)}
-					{execRun?.status === 'running' && (
-						<HeaderButton
-							label="Stop execution"
-							tooltip="Force-stop this execution and free the slot"
-							onClick={onStop}
-						>
-							<Square className="h-4 w-4" />
-						</HeaderButton>
-					)}
+					<RunControls execRun={execRun} onStop={onStop} />
 					<HeaderButton
 						label="Edit action"
 						tooltip="Edit action"
@@ -686,20 +739,11 @@ function ExecutableActionRow({
 							className={cn('h-4 w-4', hasComment && 'fill-current')}
 						/>
 					</HeaderButton>
-					<HeaderButton
-						label="Execute action"
-						tooltip={
-							executeDisabled && executeDisabledReason
-								? executeDisabledReason
-								: 'Execute action'
-						}
+					<ExecuteButton
 						onClick={onExecute}
 						disabled={executeDisabled}
-					>
-						<span className="flex size-6 items-center justify-center rounded-full border border-current/40">
-							<Play className="ml-0.5 size-3 fill-current" />
-						</span>
-					</HeaderButton>
+						disabledReason={executeDisabledReason}
+					/>
 				</div>
 				<RowBody id={id} checked={checked}>
 					{children}
@@ -941,7 +985,7 @@ export function ActionPlanView({
 											onToggle={onToggle}
 											onComment={() => onComment(key)}
 											onEdit={() => onEdit(key)}
-											onExecute={() => onExecute(step, key)}
+											onExecute={() => onExecute(key)}
 											onStop={onStop}
 											execRun={execRuns[key]}
 											executeDisabled={
@@ -997,6 +1041,9 @@ export function ActionPlanView({
 												)}
 												checked={checkedSet.has(key)}
 												onToggle={onToggle}
+												onExecute={() => onExecute(key)}
+												onStop={onStop}
+												execRun={execRuns[key]}
 												dragDisabled={dragDisabled}
 												onGripPointerDown={handleGripPointerDown}
 												onGripPointerUp={handleGripPointerUp}
@@ -1040,7 +1087,7 @@ export function ActionPlanView({
 										onToggle={onToggle}
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
-										onExecute={() => onExecute(step, key)}
+										onExecute={() => onExecute(key)}
 										onStop={onStop}
 										execRun={execRuns[key]}
 										executeDisabled={

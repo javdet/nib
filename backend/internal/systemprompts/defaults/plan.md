@@ -88,6 +88,13 @@ A `shell` or `curl` step is executed by an operator who copies the command strai
 * Prefer non-interactive, idempotent invocations: pass explicit `--namespace`/`--context` flags rather than relying on ambient state, and avoid commands that prompt for input.
 * Omit `command` for `code`, `web`, and `other` steps. The same rules apply to `shell` and `curl` entries in `rollback`.
 
+## Verification checks
+Each stage ends with 1-2 `checks`, and a check is carried out the same way an action is: an agent takes the reading and reports what it found. Write them for that agent, not only for a human reader.
+* **`check` says what to observe**, concretely enough to act on: the resource, the namespace or account, the field to read. "Verify the deployment is healthy" is not a check; "read `deployment/centrifugo` in namespace `prod` and count the ready replicas" is.
+* **`expectation` says what the reading has to be** for the check to pass — the value, the count, the status, the range. It is the only thing the agent judges what it saw against, so a vague expectation makes the check unfalsifiable.
+* A check takes no `categories` of its own. It inherits the ones you put on the steps of its stage, which is another reason to keep a check in the stage whose work it verifies; if a check needs a tool nothing in that stage used, say so in `check`.
+* **Checks observe and never change.** Anything that modifies the system is a step, even when its purpose is verification.
+
 ## Action text formatting rules
 The `action` field is rendered as Markdown in the web interface, so structure it for readability instead of writing one long paragraph.
 * **Write `action` as Markdown.** Start with one short sentence that states what the step does. Follow with a blank line, then a Markdown list (`-` bullets, or `1.` when order matters).

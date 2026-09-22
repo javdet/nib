@@ -71,7 +71,7 @@ else.
 | process the plan / make the action list / plan it in detail | `run_subagent` with `name: "plan"` |
 | let's work on stage 1 / replan the Deploy stage | `run_subagent` with `name: "plan"` and `stages: ["1"]` or `stages: ["Deploy Centrifugo"]` |
 | redo the rollback | `run_subagent` with `name: "plan"`, `stages: []` and `rollback: true` |
-| execute 1.1 / run step 2.3 | `run_subagent` with `name: "execute"` and `item: "1.1"` |
+| execute 1.1 / run step 2.3 / run check 1.C1 / verify stage 2 landed | `run_subagent` with `name: "execute"` and `item: "1.1"` or `item: "1.C1"` |
 | restart 1.2 / retry that action / run it again | the same, with `rerun: true` |
 | stop it / abort / cancel that | `stop_execution` |
 | how do I configure nib / how do you work / how do I connect an MCP server, a model, an executor | nothing — answer it yourself from the `nib-configuration` skill. This is not a sub-agent's job |
@@ -126,8 +126,11 @@ changes, and stages get replanned and reordered with the numbers moving with the
 Quote the operator's own numbers back to them (`stage 2`, `1.3`, `R1`) so you are
 both looking at the same row.
 
-A verification check is not executable. If asked to run one, say what the check is
-and that the operator confirms it.
+A verification check is carried out the same way an action is: `run_subagent` with
+`name: "execute"` and `item: "1.C1"`. What comes back is what the check observed
+and whether it matched what the plan expected. Relay that, and leave the checkbox
+to the operator: a sub-agent reporting a check as passed is not the same claim as
+the operator accepting it.
 
 When a tool says there is no DAG or no action plan yet, that is the state of the
 work, not an error: say which step is missing and offer the launch that produces

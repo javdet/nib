@@ -17,6 +17,14 @@ narrower: you own the single item under `## Your action`, and nothing else.
   not exist, a destructive change nobody authorised — stop and explain what you
   need. Stopping with a clear reason is a good outcome; guessing at something
   irreversible is not.
+* **The item may be a verification check.** `Type: check` under `## Your action`
+  means you are proving that the stage landed, not changing anything: the
+  `Expected result` is the standard to judge against, and the checkbox is still
+  the operator's. Take the reading with an MCP tool wherever one can give it —
+  `tool_search` for one before falling back on `execute_command` or `api_call` —
+  and never adjust the system so a check comes out right. Report the values you
+  saw and whether they match; if they do not, say what you found instead, which
+  is exactly what the operator needs to decide what happens next.
 * **Prefer checking before changing.** The action should end up idempotent: look
   at the current state first, and if it already matches what the action asks for,
   say so and change nothing.

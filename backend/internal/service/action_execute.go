@@ -248,6 +248,10 @@ func (s *ChatService) readActionPlanStep(planDialogID uuid.UUID, key string) (st
 }
 
 // findActionPlanStep resolves a step by the same row keys the web UI renders.
+//
+// A check resolves too, projected into a step: it is executed by a sub-agent
+// like any other row, and every caller from here on -- the seed, the allow set,
+// the dialog title -- is written against storedActionStep.
 func findActionPlanStep(plan storedActionPlan, key string) (storedActionStep, bool) {
 	if key == "" {
 		return storedActionStep{}, false
@@ -258,6 +262,11 @@ func findActionPlanStep(plan storedActionPlan, key string) (storedActionStep, bo
 				return step, true
 			}
 		}
+		for checkIdx, check := range stage.Checks {
+			if actionPlanItemKey(stageIdx, ActionPlanScopeChecks, checkIdx) == key {
+				return check.asActionStep(stageCategories(stage)), true
+			}
+		}
 	}
 	for idx, step := range plan.Rollback {
 		if fmt.Sprintf("rollback.%d", idx) == key {
@@ -265,6 +274,29 @@ func findActionPlanStep(plan storedActionPlan, key string) (storedActionStep, bo
 		}
 	}
 	return storedActionStep{}, false
+}
+
+// stageCategories is the union of the tool categories the planner put on a
+// stage's steps, in the order they first appear. It is what a check of that
+// stage is executed with: the checks themselves carry no categories, and the
+// tools that made a change are the tools that can see whether it took.
+func stageCategories(stage storedActionStage) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	for _, step := range stage.Steps {
+		for _, c := range step.Categories {
+			name := strings.TrimSpace(c)
+			if name == "" {
+				continue
+			}
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // buildActionRunPrompt returns the text sent to the agent, which is also stored
