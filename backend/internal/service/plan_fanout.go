@@ -16,14 +16,14 @@ import (
 
 const (
 	defaultPlanFanoutConcurrency = 4
-	defaultStageMaxIterations    = 15
-	// defaultPlanFanoutTimeout bounds the whole run: every wave of stages, and
-	// then the rollback agent that runs alone after them.
+	// defaultStageMaxIterations covers a stage subagent's whole turn. It has to
+	// fit the research that raised a question and the planning that follows the
+	// answer, since the answer arrives mid-turn and resets nothing.
+	defaultStageMaxIterations = 20
+	// defaultPlanFanoutTimeout bounds what the run spends working: every wave of
+	// stages, and then the rollback agent that runs alone after them. Time a
+	// stage spends waiting on the operator is not charged to it.
 	defaultPlanFanoutTimeout = 60 * time.Minute
-	// maxBlockerQuestionsPerRound follows the two-questions-at-a-time rule the
-	// plan and decompose prompts already state. Leftover blockers keep their
-	// place in the run and come back in the next round.
-	maxBlockerQuestionsPerRound = 2
 	// stagePlanMode is the mode a stage subagent runs under: it uses the plan
 	// prompt and the plan allow list, narrowed to a single stage.
 	stagePlanMode = "plan"
@@ -37,6 +37,14 @@ const (
 	notPlannedYetReason = "not planned yet; replan it to fill this in"
 	// abandonedReason closes a carried row a finished run left mid-flight.
 	abandonedReason = "the run that was planning this ended before it finished"
+	// askedDirectlyReason closes a row whose planner tried to suspend on
+	// ask_question instead of calling report_blocker. The turn cannot be
+	// resumed, so the work has to be redone.
+	askedDirectlyReason = "the planner tried to ask the operator directly instead of calling report_blocker"
+	// plannerCannotAskReason answers that dangling call in the planner's own
+	// transcript, so nothing renders it as a question still worth answering.
+	plannerCannotAskReason = "a plan sub-agent cannot suspend on ask_question, because the wave it belongs to is " +
+		"waiting on its turn; use report_blocker, which puts the question to the operator and waits for the answer"
 )
 
 var (
@@ -136,10 +144,11 @@ func carriedStage(previous FanoutRun, wave int, title string, kind FanoutStageKi
 	st.DialogID = prior.DialogID
 	st.Error = prior.Error
 	switch prior.Status {
-	case FanoutStageRunning:
-		// A run that is over left nothing behind that is still working, and
-		// carrying "running" would show a spinner with no agent under it -- the
-		// reasoning the boot-time sweep in ReconcileStuckRuns follows too.
+	case FanoutStageRunning, FanoutStageAwaitingInput:
+		// A run that is over left nothing behind that is still working or still
+		// waiting, and carrying either status would show a live row with no
+		// agent under it -- the reasoning the boot-time sweep in
+		// ReconcileStuckRuns follows too.
 		st.Status = FanoutStageFailed
 		st.Error = abandonedReason
 	case FanoutStagePending:
@@ -267,13 +276,20 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	}
 	metrics.RecordFanoutStarted()
 
-	// The run outlives the request that started it, so it gets a deadline of its
-	// own rather than inheriting one that is about to be cancelled.
-	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.fanout.timeout())
-	s.fanoutCancels.Store(rootID, cancel)
+	// The run outlives the request that started it, so it is detached from the
+	// one that is about to be cancelled. Its budget is enforced by a watchdog
+	// rather than a deadline, because a stage blocked on a question is not time
+	// the run is spending.
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	st := newFanoutRunState(cancel)
+	s.fanoutRuns.Store(rootID, st)
+	go s.watchFanoutBudget(runCtx, st, s.fanout.timeout(), fanoutBudgetTick)
 	go func() {
 		defer cancel()
-		defer s.fanoutCancels.Delete(rootID)
+		// Compared, not just deleted: this run's record is written before the
+		// entry is cleaned up, so a replan started in that gap owns the entry by
+		// then and a blind delete would take its desk away.
+		defer s.fanoutRuns.CompareAndDelete(rootID, st)
 		s.runPlanFanout(runCtx, rootID, waves, rollback)
 	}()
 
@@ -307,14 +323,13 @@ func filterWaves(waves [][]string, only []string) [][]string {
 	return out
 }
 
-// carryBlockers is the blockers a new run starts with.
+// carryBlockers is the blockers a new run starts with. They are the plan's
+// record of what was asked and what came back, not work outstanding: a question
+// is put to the operator and answered inside the turn that raised it.
 //
-// An answered one stays, so the stage being replanned can be told what the user
-// said. An unanswered one stays too unless the run replans whoever raised it:
-// that agent raises again whatever it still cannot answer, while an agent nobody
-// is rerunning gets no second chance to, and dropping its blocker would lose the
-// question for good -- which is what used to happen to every question past the
-// two a round asks.
+// An answered one stays, so the record survives a replan. An unanswered one --
+// a wait the run was stopped out of -- stays too unless this run reruns whoever
+// raised it, in which case that agent asks again for itself.
 func carryBlockers(blockers []PlanBlocker, running map[string]struct{}, rollback bool) []PlanBlocker {
 	var out []PlanBlocker
 	for _, b := range blockers {
@@ -367,23 +382,26 @@ func (s *ChatService) runPlanFanout(ctx context.Context, rootID uuid.UUID, waves
 		s.runRollbackAgent(ctx, rootID)
 	}
 
-	// A cancelled or timed-out context cannot append the closing question, so the
-	// run is closed as failed and whatever landed stays on the plan.
+	// A cancelled or out-of-budget run keeps whatever landed and says so.
 	if ctx.Err() != nil {
-		s.closeFanoutRun(rootID, FanoutRunFailed, "run cancelled or timed out")
+		s.closeFanoutRun(rootID, FanoutRunFailed, "run cancelled or out of budget")
 		return
 	}
-	s.finishPlanFanout(ctx, rootID)
+	s.closeFanoutRun(rootID, FanoutRunDone, "")
 }
 
 // CancelPlanFanout stops a running fan-out. Stages already written stay on the
-// plan; stages still running are abandoned. It reports whether a run was stopped.
+// plan; stages still running are abandoned, and a stage waiting on a question is
+// released to finish under the assumption it stated. It reports whether a run
+// was stopped.
 func (s *ChatService) CancelPlanFanout(rootID uuid.UUID) bool {
-	cancel, ok := s.fanoutCancels.LoadAndDelete(rootID)
+	v, ok := s.fanoutRuns.LoadAndDelete(rootID)
 	if !ok {
 		return false
 	}
-	cancel.(context.CancelFunc)()
+	// Every wait selects on this context, so one cancel also unblocks the stages
+	// sitting on a question.
+	v.(*fanoutRunState).cancel()
 	return true
 }
 
@@ -464,12 +482,21 @@ func (s *ChatService) runPlanStage(ctx context.Context, rootID uuid.UUID, title 
 		return
 	}
 
-	if _, err := s.runPersistingAgentLoop(ctx, stageDialog.ID, stagePlanMode, catalog, loopConfig{
+	resp, err := s.runPersistingAgentLoop(ctx, stageDialog.ID, stagePlanMode, catalog, loopConfig{
 		planID:        rootID,
 		stage:         title,
 		maxIterations: s.fanout.StageMaxIterations,
-	}); err != nil {
+	})
+	if err != nil {
 		fail(err)
+		return
+	}
+	if resp.Status == "awaiting_input" {
+		// The loop intercepts ask_question by name whether or not it is in the
+		// catalog, so a planner that hallucinates it stops here with a nil
+		// error. Left alone that reads as success and stores nothing.
+		s.answerPendingAskForSubagent(ctx, stageDialog.ID, resp.ToolCallID, plannerCannotAskReason)
+		fail(errors.New(askedDirectlyReason))
 		return
 	}
 
@@ -506,9 +533,9 @@ func (s *ChatService) fanoutSystemPrompt(ctx context.Context, promptName string)
 }
 
 // stageAllowSet is the plan allow set narrowed for a stage subagent: it cannot
-// rewrite the whole plan, it owns no rollback, and it cannot suspend to ask the
-// user, so create_action_plan, update_rollback_plan and ask_question come out and
-// report_blocker goes in.
+// rewrite the whole plan, it owns no rollback, and it reaches the user through
+// report_blocker rather than ask_question, so create_action_plan,
+// update_rollback_plan and ask_question come out and report_blocker goes in.
 func (s *ChatService) stageAllowSet(ctx context.Context, rootID uuid.UUID) (map[string]struct{}, error) {
 	allow, err := s.planFanoutAllowSet(ctx, rootID)
 	if err != nil {
@@ -523,7 +550,8 @@ func (s *ChatService) stageAllowSet(ctx context.Context, rootID uuid.UUID) (map[
 // planFanoutAllowSet is what every fan-out subagent starts from: the plan allow
 // set plus the dialog's tool categories, minus the two tools no subagent may have.
 // create_action_plan rewrites the whole plan and would destroy a sibling's work;
-// ask_question suspends the turn and would strand the agents running beside it.
+// ask_question suspends a turn that cannot be resumed, and report_blocker is the
+// supported way to reach the operator from inside one.
 func (s *ChatService) planFanoutAllowSet(ctx context.Context, rootID uuid.UUID) (map[string]struct{}, error) {
 	allow, err := s.resolveAllowSet(stagePlanMode)
 	if err != nil {

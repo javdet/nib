@@ -75,10 +75,19 @@ sub-agent's dangling tool call. It resumes where it stopped. This is the most
 complicated part of the system, and it exists entirely to make one blocking
 call behave like a conversation.
 
+A stage planner cannot do the same. Its turn holds state that is not on disk,
+and the wave it belongs to is waiting on its goroutine, so it blocks inside the
+`report_blocker` call instead: the question goes into the chat naming its stage,
+and the answer comes back as the call's own result. Only that stage waits. The
+stages beside it keep planning, and a second question queues until the first is
+answered, because the chat can only show one at a time.
+
 **What you see:** a plan that goes quiet after "started" is a fan-out or an
 action running, and it will report when it lands. A plan that asks you a
 question mid-decomposition is a suspended sub-agent, and the plan does not move
-until you answer.
+until you answer. A question naming a stage is that stage's planner waiting on
+you — it is marked "waiting for you" in the stage list, and the rest of the plan
+carries on around it.
 
 ## Everything belongs to the root
 

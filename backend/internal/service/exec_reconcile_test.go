@@ -124,26 +124,39 @@ func TestReconcileStuckRunsClosesRunningFanouts(t *testing.T) {
 	}
 }
 
-// A run parked on a question is not stuck: the operator can still answer it
-// after a restart, which is the whole reason the record is a file.
-func TestReconcileStuckRunsLeavesAParkedFanoutAlone(t *testing.T) {
+// A stage waiting on an answer is as dead as one mid-completion: the channel the
+// answer would have arrived on went with the process.
+func TestReconcileStuckRunsFailsAStageLeftWaitingOnAnAnswer(t *testing.T) {
 	t.Parallel()
 
 	svc := reconcileService(t)
 	planID := uuid.New()
 	writeJSON(t, filepath.Join(svc.planFanoutDir, planID.String()+".json"), FanoutRun{
-		RunID: "run-1", Status: FanoutRunAwaitingInput, PendingAskID: "fanout_ask_1",
+		RunID:  "run-1",
+		Status: FanoutRunRunning,
+		Stages: []FanoutStage{
+			{Title: "Deploy", Status: FanoutStageAwaitingInput},
+			{Title: "Verify", Status: FanoutStageDone},
+		},
 	})
 
 	rec, err := svc.ReconcileStuckRuns()
 	if err != nil {
 		t.Fatalf("ReconcileStuckRuns err = %v", err)
 	}
-	if rec.Fanouts != 0 {
-		t.Errorf("closed %d fan-outs, want the parked one left alone", rec.Fanouts)
+	if rec.Fanouts != 1 {
+		t.Errorf("closed %d fan-outs, want 1", rec.Fanouts)
 	}
-	if run, _, _ := svc.ReadFanoutRun(planID); run.Status != FanoutRunAwaitingInput {
-		t.Errorf("run status = %q, want it still awaiting input", run.Status)
+
+	run, _, _ := svc.ReadFanoutRun(planID)
+	if run.Status != FanoutRunFailed {
+		t.Errorf("run status = %q, want failed", run.Status)
+	}
+	if run.Stages[0].Status != FanoutStageFailed || run.Stages[0].Error != restartedReason {
+		t.Errorf("the waiting stage is %q (%q), want failed", run.Stages[0].Status, run.Stages[0].Error)
+	}
+	if run.Stages[1].Status != FanoutStageDone {
+		t.Error("a stage that was not waiting was rewritten")
 	}
 }
 

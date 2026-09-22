@@ -238,9 +238,11 @@ func formatActionResultMessage(key string, dialogID uuid.UUID, status ActionExec
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func subagentCannotAskPayload(toolCallID string) string {
-	const text = "this sub-agent runs one action and cannot put a question to the operator; " +
-		"the run ended here and the question was reported in the plan chat"
+// subagentCannotAskPayload is the tool result written against an ask_question a
+// sub-agent's loop left dangling. reason says why that sub-agent could not ask,
+// which differs by what it was doing.
+func subagentCannotAskPayload(reason string) string {
+	text := reason
 	payload := map[string]any{
 		"isError": true,
 		"content": []map[string]string{{"type": "text", "text": text}},

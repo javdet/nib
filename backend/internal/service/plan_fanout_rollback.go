@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -137,13 +138,22 @@ func (s *ChatService) runRollbackAgent(ctx context.Context, rootID uuid.UUID) {
 		return
 	}
 
-	if _, err := s.runPersistingAgentLoop(ctx, rollbackDialog.ID, stagePlanMode, catalog, loopConfig{
+	resp, err := s.runPersistingAgentLoop(ctx, rollbackDialog.ID, stagePlanMode, catalog, loopConfig{
 		planID:        rootID,
 		stage:         rollbackStageTitle,
 		kind:          FanoutStageKindRollback,
 		maxIterations: s.fanout.StageMaxIterations,
-	}); err != nil {
+	})
+	if err != nil {
 		fail(err)
+		return
+	}
+	if resp.Status == "awaiting_input" {
+		// Same as a stage planner: ask_question is intercepted by name whether
+		// or not it is in the catalog, and a turn stopped there cannot be
+		// resumed.
+		s.answerPendingAskForSubagent(ctx, rollbackDialog.ID, resp.ToolCallID, plannerCannotAskReason)
+		fail(errors.New(askedDirectlyReason))
 		return
 	}
 
@@ -214,20 +224,5 @@ func (s *ChatService) buildRollbackSeed(
 		"Undo them in reverse. A stage of the DAG that is missing here is one whose planning failed: "+
 		"do not invent an undo for it.\n\n```json\n"+string(data)+"\n```")
 
-	if answers := s.rollbackAnswersSection(rootID); answers != "" {
-		parts = append(parts, answers)
-	}
 	return strings.Join(parts, "\n\n"), nil
-}
-
-// rollbackAnswersSection replays the user's answers to questions an earlier
-// attempt at the rollback raised.
-func (s *ChatService) rollbackAnswersSection(rootID uuid.UUID) string {
-	run, found, err := s.ReadFanoutRun(rootID)
-	if err != nil || !found {
-		return ""
-	}
-	return answersSection(run.Blockers, func(b PlanBlocker) bool {
-		return b.Kind == FanoutStageKindRollback
-	})
 }

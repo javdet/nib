@@ -308,10 +308,23 @@ generated from the registry in
   `data/subagents/{root}.json`, the orchestrator relays the questions under an `ask_question` of its
   own, and the answers are routed back to the sub-agent's dangling call by
   [subagent_resume.go](backend/internal/service/subagent_resume.go), hooked into `SubmitToolResult`
-  beside the fan-out's own resume.
+  beside the fan-out's answer delivery.
 - **plan** and **execute** start *asynchronously* and return "started": a fan-out can run for an
   hour and an action for half of one, both longer than the HTTP write deadline. They report into the
   orchestrator's chat through the existing named-message and SSE machinery.
+
+A stage planner cannot suspend the way decompose does — its turn holds state that is not on disk,
+and the wave it belongs to is waiting on its goroutine — so `report_blocker`
+([plan_fanout_question.go](backend/internal/service/plan_fanout_question.go)) **blocks inside the
+call**: the question is posted into the orchestrator's chat naming the stage that raised it, and the
+answer comes back as the tool's own result, in the same turn. Only that stage waits; its siblings
+keep planning, and the wave ends when every stage in it has finished. Questions are serialised per
+plan by a one-slot desk, because `findPendingAskQuestion` renders only the newest unanswered ask and
+a second question posted beside the first would strand it. A waiting stage leaves the *run* running,
+so `ErrFanoutInProgress` still refuses a second fan-out and `ReconcileStuckRuns` still closes the run
+after a restart — the waiter is a channel and dies with the process. The run's timeout is a budget of
+*working* time, charged by a watchdog that stops while any stage waits, and an unanswered wait
+returns the agent's own stated assumption so the plan never gains a gap.
 
 Only the orchestrator sees `run_subagent`, `stop_execution` and `execute_action`. Two guards keep it
 that way: the tools are registered only when `toolBinding.planID == toolBinding.dialogID` — true

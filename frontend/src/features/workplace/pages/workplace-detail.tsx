@@ -81,6 +81,10 @@ import {
 import { actionPlanNumberForKey } from '../lib/action-plan-number'
 import { executeActionMessage } from '../lib/execute-action-message'
 import {
+	fanoutStageClass,
+	fanoutStageLabel,
+} from '../lib/fanout-stage-status'
+import {
 	planStageMessage,
 	processPlanMessage,
 	replanAllStagesMessage,
@@ -316,7 +320,10 @@ export function WorkplaceDetail() {
 				ev.kind === 'plan_stage_started' ||
 				ev.kind === 'plan_stage_done' ||
 				ev.kind === 'plan_stage_failed' ||
-				ev.kind === 'plan_fanout_done'
+				ev.kind === 'plan_fanout_done' ||
+				// A stage going in and out of "waiting for you" is a stage-list
+				// change like any other.
+				ev.kind === 'plan_question'
 			) {
 				void getPlanFanout(id).then(setFanoutRun).catch(() => {})
 				return
@@ -1508,16 +1515,10 @@ export function WorkplaceDetail() {
 											</span>
 											<span className="flex shrink-0 items-center gap-2">
 												<span
-													className={
-														stage.status === 'failed'
-															? 'text-destructive'
-															: stage.status === 'done'
-																? 'text-lime-700 dark:text-lime-300'
-																: ''
-													}
+													className={fanoutStageClass(stage.status)}
 													title={stage.error}
 												>
-													{stage.status}
+													{fanoutStageLabel(stage.status)}
 												</span>
 												{stage.dialogId && (
 													<Button
@@ -1546,10 +1547,12 @@ export function WorkplaceDetail() {
 											</span>
 										</div>
 									))}
-									{fanoutRun.status === 'awaiting_input' && (
+									{fanoutRun.stages.some(
+										(st) => st.status === 'awaiting_input',
+									) && (
 										<p className="pt-2 text-sm text-muted-foreground">
-											Some stages rest on assumptions. Answer the questions in
-											the chat and those stages are replanned.
+											A stage is waiting on your answer in the chat. The others
+											keep planning until then.
 										</p>
 									)}
 								</>

@@ -124,8 +124,8 @@ token limit.
 |---|---|---|---|
 | `maxIterations` | integer | `10` | Completion → tool-call rounds in one ordinary turn. |
 | `planFanoutConcurrency` | integer | `4` | Stage sub-agents planning at the same time during a fan-out. |
-| `stageMaxIterations` | integer | `15` | Round budget of one stage sub-agent. |
-| `planFanoutTimeoutMinutes` | integer | `60` | Deadline for a whole fan-out run. |
+| `stageMaxIterations` | integer | `20` | Round budget of one stage sub-agent. It has to cover both the research that raised a question and the planning that follows the answer, since the answer arrives mid-turn. |
+| `planFanoutTimeoutMinutes` | integer | `60` | Budget of *working* time for a fan-out run. It does not run down while a stage waits on your answer. |
 | `actionExecConcurrency` | integer | `1` | Action sub-agents executing at once. **Clamped to 1.** |
 | `actionExecMaxIterations` | integer | `20` | Round budget of one action sub-agent. |
 | `actionExecTimeoutMinutes` | integer | `30` | Deadline for one action run. |

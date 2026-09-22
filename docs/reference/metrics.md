@@ -98,6 +98,10 @@ Tool `source` is `local`, `mcp` or `unknown`. Tool *names* appear only in
 from operator configuration and an invented name comes from the model, so
 neither goes in a label.
 
+`nib_agent_tool_call_duration_seconds` is timed per call, so a `report_blocker`
+sits in its top bucket for as long as the operator takes to answer it. That is
+the tool working, not a slow one.
+
 Prompt and completion tokens are not exported to Prometheus. They are recorded
 per call in the `llm_usage` table instead — see [Usage
 tables](#usage-tables). `nib_llm_embedding_tokens_total` is unaffected.

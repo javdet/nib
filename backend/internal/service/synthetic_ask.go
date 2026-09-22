@@ -12,7 +12,8 @@ import (
 
 const (
 	// fanoutAskIDPrefix marks a question raised by a plan fan-out, so answering
-	// it replans the stages that asked rather than resuming a turn.
+	// it hands the answer to the stage subagent blocked on it rather than
+	// resuming a turn.
 	fanoutAskIDPrefix = "fanout_ask_"
 	// subagentAskIDPrefix marks a question relayed from a suspended subagent, so
 	// answering it resumes that subagent rather than the chat it was asked in.
@@ -35,6 +36,29 @@ func (s *ChatService) appendSyntheticAskQuestion(
 	questions []domain.Question,
 	idPrefix string,
 ) (string, error) {
+	callID := newAskID(idPrefix)
+	if err := s.appendSyntheticAskQuestionWithID(ctx, dialogID, callID, preamble, questions); err != nil {
+		return "", err
+	}
+	return callID, nil
+}
+
+// newAskID mints the call id a synthetic question is answered under.
+func newAskID(idPrefix string) string {
+	return idPrefix + uuid.NewString()
+}
+
+// appendSyntheticAskQuestionWithID is appendSyntheticAskQuestion for a caller
+// that already knows the id. The fan-out mints its own so it can register the
+// waiter before the row exists: an operator answering between the append and
+// the registration would otherwise find nothing waiting.
+func (s *ChatService) appendSyntheticAskQuestionWithID(
+	ctx context.Context,
+	dialogID uuid.UUID,
+	callID string,
+	preamble string,
+	questions []domain.Question,
+) error {
 	items := make([]map[string]any, 0, len(questions))
 	for _, q := range questions {
 		item := map[string]any{"question": q.Question}
@@ -45,17 +69,16 @@ func (s *ChatService) appendSyntheticAskQuestion(
 	}
 	args, err := json.Marshal(map[string]any{"questions": items})
 	if err != nil {
-		return "", fmt.Errorf("marshal questions: %w", err)
+		return fmt.Errorf("marshal questions: %w", err)
 	}
 
-	callID := idPrefix + uuid.NewString()
 	toolCalls, err := marshalToolCalls([]llm.ToolCall{{
 		ID:        callID,
 		Name:      AskQuestionToolName,
 		Arguments: string(args),
 	}})
 	if err != nil {
-		return "", fmt.Errorf("marshal tool calls: %w", err)
+		return fmt.Errorf("marshal tool calls: %w", err)
 	}
 
 	if _, err := s.appendMessageLocked(ctx, dialogID, domain.DialogMessage{
@@ -63,7 +86,7 @@ func (s *ChatService) appendSyntheticAskQuestion(
 		Content:   preamble,
 		ToolCalls: toolCalls,
 	}); err != nil {
-		return "", fmt.Errorf("append question: %w", err)
+		return fmt.Errorf("append question: %w", err)
 	}
-	return callID, nil
+	return nil
 }

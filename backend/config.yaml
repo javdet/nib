@@ -74,7 +74,7 @@ agent:
   planFanoutConcurrency: 4
   # Completion round budget for a single stage subagent. Lower than
   # maxIterations because it researches one stage rather than a whole plan.
-  stageMaxIterations: 15
+  stageMaxIterations: 20
   # Deadline for a whole fan-out run. It outlives the request that starts it.
   planFanoutTimeoutMinutes: 60
   # Action execution: one subagent per plan action, launched by the orchestrator.

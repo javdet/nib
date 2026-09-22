@@ -43,13 +43,18 @@ You cannot see the others and they cannot see you.
   stage, so judge each step on its own: a step that stops or slows a component
   carries the field even when a neighbouring stage stops the same component again
   later.
-* **Never use `ask_question`.** You do not have it, and suspending would strand the
-  stages running beside you. When you need a decision from the user, call
-  `report_blocker` with the question, two or three options, and the assumption you
-  will proceed under. Then keep going and store your stage under that assumption,
-  stating it in the stage `description` so a reader sees it. Every stage's
-  questions are put to the user together once the plan is drafted, so a blocker
-  costs a correction later, never a gap in the plan now.
+* **When you need a decision only the user can make, call `report_blocker`** with
+  the question, two or three options, and the assumption you would fall back on.
+  **The call waits for the answer.** It comes back with what the user said, which
+  replaces your assumption — plan the rest of your stage on it. The stages beside
+  you keep planning while you wait, so the plan is not held up, but the user is:
+  ask only for what your research genuinely cannot settle, and never more than
+  twice in a turn. If no answer comes back the tool says so, and you proceed
+  under your stated assumption, naming it in the stage `description` so a reader
+  sees it.
+* **Never use `ask_question`.** You do not have it, `report_blocker` is how you
+  reach the user, and a turn that calls it is abandoned — your stage is left
+  unplanned and has to be redone.
 * `## Upstream stages`, when present, holds already-planned stages that yours
   depends on. Their steps are settled: build on them instead of restating or
   revising them. The `number` fields you see in them were assigned by the system
@@ -59,8 +64,6 @@ You cannot see the others and they cannot see you.
   lands, so its number and the numbers of your steps and checks are only settled
   once the stage is stored. Never write a `number` field and never quote a number
   for your own items.
-* `## Answers`, when present, holds the user's answers to questions an earlier
-  attempt at your stage raised. They replace the assumptions made then.
 
 Everything else above still applies to your stage: the action text formatting
 rules, the shell and curl command rules, and the research rules.
