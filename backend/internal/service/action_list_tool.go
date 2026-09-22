@@ -20,7 +20,7 @@ func GetActionListToolDef() llm.ToolDef {
 		Name: GetActionListToolName,
 		Description: "Return the action plan bound to the current conversation. " +
 			"Includes stages with actions, verification checks, and rollback steps, each with type and executed status. " +
-			"Each action and check carries the `number` the operator sees next to it in the web interface. " +
+			"Each action and check carries the `number` the operator sees next to it in the web interface, and both are executable. " +
 			"`executed` is the operator's checkbox; `run` is the last sub-agent attempt, which is a weaker claim. " +
 			"`notes` is what the last run of that action reported: the concrete values it produced -- an id, a name, " +
 			"an address, a branch -- which is where to look for anything an earlier action created.",
@@ -91,6 +91,11 @@ type actionListCheck struct {
 	Check       string `json:"check"`
 	Expectation string `json:"expectation"`
 	Executed    bool   `json:"executed"`
+	// Run and Notes mean here exactly what they mean on an action: a check is
+	// handed to a sub-agent like any other row, so what the last attempt did and
+	// what it found have to reach whoever reads the list next.
+	Run   *actionListRun `json:"run,omitempty"`
+	Notes string         `json:"notes,omitempty"`
 }
 
 type storedActionPlan struct {
@@ -122,6 +127,11 @@ type storedActionStep struct {
 	// needs. It decides that sub-agent's MCP tools and nothing else: no view
 	// renders it, and it is never shown to the operator.
 	Categories []string `json:"categories,omitempty"`
+	// Expectation is what a check's result has to look like for it to pass. Only
+	// a check carries it -- no step in the plan schema has the field -- and it is
+	// here because a check is executed through storedActionStep like everything
+	// else, and the agent cannot judge a check it was not told the outcome of.
+	Expectation string `json:"expectation,omitempty"`
 	// Downtime and Degraded are what carrying this step out costs the people
 	// using the system: a non-empty value is both the operator-facing label and
 	// its tooltip. They are mutually exclusive by the plan prompt's rule --
@@ -135,6 +145,25 @@ type storedActionCheck struct {
 	Number      string `json:"number,omitempty"`
 	Check       string `json:"check"`
 	Expectation string `json:"expectation"`
+}
+
+// actionTypeCheck is the type stamped on a check projected into a step. It is
+// not a type the planner may write: nothing in the plan schema produces it, and
+// it exists so an executing agent is told it is verifying rather than changing.
+const actionTypeCheck = "check"
+
+// asActionStep projects a check into the shape every executing path already
+// takes. A check carries no categories of its own, so it inherits the ones the
+// planner put on the steps of the stage it verifies: proving a stage landed
+// takes the same tools carrying it out did, and a check left with none would
+// reach a cluster only through tool_search.
+func (c storedActionCheck) asActionStep(categories []string) storedActionStep {
+	return storedActionStep{
+		Type:        actionTypeCheck,
+		Action:      c.Check,
+		Expectation: c.Expectation,
+		Categories:  categories,
+	}
 }
 
 func (s *ChatService) getActionListHandler(dialogID uuid.UUID) localToolHandler {
@@ -275,6 +304,8 @@ func buildActionListResponse(
 				Check:       check.Check,
 				Expectation: check.Expectation,
 				Executed:    executed,
+				Run:         actionListRunFor(execRuns, key),
+				Notes:       notes[key],
 			})
 		}
 		resp.Stages = append(resp.Stages, stageResp)

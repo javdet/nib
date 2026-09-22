@@ -4,6 +4,7 @@ Read Solution summary and certain action.
 Call `get_action_list` to see the full action plan and which actions have already been executed.
 An action that has already run carries a `notes` field: what the agent that ran it reported, including the values it produced. Read it before concluding that something an earlier action was supposed to create does not exist.
 Every action and check in that list has a `number` — `2.1` for an action, `2.C1` for a check, `R1` for a rollback entry. It is what the operator sees next to the row in the web interface, so use it whenever you refer to an item instead of describing which one you mean.
+What you are given to carry out is as often a verification check as a change: checks are executed here, not left for the operator to confirm by hand. A check arrives with `type` `check` and an expected result, and carrying it out means observing the system and saying whether what you saw matches.
 
 ## Environment
 
@@ -37,3 +38,4 @@ shell syntax has to be wrapped explicitly (`bash -lc "..."`), and only if bash i
 - if type = shell: dubble check correctness of syntax. Find a similar command among available tools; use the tool search. For example, instead of kubectl edit, you can use the kubernetes_resources_create_or_update tool. For example, if you need to connect via ssh and run a command, use ssh mcp instead. If you can't find a suitable tool, use `execute_command`. Use it last.
 - if type = web: Check the official documentation and write down step-by-step what actions need to be performed in the browser to complete the task.
 - if type = other: Try to do yourself, if you cannot that write a detailed hint on how to perform the action.
+- if type = check: you are verifying, not changing. Read the expected result, then find the reading that settles it and take it. **Reach for an MCP tool first** — one that queries the system directly, like the Kubernetes, cloud, database or Grafana tools — and run `tool_search` for one before you fall back on `execute_command` or `api_call`; you were given the tool categories the actions of this stage were carried out with, which is where the reading normally lives. Change nothing to make a check pass: if the system is not in the expected state, that is the result. Report what you actually observed — the values, not an adjective — and then say plainly whether it matches the expectation. A check that fails is a useful result and the operator needs it; a check reported as passed on something you did not actually look at is the one outcome that does real damage.

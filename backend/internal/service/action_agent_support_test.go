@@ -96,6 +96,54 @@ func TestFormatActionResultMessageWithoutADialog(t *testing.T) {
 	}
 }
 
+// "Done" on a check says the sub-agent finished, not that the check passed, so
+// the finding has to survive into the chat -- an action's is held back, and a
+// check reported as a bare tick would tell the operator nothing.
+func TestFormatActionResultMessage_keepsACheckFinding(t *testing.T) {
+	t.Parallel()
+
+	const finding = "2/3 replicas ready, expected 3/3"
+
+	got := formatActionResultMessage("s0.check0", uuid.Nil, ActionExecDone, finding)
+	if !strings.Contains(got, "**1.C1 checked** 🔍") {
+		t.Errorf("message = %q, want the check heading", got)
+	}
+	if !strings.Contains(got, finding) {
+		t.Errorf("message = %q, want it to keep %q", got, finding)
+	}
+
+	// An action still reports as a tick alone: its text is working memory for the
+	// agents that follow, not something the operator has to read.
+	action := formatActionResultMessage("s0.step0", uuid.Nil, ActionExecDone, "created vpc-123")
+	if strings.Contains(action, "created vpc-123") {
+		t.Errorf("message = %q, want a finished action to hold its notes back", action)
+	}
+}
+
+// The expectation is the whole point of running a check: without it the agent
+// can quote what it saw but cannot say whether the check passed.
+func TestBuildActionSeed_carriesACheckExpectation(t *testing.T) {
+	t.Parallel()
+
+	svc := &ChatService{
+		summariesDir:     t.TempDir(),
+		dagsDir:          t.TempDir(),
+		planContractsDir: t.TempDir(),
+		actionPlansDir:   t.TempDir(),
+	}
+
+	check := storedActionCheck{Check: "every pod is Running", Expectation: "3/3 ready"}
+	seed, err := svc.buildActionSeed(uuid.New(), "s0.check0", "1.C1", check.asActionStep(nil))
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	for _, want := range []string{"Type: check", "every pod is Running", "### Expected result", "3/3 ready"} {
+		if !strings.Contains(seed, want) {
+			t.Errorf("seed = %q, want it to hold %q", seed, want)
+		}
+	}
+}
+
 // The agent carrying an action out is the one about to cause the outage, so the
 // impact the planner declared reaches its seed rather than being left for it to
 // infer from the action text.

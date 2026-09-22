@@ -21,7 +21,7 @@ var executeActionParameters = json.RawMessage(`{
   "properties": {
     "number": {
       "type": "string",
-      "description": "The action's number as shown in the web interface: \"1.1\" for an action, \"R1\" for a rollback entry."
+      "description": "The item's number as shown in the web interface: \"1.1\" for an action, \"1.C1\" for a verification check, \"R1\" for a rollback entry."
     },
     "rerun": {
       "type": "boolean",
@@ -36,8 +36,8 @@ var executeActionParameters = json.RawMessage(`{
 func ExecuteActionToolDef() llm.ToolDef {
 	return llm.ToolDef{
 		Name: ExecuteActionToolName,
-		Description: "Carry out one action of the action plan bound to this conversation, named by the number the operator sees beside it. " +
-			"A code action is handed to the coding agent, which opens a pull request; every other action is given to a sub-agent that executes it and reports back here when it finishes. " +
+		Description: "Carry out one item of the action plan bound to this conversation, named by the number the operator sees beside it. " +
+			"A code action is handed to the coding agent, which opens a pull request; every other action, and every verification check, is given to a sub-agent that carries it out and reports back here when it finishes. " +
 			"Returns as soon as the work is started, not when it is done.",
 		Parameters: executeActionParameters,
 	}
@@ -53,7 +53,8 @@ func (s *ChatService) executeActionHandler(b toolBinding) localToolHandler {
 
 // executePlanItem carries out one item of the plan owned by planOwnerID, named
 // as the operator sees it. A code action goes to the coding agent in a container;
-// anything else goes to a sub-agent of its own.
+// anything else -- including a verification check, which is run rather than left
+// for the operator to confirm by hand -- goes to a sub-agent of its own.
 //
 // It reports whether the work actually started, so a caller can tell a refusal
 // from a launch. Everything an operator or a model can get wrong comes back as
@@ -85,15 +86,10 @@ func (s *ChatService) executePlanItem(
 		display = raw
 	}
 
-	// A check is a verification the operator ticks, not work to hand out.
-	if strings.Contains(key, ".check") {
-		return fmt.Sprintf("%s is a verification check, not an action; carry out the check yourself and report what you found", display), false, nil
-	}
-
 	step, err := s.readActionPlanStep(planID, key)
 	if err != nil {
 		if errors.Is(err, ErrActionNotFound) {
-			return fmt.Sprintf("the plan has no action %s; read the action list to see the numbers it does have", display), false, nil
+			return fmt.Sprintf("the plan has no item %s; read the action list to see the numbers it does have", display), false, nil
 		}
 		return "", false, err
 	}

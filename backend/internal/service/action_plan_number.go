@@ -149,6 +149,14 @@ func parseActionPlanLabelPair(rawStage, rawIndex string) (stage, index int, ok b
 	return stage - 1, index - 1, true
 }
 
+// isActionPlanCheckKey reports whether a row key addresses a verification check
+// rather than an action. A check is executed like anything else, so the two are
+// told apart by their key wherever what comes back has to read differently.
+func isActionPlanCheckKey(key string) bool {
+	m := actionPlanKeyPattern.FindStringSubmatch(strings.TrimSpace(key))
+	return m != nil && m[2] == "check"
+}
+
 // actionPlanNumberForKey renders the operator-facing label of a row key. It is
 // the pair of parseActionPlanNumber and, like every number here, is derived from
 // position rather than read back from the document.

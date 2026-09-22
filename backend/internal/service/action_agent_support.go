@@ -115,6 +115,12 @@ func (s *ChatService) buildActionSeed(
 	if c := strings.TrimSpace(step.Command); c != "" {
 		b.WriteString("\n### Command\n\n```\n" + c + "\n```\n")
 	}
+	// Only a check carries an expectation, and it is the whole point of running
+	// one: the agent has to be told what the result must look like to report a
+	// pass rather than just quote what it saw.
+	if e := strings.TrimSpace(step.Expectation); e != "" {
+		b.WriteString("\n### Expected result\n\n" + e + "\n")
+	}
 	parts = append(parts, strings.TrimRight(b.String(), "\n"))
 
 	comments, err := s.ReadActionPlanComments(planID)
@@ -190,30 +196,40 @@ func actionExecMessageName(key string, attempt int) string {
 // panel intercepts to open the subagent's dialog: there is no route to a dialog
 // by id, so a plain URL would go nowhere.
 //
-// A successful run reports only that it is done. Its text is working notes for
+// A successful action reports only that it is done. Its text is working notes for
 // the actions that follow -- recorded on the action and read back through
 // get_action_list -- rather than something the operator has to wade through, and
 // the transcript link is there for anyone who does want it. Every other outcome
 // keeps its body: a question, a failure and a cancellation are all things
 // somebody has to act on.
+//
+// A check is the exception among finished runs. Its body is the reading it took
+// and whether that matched what the plan expected, which is the only reason it
+// ran, and it is addressed to the operator rather than to the agents that come
+// after. "Done" here says the sub-agent finished, never that the check passed --
+// a check that found the wrong thing finishes just as successfully -- so the
+// heading says it was checked and the finding is kept.
 func formatActionResultMessage(key string, dialogID uuid.UUID, status ActionExecStatus, body string) string {
 	number := actionPlanNumberForKey(key)
 	if number == "" {
 		number = key
 	}
+	isCheck := isActionPlanCheckKey(key)
 
 	var b strings.Builder
-	switch status {
-	case ActionExecDone:
+	switch {
+	case status == ActionExecDone && isCheck:
+		fmt.Fprintf(&b, "**%s checked** 🔍\n", number)
+	case status == ActionExecDone:
 		fmt.Fprintf(&b, "**%s executed** ✅\n", number)
-	case ActionExecBlocked:
+	case status == ActionExecBlocked:
 		fmt.Fprintf(&b, "**%s needs a decision** ⏸\n", number)
-	case ActionExecCancelled:
+	case status == ActionExecCancelled:
 		fmt.Fprintf(&b, "**%s cancelled** ⏹\n", number)
 	default:
 		fmt.Fprintf(&b, "**%s failed** ❌\n", number)
 	}
-	if text := strings.TrimSpace(body); text != "" && status != ActionExecDone {
+	if text := strings.TrimSpace(body); text != "" && (isCheck || status != ActionExecDone) {
 		b.WriteString("\n" + text + "\n")
 	}
 	if dialogID != uuid.Nil {
