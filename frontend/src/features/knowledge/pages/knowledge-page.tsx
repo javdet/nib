@@ -14,6 +14,7 @@ import { createDialog } from '@/features/dialogs/api/dialogs'
 import { CompanyInfoCard } from '@/features/company/components/company-info-card'
 import { UploadDocumentCard } from '../components/upload-document-card'
 import { DiscussPromptCard } from '../components/discuss-prompt-card'
+import { AutoUpdateCard } from '../components/auto-update-card'
 import {
 	buildKnowledgeBaseRequest,
 	parseRepositoryList,
@@ -160,6 +161,8 @@ export function KnowledgePage() {
 				generating={generating}
 				onGenerate={() => void handleGenerate()}
 			/>
+
+			<AutoUpdateCard />
 
 			<DiscussPromptCard />
 		</div>

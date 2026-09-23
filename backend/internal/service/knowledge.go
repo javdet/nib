@@ -7,11 +7,12 @@ import (
 	"io"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/kb"
 	"github.com/javdet/nib/internal/kbdoc"
+	"github.com/javdet/nib/internal/kbsettings"
 	"github.com/javdet/nib/internal/llm"
-	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 	ErrFilenameRequired      = errors.New("filename is required")
 	ErrEmptyFile             = errors.New("file is empty")
 	ErrNoChunks              = errors.New("no chunks produced from document")
+	ErrSettingsUnavailable   = errors.New("knowledge settings are not configured")
 	ErrInvalidCollectionName = errors.New("invalid collection name")
 )
 
@@ -66,6 +68,7 @@ type KnowledgeService struct {
 	store             *kb.Store
 	embedder          llm.Embedder
 	docs              *kbdoc.Service
+	settings          *kbsettings.Store
 }
 
 // NewKnowledgeService wires config I/O, the KB store, and the embedding provider.
@@ -299,4 +302,30 @@ func ReadUploadContent(r io.Reader, maxBytes int64) ([]byte, error) {
 		return nil, fmt.Errorf("file exceeds maximum size of %d bytes", maxBytes)
 	}
 	return data, nil
+}
+
+// SetSettingsStore wires the knowledge-base switches. Optional: a nil store
+// reports the defaults and refuses writes, which is what the service tests and
+// the kb CLI run with.
+func (s *KnowledgeService) SetSettingsStore(store *kbsettings.Store) {
+	s.settings = store
+}
+
+// GetSettings returns the knowledge-base switches.
+func (s *KnowledgeService) GetSettings() (kbsettings.Settings, error) {
+	if s.settings == nil {
+		return kbsettings.Defaults(), nil
+	}
+	return s.settings.Get()
+}
+
+// SetSettings replaces the knowledge-base switches.
+func (s *KnowledgeService) SetSettings(settings kbsettings.Settings) (kbsettings.Settings, error) {
+	if s.settings == nil {
+		return kbsettings.Settings{}, ErrSettingsUnavailable
+	}
+	if err := s.settings.Set(settings); err != nil {
+		return kbsettings.Settings{}, fmt.Errorf("set knowledge settings: %w", err)
+	}
+	return s.settings.Get()
 }

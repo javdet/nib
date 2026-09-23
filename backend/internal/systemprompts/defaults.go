@@ -28,7 +28,10 @@ const EditableName = "discuss"
 // execute_report turns the execute prompt around for the subagent launched when
 // the operator finishes a plan: it reads the finished action list and writes the
 // report rather than carrying anything out.
-var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent", "execute_report"}
+// execute_kb turns it around the other way, for the subagent chained after the
+// report: it merges what the plan established into the project's knowledge base
+// collection instead of recording it for the operator.
+var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent", "execute_report", "execute_kb"}
 
 const mdSuffix = ".md"
 

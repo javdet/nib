@@ -273,6 +273,34 @@ func (h *DialogHandler) ActionPlanExecRuns() http.HandlerFunc {
 	}
 }
 
+// ActionPlanActionLogs returns what the agent-runner container of one running
+// code action has written so far.
+//
+// A snapshot rather than a stream: an action runs for tens of minutes, and
+// holding a response open for that long would tie it to the life of the
+// container. The client polls instead.
+func (h *DialogHandler) ActionPlanActionLogs() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := parseUUIDParam(w, r, "id", "dialog id")
+		if !ok {
+			return
+		}
+
+		key := strings.TrimSpace(r.URL.Query().Get("key"))
+		if key == "" {
+			writeError(w, http.StatusBadRequest, "key is required")
+			return
+		}
+
+		logs, err := h.chatSvc.ReadActionContainerLogs(r.Context(), id, key)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, logs)
+	}
+}
+
 func (h *DialogHandler) SetActionPlanComments() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := parseUUIDParam(w, r, "id", "dialog id")

@@ -253,6 +253,12 @@ Creates a rule, or replaces one that exists, under the rules directory.
 Overwrites the knowledge-base document for a collection: every existing chunk
 is deleted first.
 
+Also handed, outside any allow list, to the sub-agent chained after the report
+when a plan is finished, so it can fold what the plan established into the
+collection named after its project. That agent gets a literal catalog of
+`get_action_list`, `get_kb_document` and `update_kb`; `actionAgentAllowSet`
+withholds `update_kb` from the per-action executors, which run in the same mode.
+
 ### `update_tool_category`
 
 Replaces the match patterns of an existing tool category.

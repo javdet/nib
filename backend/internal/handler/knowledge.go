@@ -150,3 +150,46 @@ func (h *KnowledgeHandler) ListCollections() http.HandlerFunc {
 		writeJSON(w, http.StatusOK, collections)
 	}
 }
+
+type knowledgeSettingsRequest struct {
+	AutoUpdate *bool `json:"autoUpdate"`
+}
+
+// GetSettings serves the knowledge-base switches.
+func (h *KnowledgeHandler) GetSettings() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := h.svc.GetSettings()
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
+
+// UpdateSettings replaces the knowledge-base switches. Fields are pointers so a
+// body that omits one leaves it as it was rather than clearing it.
+func (h *KnowledgeHandler) UpdateSettings() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req knowledgeSettingsRequest
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+
+		settings, err := h.svc.GetSettings()
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		if req.AutoUpdate != nil {
+			settings.AutoUpdate = *req.AutoUpdate
+		}
+
+		updated, err := h.svc.SetSettings(settings)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+	}
+}

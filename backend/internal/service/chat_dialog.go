@@ -48,6 +48,15 @@ func (s *ChatService) SendInDialog(ctx context.Context, dialogID uuid.UUID, mess
 		}); err != nil {
 			return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: append system: %w", err)
 		}
+		// The same moment the prompt's {{ .builtin.Project }} is baked into the
+		// transcript, so the snapshot and the prompt can never disagree. A plan
+		// that cannot record it still runs -- only the later knowledge-base
+		// update falls back to the live selection.
+		if d.ParentID == nil && mode.CarriesPlan(d.Mode) && s.selection != nil {
+			if err := s.WritePlanSelection(dialogID, s.selection.Get()); err != nil {
+				slog.Warn("record plan selection", "dialog_id", dialogID, "error", err)
+			}
+		}
 	}
 
 	if _, err := s.dialogRepo.AppendMessage(ctx, dialogID, domain.DialogMessage{

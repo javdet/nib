@@ -29,6 +29,7 @@ immediately.
 | `tools/mcp-included.json` | MCP tools included per mode. |
 | `tools/mcp-known.json` | Ledger of MCP tool names already reconciled. |
 | `knowledgebase/{collection}.md` | The last document uploaded to each collection. Overridable with `knowledge_base.dir`. |
+| `knowledge.json` | Knowledge-base switches; today just `autoUpdate`, on by default. Overridable with `knowledge_base.settingsFile`. |
 
 `mcp-known.json` is what separates a tool that was never offered from one an
 operator excluded. An install without it treats the entire catalog as new and
@@ -69,8 +70,10 @@ wrote them. Each is written atomically.
 | `reports/{id}.md` | The closing report written after **Finish**. |
 | `action_plans/{id}.json` | The action plan. |
 | `plan_state/{id}.json` | Current status and schedule. |
+| `plan_selection/{id}.json` | The project/environment/cloud/location the plan was started under, recorded on its first turn. |
 | `plan_fanout/{id}.json` | Progress of a detailed-planning run. |
 | `subagents/{id}.json` | A suspended sub-agent waiting on an answer. |
+| `kb_updates/{id}.json` | That the plan has been folded into its knowledge base collection, and whether anything changed. |
 
 ### Action-plan side files
 
@@ -152,8 +155,6 @@ the API.
 |---|---|
 | `kb_collections` | One row per collection, with its `embedding_model` and vector dimension. |
 | `kb_chunks` | Chunk text and its vector. |
-| `knowledge_connections` | Configured knowledge-base connections. |
-| `knowledge_collections` | Collections as the UI lists them. |
 
 `kb_collections.embedding_model` must match `llm.embeddingModel` exactly.
 Knowledge search compares them as strings.

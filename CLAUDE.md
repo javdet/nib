@@ -147,7 +147,14 @@ extend what the agent believes about its host.
   guardrails it is planning against.
 - The knowledge base is pgvector chunks searched by `knowledge_search`; the file last uploaded to a
   collection is kept at `{DATA_DIR}/knowledgebase/{collection}.md` and read back with
-  `get_kb_document`.
+  `get_kb_document`. `update_kb` is the write half and replaces a collection **in full** — every
+  chunk is deleted, the text re-embedded and the file rewritten — so a caller reads, merges and
+  sends the whole document. Both tools are in the `discuss` allow list only.
+- **Auto-update.** Finishing a plan also folds what it established into the collection named after
+  the plan's project. The switch is `autoUpdate` in `{DATA_DIR}/knowledge.json`
+  (`knowledge_base.settingsFile`), edited at **Knowledge Base → Automatic updates** and **on by
+  default**, including on an install that upgrades into it. A plan whose project is `any`, or whose
+  project name is not a usable collection name, is skipped rather than written to `default`.
 
 ### Tools
 
@@ -190,6 +197,11 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   before its secrets exist. Remote Kubernetes is the exception: the agent Job takes its credentials
   from the operator-managed Secret in `agentSecretName` (`envFrom`), so the git token may be blank.
 - The runner reports back over a webhook guarded by `AGENT_WEBHOOK_TOKEN`.
+- On `local`, a running code action's row in the plan view offers its container logs, polled every
+  10 seconds while the modal is open and never stored. They are readable **only while the run is
+  running** and **only on `local`**: remote Kubernetes answers that logs are local-only, and a
+  finished run's account is in its execute chat instead. A force stop removes the container, so its
+  logs go with it.
 
 Git provider: `GIT_PROVIDER` is derived from the free-text `VersionControlSystem` company variable
 by `executor.NormalizeGitProvider` — anything containing "gitlab" is GitLab, everything else
@@ -371,6 +383,26 @@ finished while a last action was still running silently loses its report; a per-
 list — the report agent is handed a literal two-tool catalog, and `actionAgentAllowSet` deletes the
 name as well, because the per-action executors run in `execute` mode too and a mode list cannot
 tell the two apart.
+
+When that run ends it chains a second one, `StartKBUpdateAgent`
+([kb_agent.go](backend/internal/service/kb_agent.go)): `execute` mode under the `execute_kb`
+overlay, a literal three-tool catalog of `get_action_list`, `get_kb_document` and `update_kb`,
+seeded with the report the first agent just wrote. Chained rather than run beside it because the
+report is already the account of what the plan did, and deriving it twice would only disagree.
+
+It is off when `autoUpdate` is off, and skipped when the plan has no usable collection. Which
+collection that is comes from `data/plan_selection/{root}.json`, written on the plan's first turn:
+the header selection is global and in-memory, so reading it at Finish would answer with whatever
+the operator has selected by then. `data/kb_updates/{root}.json` records the run and is what stops
+a second press of Finish repeating it — a *failed* run writes none and stays retryable, while a run
+that judged the plan taught the knowledge base nothing writes one with `"changed": false`.
+
+Unlike the report agent it holds a lock on the collection for the whole run, because `update_kb` is
+a read-merge-overwrite: two plans finishing against one project would otherwise each publish a
+document built from the text before the other started. It blocks rather than skipping, since no
+request is held open. It takes no execution lease — it rewrites nib's own knowledge base, never a
+managed system — and `actionAgentAllowSet` withholds `update_kb` for the same reason it withholds
+`set_report`.
 
 System prompts, rules, and skills are markdown files under `data/`, rendered as `text/template`
 ([prompttpl](backend/internal/prompttpl/render.go), with Helm-style `toYaml`/`nindent`) against

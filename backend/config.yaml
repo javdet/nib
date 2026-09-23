@@ -102,6 +102,13 @@ knowledge_base:
   # binary, which is never written to disk.
   dir: /app/data/knowledgebase
 
+  # Operator switches (currently just the knowledge-base auto-update that
+  # finishing a plan triggers), edited on the Knowledge Base page rather than
+  # here. Relative paths resolve under DATA_DIR; empty means
+  # {DATA_DIR}/knowledge.json. A file that does not exist yet is created with
+  # auto-update on.
+  settingsFile: knowledge.json
+
 skills:
   dir: /app/data/skills
 
