@@ -1,4 +1,5 @@
 import { api } from '@/lib/api-client'
+import type { SkillAccess } from '@/lib/frontmatter'
 
 export interface Skill {
 	name: string
@@ -8,6 +9,7 @@ export interface Skill {
 export interface SkillMeta {
 	name: string
 	description: string
+	access: SkillAccess
 }
 
 export interface SkillList {

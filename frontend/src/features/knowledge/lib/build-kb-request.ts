@@ -23,17 +23,18 @@ export function parseRepositoryList(raw: string): string[] {
 /**
  * The message that invokes the build-knowledge-base skill unambiguously.
  *
- * Skills are not slash commands - the text goes to the model verbatim, and only
- * `included` skills are named in the discuss system prompt. Asking for the
- * get_skill call by name takes the guess out of the invocation, and passing both
- * parameters the skill requires stops it from asking for them and halting.
+ * The text goes to the model verbatim. The leading `/name` is the slash command
+ * get_skill needs before it serves a skill the operator set to explicit, and
+ * asking for the get_skill call by name takes the guess out of the invocation.
+ * Passing both parameters the skill requires stops it from asking for them and
+ * halting.
  */
 export function buildKnowledgeBaseRequest(
 	project: string,
 	repositories: string[],
 ): string {
 	return [
-		`Call get_skill with name "${BUILD_KNOWLEDGE_BASE_SKILL}" and follow its instructions exactly.`,
+		`/${BUILD_KNOWLEDGE_BASE_SKILL} - call get_skill with name "${BUILD_KNOWLEDGE_BASE_SKILL}" and follow its instructions exactly.`,
 		'',
 		`project: ${project}`,
 		`repositories: ${repositories.join(', ')}`,

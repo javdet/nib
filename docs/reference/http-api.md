@@ -147,7 +147,7 @@ File-backed surfaces edited through the API.
 | `DELETE` | `/system-prompts/{name}` | Reset to the built-in default. |
 | `GET` `POST` | `/rules` | List, create. |
 | `GET` `PUT` `DELETE` | `/rules/{name}` | Fetch, update, delete. |
-| `GET` `POST` | `/skills` | List, create. |
+| `GET` `POST` | `/skills` | List (`name`, `description`, `access`), create. |
 | `GET` `PUT` `DELETE` | `/skills/{name}` | Fetch, update, delete. |
 | `GET` | `/skills/{name}/rendered` | The skill with its template variables resolved. |
 

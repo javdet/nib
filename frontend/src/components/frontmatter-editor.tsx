@@ -4,7 +4,29 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { buildContent, parseFrontmatter } from '@/lib/frontmatter'
+import {
+	buildContent,
+	parseFrontmatter,
+	type SkillAccess,
+} from '@/lib/frontmatter'
+
+const ACCESS_OPTIONS: { value: SkillAccess; label: string; hint: string }[] = [
+	{
+		value: 'enabled',
+		label: 'Enabled',
+		hint: 'Listed for the agent, which may use it on its own or when asked.',
+	},
+	{
+		value: 'explicit',
+		label: 'Explicit',
+		hint: 'Hidden from the agent. It runs only when you type /name in the chat.',
+	},
+	{
+		value: 'disabled',
+		label: 'Disabled',
+		hint: 'Never loaded into any chat.',
+	},
+]
 
 interface FrontmatterEditorProps {
 	fileName: string
@@ -12,6 +34,7 @@ interface FrontmatterEditorProps {
 	isDirty: boolean
 	loading: boolean
 	saving: boolean
+	showAccess?: boolean
 	onChange: (content: string) => void
 	onSave: () => void
 	onDelete: () => void
@@ -23,6 +46,7 @@ export function FrontmatterEditor({
 	isDirty,
 	loading,
 	saving,
+	showAccess = false,
 	onChange,
 	onSave,
 	onDelete,
@@ -32,6 +56,13 @@ export function FrontmatterEditor({
 	function updateField(key: 'name' | 'description' | 'body', value: string) {
 		onChange(buildContent({ ...fields, [key]: value }))
 	}
+
+	function updateAccess(access: SkillAccess) {
+		onChange(buildContent({ ...fields, access }))
+	}
+
+	const access: SkillAccess = fields.access ?? 'enabled'
+	const accessHint = ACCESS_OPTIONS.find((o) => o.value === access)?.hint
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -89,6 +120,32 @@ export function FrontmatterEditor({
 							disabled={saving}
 						/>
 					</div>
+
+					{showAccess && (
+						<div className="space-y-2">
+							<Label>Access</Label>
+							<div
+								className="inline-flex rounded-md border p-1"
+								role="group"
+								aria-label="Access"
+							>
+								{ACCESS_OPTIONS.map((option) => (
+									<Button
+										key={option.value}
+										type="button"
+										size="sm"
+										variant={access === option.value ? 'secondary' : 'ghost'}
+										aria-pressed={access === option.value}
+										onClick={() => updateAccess(option.value)}
+										disabled={saving}
+									>
+										{option.label}
+									</Button>
+								))}
+							</div>
+							<p className="text-xs text-muted-foreground">{accessHint}</p>
+						</div>
+					)}
 
 					<div className="flex min-h-0 flex-1 flex-col gap-2">
 						<Label htmlFor={`${fileName}-body`}>Body</Label>

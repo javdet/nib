@@ -15,7 +15,15 @@ type Meta struct {
 
 // ParseFrontmatter extracts name and description from markdown file content.
 func ParseFrontmatter(content string) Meta {
-	var result Meta
+	fields := ParseFrontmatterFields(content)
+	return Meta{Name: fields["name"], Description: fields["description"]}
+}
+
+// ParseFrontmatterFields returns every key of the frontmatter block, so a store
+// with keys of its own can read them without Meta having to carry them for all.
+// Content without a closed frontmatter block yields an empty map.
+func ParseFrontmatterFields(content string) map[string]string {
+	result := map[string]string{}
 
 	normalized := strings.TrimPrefix(content, "\uFEFF")
 	if !strings.HasPrefix(normalized, "---") {
@@ -47,13 +55,7 @@ func ParseFrontmatter(content string) Meta {
 			continue
 		}
 		key := strings.TrimSpace(trimmed[:colon])
-		value := unquoteYAMLValue(strings.TrimSpace(trimmed[colon+1:]))
-		switch key {
-		case "name":
-			result.Name = value
-		case "description":
-			result.Description = value
-		}
+		result[key] = unquoteYAMLValue(strings.TrimSpace(trimmed[colon+1:]))
 	}
 	return result
 }

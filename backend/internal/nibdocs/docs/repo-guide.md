@@ -136,9 +136,16 @@ extend what the agent believes about its host.
   the catalog is listed in the `main` and `discuss` prompts and loaded with `get_skill`. Built-ins
   are copied out of the image once per data volume (marker `.seeded-defaults`), so edits and
   deletions survive an upgrade.
+- Each skill has an `access` frontmatter key, set per skill on the Skills page: `enabled` (the
+  default, also for a missing or unknown value) lists it in the catalog; `explicit` leaves it out
+  and `get_skill` serves it only once an operator message in the root dialog carries `/name`
+  (a bare mention does not count); `disabled` hides it from the catalog, refuses it in `get_skill`
+  and drops it from the chat's `/` menu. `get_skill` is the gate, since every mode carries it.
+  The Knowledge Base, Distribute tools and Categorize tools buttons open their message with
+  `/name`, so they survive `explicit` but fail on `disabled`.
 - **System skills** (`nib-configuration`, `nib-internals`) are served from the binary. They cannot
   be created, edited, renamed or deleted, do not appear in the Skills page or the HTTP API, and are
-  visible only to the agent.
+  visible only to the agent. They are always `enabled`.
 - Rules live in `{DATA_DIR}/rules`, same format, listed in the `plan` and `discuss` prompts and
   loaded with `get_rule`. **Discuss mode alone can write them**, with `write_rule` (name,
   description, body) — it composes the frontmatter and replaces the whole file, so an edit means

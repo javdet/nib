@@ -74,7 +74,7 @@ func SystemNames() []string {
 func SystemMeta() []Meta {
 	metas := make([]Meta, 0, len(systemSkills))
 	for _, skill := range systemSkills {
-		metas = append(metas, Meta{Name: skill.name, Description: skill.description})
+		metas = append(metas, Meta{Name: skill.name, Description: skill.description, Access: AccessEnabled})
 	}
 	sort.Slice(metas, func(i, j int) bool { return metas[i].Name < metas[j].Name })
 	return metas

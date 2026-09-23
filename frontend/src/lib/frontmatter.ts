@@ -1,7 +1,20 @@
+/**
+ * How a skill may reach the agent: listed for it to pick (`enabled`), only on the
+ * operator's `/name` command (`explicit`), or never (`disabled`).
+ */
+export type SkillAccess = 'enabled' | 'explicit' | 'disabled'
+
 export interface FrontmatterFields {
 	name: string
 	description: string
 	body: string
+	access?: SkillAccess
+}
+
+function parseAccess(value: string): SkillAccess {
+	const normalized = value.trim().toLowerCase()
+	if (normalized === 'explicit' || normalized === 'disabled') return normalized
+	return 'enabled'
 }
 
 const FRONTMATTER_KEYS = ['name', 'description'] as const
@@ -43,8 +56,8 @@ function unquoteYamlValue(value: string): string {
 
 function parseFrontmatterBlock(
 	block: string,
-): Pick<FrontmatterFields, 'name' | 'description'> {
-	const result: Pick<FrontmatterFields, 'name' | 'description'> = {
+): Pick<FrontmatterFields, 'name' | 'description' | 'access'> {
+	const result: Pick<FrontmatterFields, 'name' | 'description' | 'access'> = {
 		name: '',
 		description: '',
 	}
@@ -57,6 +70,7 @@ function parseFrontmatterBlock(
 		const value = unquoteYamlValue(trimmed.slice(colon + 1))
 		if (key === 'name') result.name = value
 		if (key === 'description') result.description = value
+		if (key === 'access') result.access = parseAccess(value)
 	}
 	return result
 }
@@ -117,6 +131,11 @@ export function buildContent(fields: FrontmatterFields): string {
 	const lines = ['---']
 	for (const key of FRONTMATTER_KEYS) {
 		lines.push(`${key}: ${quoteYamlValue(fields[key])}`)
+	}
+	// Enabled is the default the backend assumes when the key is absent, so it is
+	// never written: a rule, or a skill nobody restricted, keeps its bytes.
+	if (fields.access && fields.access !== 'enabled') {
+		lines.push(`access: ${fields.access}`)
 	}
 	lines.push('---')
 

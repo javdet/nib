@@ -10,14 +10,19 @@ import {
 	updateSkill,
 	deleteSkill,
 } from '../api/skills'
+import { skillAccessBadges } from '../lib/skill-access'
 
 export function SkillsPage() {
 	const [createOpen, setCreateOpen] = useState(false)
+	const [badges, setBadges] = useState<Record<string, string>>({})
 
 	const api = useMemo(
 		() => ({
 			list: async () => {
 				const result = await listSkills()
+				// The list is re-read after every save, so a changed access setting
+				// reaches its badge without a second request.
+				setBadges(skillAccessBadges(result.skills))
 				return { names: result.skills.map((skill) => skill.name) }
 			},
 			get: async (name: string) => {
@@ -47,6 +52,8 @@ export function SkillsPage() {
 			emptySelectionMessage="Select a skill or add a new one."
 			loadingSelectionMessage="Loading skills..."
 			resource={resource}
+			showAccess
+			badges={badges}
 			createDialog={
 				<CreateSkillDialog
 					open={createOpen}
