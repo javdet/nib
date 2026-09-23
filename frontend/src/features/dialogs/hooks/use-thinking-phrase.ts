@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { thinkingPhrase } from '@/features/dialogs/lib/thinking-phrases'
 
-export function useThinkingPhrase(active: boolean): string {
+export function useThinkingPhrase(
+	active: boolean,
+	mode?: string | null,
+): string {
 	const [turn, setTurn] = useState(0)
 	const wasActiveRef = useRef(false)
 
@@ -12,5 +15,5 @@ export function useThinkingPhrase(active: boolean): string {
 		wasActiveRef.current = active
 	}, [active])
 
-	return thinkingPhrase(turn)
+	return thinkingPhrase(turn, mode)
 }
