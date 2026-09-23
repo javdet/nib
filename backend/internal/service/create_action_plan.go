@@ -269,6 +269,11 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 		notesPath := actionPlanNotesPath(s.actionPlansDir, dialogID)
 		_ = os.Remove(notesPath)
 
+		// Stopped before the record goes, so the slot it held is released and the
+		// chat says why the run did not finish.
+		s.stopStageRunForPlanEdit(dialogID, nil)
+		_ = os.Remove(stageRunPath(s.actionPlansDir, dialogID))
+
 		return "Action plan saved to " + relPath + unknownCategoryNote(unknown, valid), nil
 	}
 }

@@ -375,6 +375,18 @@ force-stops the holder — cancelling a sub-agent's context, or stopping a conta
 loop holding the lease is wedged. `ReconcileStuckRuns` sweeps records a previous process left
 `running` at boot, without which a restart would block execution permanently.
 
+**Execute all** on a stage header (or the rollback's) is a stage run
+([stage_run.go](backend/internal/service/stage_run.go), `POST/GET/DELETE
+/dialogs/{id}/action-plan/stage-run`): the stage's unticked steps, then its checks, each started
+only after the one before it has finished. It bypasses the orchestrator on purpose — an action's
+result is posted into the plan chat without starting a turn, so a model would have nothing to wake
+it for the next item. Every terminal path of an item (sub-agent goroutine, webhook, lease expiry)
+ends in `advanceStageRun`, called only *after* the lease is released, or the next item would be
+refused as busy; it is idempotent, keyed on `Current` plus the attempt it launched from. The run
+stops on the first item that does not end `done`, on a busy slot, a force stop, a reorder within the
+stage, a change in the stage's shape (title and item counts — rewording an item does not count), a
+replaced plan and a restart. One stage run at a time across every plan, like the lease.
+
 Pressing **Finish** on a plan launches one more sub-agent, the only one the operator starts
 directly rather than the orchestrator: `StartReportAgent`
 ([report_agent.go](backend/internal/service/report_agent.go)) runs in `execute` mode under the
@@ -436,7 +448,9 @@ row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's 
 `.comments.json` (their comments), `.runs.json` (the execute dialog per row), `.exec.json` (the last
 run's status) and `.notes.json` (what that run reported). Every one of them is positional, so all of
 them are remapped together whenever a stage is rewritten, reordered or replaced — `create` clears
-them, the HTTP `PUT` clears none.
+them, the HTTP `PUT` clears none. `.stagerun.json` (the latest "execute all") is the exception: it
+is never remapped, because a structural edit stops the run instead; `create` clears it and
+`ReconcileStuckRuns` stops one a restart stranded.
 
 `.notes.json` is the exception to "artifacts are for the operator": it is the executors' own memory.
 A finished action sub-agent's final message is recorded there and handed to the sub-agents that run

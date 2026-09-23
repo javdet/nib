@@ -33,6 +33,11 @@ const (
 	// subagent's own, because the report belongs to the plan and the plan page
 	// is what listens.
 	ActivityReportUpdated AgentActivityKind = "report_updated"
+
+	// ActivityStageRunUpdated says a stage's "run all" started, moved on to its
+	// next item, or ended. One kind for all three: the plan page only re-reads
+	// the run record, so telling them apart would buy it nothing.
+	ActivityStageRunUpdated AgentActivityKind = "stage_run_updated"
 )
 
 type AgentActivity struct {

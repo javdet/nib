@@ -292,6 +292,11 @@ func (s *ChatService) ReorderActionPlanItems(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// A stage run walks its stage by position, so a reorder inside it leaves
+	// the run pointing at different items than the ones it was going to run.
+	s.stopStageRunForPlanEdit(dialogID, func(r StageRun) bool {
+		return r.Scope == StageRunScopeStage && r.Stage == stage
+	})
 
 	checked, err := s.ReadActionPlanChecks(dialogID)
 	if err != nil {

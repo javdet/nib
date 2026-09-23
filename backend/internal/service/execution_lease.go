@@ -151,6 +151,7 @@ func (s *ChatService) expireStaleContainerLeaseLocked() {
 			Action: expired.Key,
 			Status: string(ActionExecFailed),
 		})
+		s.advanceStageRun(expired.PlanID, expired.Key)
 	}()
 }
 
@@ -234,10 +235,17 @@ func (s *ChatService) releaseExecutionLeaseForFix(rootID, dialogID uuid.UUID, jo
 // takeExecutionLease removes the lease and returns it, so a force stop cannot
 // race a second stop onto the same run.
 func (s *ChatService) takeExecutionLease() (ExecutionLease, bool) {
+	return s.takeExecutionLeaseIf(nil)
+}
+
+// takeExecutionLeaseIf is takeExecutionLease for a holder match accepts, so a
+// caller stopping one particular item cannot take somebody else's in the gap
+// between looking and taking. A nil match accepts any holder.
+func (s *ChatService) takeExecutionLeaseIf(match func(ExecutionLease) bool) (ExecutionLease, bool) {
 	s.execLeaseMu.Lock()
 	defer s.execLeaseMu.Unlock()
 
-	if s.execLease == nil {
+	if s.execLease == nil || (match != nil && !match(*s.execLease)) {
 		return ExecutionLease{}, false
 	}
 	held := *s.execLease
@@ -368,7 +376,15 @@ func (s *ChatService) CancelExecution(ctx context.Context) (ExecutionLease, erro
 	if !ok {
 		return ExecutionLease{}, ErrNoExecutionRunning
 	}
+	if !held.Fix {
+		s.stopStageRunOnItem(held.PlanID, held.Key, stageRunStoppedByOperator)
+	}
+	return s.cancelHeldExecution(ctx, held)
+}
 
+// cancelHeldExecution stops a lease holder already taken off the lease and
+// closes its record as cancelled.
+func (s *ChatService) cancelHeldExecution(ctx context.Context, held ExecutionLease) (ExecutionLease, error) {
 	stopErr := s.stopLeaseHolder(ctx, held)
 	metrics.RecordForceStop(string(held.Kind), stopErr)
 

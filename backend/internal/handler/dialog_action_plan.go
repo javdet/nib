@@ -25,6 +25,11 @@ type executeActionPayload struct {
 	Key string `json:"key"`
 }
 
+type stageRunPayload struct {
+	Scope string `json:"scope"`
+	Stage int    `json:"stage"`
+}
+
 type actionPlanReorderPayload struct {
 	Scope string `json:"scope"`
 	Stage int    `json:"stage"`
@@ -252,6 +257,66 @@ func (h *DialogHandler) ExecuteActionPlanAction() http.HandlerFunc {
 			"dialog": dialog,
 			"run":    run,
 		})
+	}
+}
+
+// StartStageRun runs the unticked items of one stage, or of the rollback, one
+// after another. It answers once the first item has started.
+func (h *DialogHandler) StartStageRun() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := parseUUIDParam(w, r, "id", "dialog id")
+		if !ok {
+			return
+		}
+		if !h.requireActionPlan(w, id) {
+			return
+		}
+
+		var req stageRunPayload
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+
+		run, err := h.chatSvc.StartStageRun(r.Context(), id, service.StageRunScope(req.Scope), req.Stage)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, run)
+	}
+}
+
+// StageRun reports the plan's latest stage run, or null when it never had one.
+func (h *DialogHandler) StageRun() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := parseUUIDParam(w, r, "id", "dialog id")
+		if !ok {
+			return
+		}
+
+		run, err := h.chatSvc.ReadStageRun(id)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, run)
+	}
+}
+
+// StopStageRun stops the plan's stage run and the item it is on.
+func (h *DialogHandler) StopStageRun() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := parseUUIDParam(w, r, "id", "dialog id")
+		if !ok {
+			return
+		}
+
+		run, err := h.chatSvc.StopStageRun(r.Context(), id)
+		if err != nil {
+			handleServiceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, run)
 	}
 }
 

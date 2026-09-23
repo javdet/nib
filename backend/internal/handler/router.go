@@ -247,6 +247,12 @@ func NewRouter(d Deps) chi.Router {
 				r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
 				r.Get("/action-plan/exec", dialogs.ActionPlanExecRuns())
 				r.Get("/action-plan/logs", dialogs.ActionPlanActionLogs())
+				// Starting a stage run launches its first item, which for a code
+				// action can mean pulling an image -- longer than the default
+				// write timeout. The items after it start in the background.
+				r.With(agentRun).Post("/action-plan/stage-run", dialogs.StartStageRun())
+				r.Get("/action-plan/stage-run", dialogs.StageRun())
+				r.Delete("/action-plan/stage-run", dialogs.StopStageRun())
 				// The fan-out answers 202 and runs on past this request, so it
 				// deliberately does not take the agentRun write deadline.
 				r.Post("/plan-fanout", dialogs.StartPlanFanout())

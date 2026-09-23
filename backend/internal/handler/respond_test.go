@@ -194,3 +194,42 @@ func TestHandleServiceError_containerLogs(t *testing.T) {
 		})
 	}
 }
+
+// A stage run's refusals are what the plan page shows beside the stage, so each
+// has to reach it with its own status and its own sentence.
+func TestHandleServiceError_stageRun(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"bad scope", service.ErrInvalidStageRunScope, http.StatusBadRequest},
+		{"another run", fmt.Errorf("%w: Stage 2 (Deploy)", service.ErrStageRunActive), http.StatusConflict},
+		{"all ticked", service.ErrStageRunNothingToRun, http.StatusConflict},
+		{"nothing to stop", service.ErrNoStageRunActive, http.StatusConflict},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+			handleServiceError(rec, tt.err)
+
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.want)
+			}
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if !strings.Contains(body.Error, tt.err.Error()) {
+				t.Fatalf("message = %q, want it to carry %q", body.Error, tt.err.Error())
+			}
+		})
+	}
+}
