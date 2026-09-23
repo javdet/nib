@@ -13,9 +13,29 @@ export const THINKING_PHRASES = [
 	'Strategizing',
 ] as const
 
-export function thinkingPhrase(turn: number): string {
-	const len = THINKING_PHRASES.length
+// An execute dialog carries out one action of a plan that is already written,
+// so "Planning" or "Strategizing" there reads as if the plan were being redone.
+export const EXECUTING_PHRASES = [
+	'Executing',
+	'Working',
+	'Running',
+	'Applying',
+	'Carrying out',
+	'Processing',
+	'Performing',
+	'Implementing',
+	'Operating',
+	'Checking',
+] as const
+
+export function phrasesForMode(mode?: string | null): readonly string[] {
+	return mode === 'execute' ? EXECUTING_PHRASES : THINKING_PHRASES
+}
+
+export function thinkingPhrase(turn: number, mode?: string | null): string {
+	const phrases = phrasesForMode(mode)
+	const len = phrases.length
 	// The double modulo keeps the index in range for negative turns too, which
 	// noUncheckedIndexedAccess cannot prove.
-	return THINKING_PHRASES[((turn % len) + len) % len]!
+	return phrases[((turn % len) + len) % len]!
 }

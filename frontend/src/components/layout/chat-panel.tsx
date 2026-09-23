@@ -25,6 +25,7 @@ import { useMode } from '@/features/modes/mode-context'
 import { useDialog } from '@/features/dialogs/dialog-context'
 import {
 	createDialog,
+	getDialog,
 	getDialogMessages,
 	sendDialogMessage,
 	retryLastResponse,
@@ -306,6 +307,38 @@ export function ChatPanel() {
 		}
 	}, [activeDialogId])
 
+	// The loading words follow the mode of the dialog on screen, not the mode
+	// picked for new chats: an execute transcript is opened from a plan link
+	// while the picker still says whatever it said. Keyed by id so a switch
+	// never shows the previous dialog's mode while the fetch is in flight.
+	const [dialogMode, setDialogMode] = useState<{
+		id: string
+		mode: string
+	} | null>(null)
+	useEffect(() => {
+		if (!activeDialogId) {
+			return
+		}
+		let cancelled = false
+		getDialog(activeDialogId)
+			.then((d) => {
+				if (!cancelled) {
+					setDialogMode({ id: d.id, mode: d.mode })
+				}
+			})
+			.catch(() => {
+				// Only the loader wording depends on it; the default words will do.
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [activeDialogId])
+	const activeMode = activeDialogId
+		? dialogMode?.id === activeDialogId
+			? dialogMode.mode
+			: null
+		: selectedMode
+
 	const applyChatResponse = useCallback((resp: DialogChatResponse): boolean => {
 		if (resp.actionPlanUpdated) {
 			bumpActionPlanVersion()
@@ -403,7 +436,7 @@ export function ChatPanel() {
 		handleAgentResult,
 		handleActionResult,
 	)
-	const thinkingPhrase = useThinkingPhrase(loading)
+	const thinkingPhrase = useThinkingPhrase(loading, activeMode)
 
 	/**
 	 * A dropped connection does not stop the agent: the backend keeps running the
