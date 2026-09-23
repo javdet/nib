@@ -156,6 +156,7 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 	// duplicate-delivery caller adds nothing.
 	s.reportActionResult(context.WithoutCancel(ctx), planID, key, run.Attempt, exec.ID,
 		status, codeActionReportText(res, errMsg))
+	s.onPlanItemClosed(planID, key)
 }
 
 // codeActionReportText is the body of that report. It is dropped on success --

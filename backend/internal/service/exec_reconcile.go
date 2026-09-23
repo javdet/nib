@@ -19,6 +19,7 @@ type ReconcileResult struct {
 	Actions   int
 	Fanouts   int
 	CodeFixes int
+	StageRuns int
 }
 
 // ReconcileStuckRuns closes the run records a previous process left behind.
@@ -52,6 +53,12 @@ func (s *ChatService) ReconcileStuckRuns() (ReconcileResult, error) {
 		return out, err
 	}
 	out.CodeFixes = fixes
+
+	stageRuns, err := s.reconcileStuckStageRuns()
+	if err != nil {
+		return out, err
+	}
+	out.StageRuns = stageRuns
 
 	return out, nil
 }
@@ -163,6 +170,36 @@ func (s *ChatService) reconcileStuckCodeFixRuns() (int, error) {
 		}
 
 		writeJSONFileOrWarn(path, runs)
+	}
+	return closed, nil
+}
+
+// reconcileStuckStageRuns stops the stage runs a previous process left going.
+// The item a run was on has just been closed by reconcileStuckActionRuns, and
+// the hook that would have moved the run on died with the process -- so without
+// this the run would claim to be going forever, and refuse every other one.
+func (s *ChatService) reconcileStuckStageRuns() (int, error) {
+	paths, err := filepath.Glob(filepath.Join(s.actionPlansDir, "*.stagerun.json"))
+	if err != nil {
+		return 0, fmt.Errorf("list stage run records: %w", err)
+	}
+
+	closed := 0
+	now := time.Now().Unix()
+	for _, path := range paths {
+		var run StageRun
+		if !readJSONFileOrWarn(path, &run) {
+			continue
+		}
+		if !run.Active() {
+			continue
+		}
+		run.Status = StageRunStopped
+		run.FinishedAt = now
+		run.Reason = restartedReason
+		closed++
+
+		writeJSONFileOrWarn(path, run)
 	}
 	return closed, nil
 }

@@ -140,13 +140,17 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorGitTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorSecretMissing),
-		errors.Is(err, service.ErrActionNotContainerRun):
+		errors.Is(err, service.ErrActionNotContainerRun),
+		errors.Is(err, service.ErrInvalidStageRunScope):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, service.ErrExecutionBusy),
 		errors.Is(err, service.ErrActionAlreadyRunning),
 		errors.Is(err, service.ErrNoExecutionRunning),
 		errors.Is(err, service.ErrFanoutInProgress),
-		errors.Is(err, service.ErrActionNotRunning):
+		errors.Is(err, service.ErrActionNotRunning),
+		errors.Is(err, service.ErrStageRunActive),
+		errors.Is(err, service.ErrStageRunNothingToRun),
+		errors.Is(err, service.ErrNoStageRunActive):
 		// The request is well formed; something else holds the resource. The
 		// message names what, because waiting or stopping it is the only choice
 		// the operator has.

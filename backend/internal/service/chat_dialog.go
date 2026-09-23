@@ -293,7 +293,9 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 		actionPlanRunsPath(s.actionPlansDir, dialogID),
 		actionPlanExecPath(s.actionPlansDir, dialogID),
 		actionPlanNotesPath(s.actionPlansDir, dialogID),
+		stageRunPath(s.actionPlansDir, dialogID),
 	}
+	s.stopStageRunForPlanEdit(dialogID, nil)
 	for _, path := range files {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove %s: %w", path, err)

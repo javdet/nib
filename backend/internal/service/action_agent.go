@@ -104,6 +104,9 @@ func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, ke
 	}
 
 	go func() {
+		// First, so it runs last: the next item of a stage run can only take
+		// the lease once this one has given it back.
+		defer s.advanceStageRun(planID, key)
 		defer cancel()
 		defer s.releaseExecutionLease(token)
 		s.runActionAgent(runCtx, planID, key, token)

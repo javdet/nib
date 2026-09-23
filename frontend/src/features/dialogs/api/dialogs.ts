@@ -82,6 +82,7 @@ export type AgentActivityKind =
 	| 'action_exec_done'
 	| 'action_exec_failed'
 	| 'report_updated'
+	| 'stage_run_updated'
 
 export interface AgentActivity {
 	kind: AgentActivityKind
@@ -502,6 +503,60 @@ export type ActionExecRuns = Record<string, ActionExecRun>
 export function getActionPlanExecRuns(id: string): Promise<ActionExecRuns> {
 	return api.get<ActionExecRuns>(
 		`/dialogs/${encodeURIComponent(id)}/action-plan/exec`,
+	)
+}
+
+export type StageRunScope = 'stage' | 'rollback'
+
+export type StageRunStatus = 'running' | 'done' | 'stopped'
+
+/**
+ * The "run all" of one stage: its unticked items executed one after another,
+ * each started only once the one before it has finished. The plan keeps its
+ * latest run only.
+ */
+export interface StageRun {
+	runId: string
+	scope: StageRunScope
+	/** 0-based stage index; 0 for the rollback. */
+	stage: number
+	title: string
+	/** Row key being run, or the one the run stopped at. */
+	current?: string
+	status: StageRunStatus
+	/** Why a stopped run stopped. */
+	reason?: string
+	startedAt: number
+	finishedAt?: number
+}
+
+/** The plan's latest stage run, or null when it never had one. */
+export function getStageRun(id: string): Promise<StageRun | null> {
+	return api.get<StageRun | null>(
+		`/dialogs/${encodeURIComponent(id)}/action-plan/stage-run`,
+	)
+}
+
+/**
+ * Starts running a stage, or the rollback, item by item. Answers once the
+ * first item has started; the rest follow in the background and report over
+ * the dialog's SSE stream.
+ */
+export function startStageRun(
+	id: string,
+	scope: StageRunScope,
+	stage = 0,
+): Promise<StageRun> {
+	return api.post<StageRun>(
+		`/dialogs/${encodeURIComponent(id)}/action-plan/stage-run`,
+		{ scope, stage },
+	)
+}
+
+/** Stops the plan's stage run and the item it is on. */
+export function stopStageRun(id: string): Promise<StageRun> {
+	return api.delete<StageRun>(
+		`/dialogs/${encodeURIComponent(id)}/action-plan/stage-run`,
 	)
 }
 

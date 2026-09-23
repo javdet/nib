@@ -401,9 +401,10 @@ func run() error {
 		slog.Warn("reconcile stuck runs", "error", err)
 	} else {
 		metrics.AddStuckRunsReconciled(rec.Actions, rec.Fanouts, rec.CodeFixes)
-		if rec.Actions > 0 || rec.Fanouts > 0 || rec.CodeFixes > 0 {
+		if rec.Actions > 0 || rec.Fanouts > 0 || rec.CodeFixes > 0 || rec.StageRuns > 0 {
 			slog.Info("closed runs left behind by a previous process",
-				"actions", rec.Actions, "fanouts", rec.Fanouts, "code_fixes", rec.CodeFixes)
+				"actions", rec.Actions, "fanouts", rec.Fanouts, "code_fixes", rec.CodeFixes,
+				"stage_runs", rec.StageRuns)
 		}
 	}
 

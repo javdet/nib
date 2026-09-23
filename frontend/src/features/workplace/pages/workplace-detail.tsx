@@ -40,6 +40,9 @@ import {
 	getDialogSummary,
 	getPlanState,
 	getPlanFanout,
+	getStageRun,
+	startStageRun,
+	stopStageRun,
 	startPlanFanout,
 	cancelPlanFanout,
 	stopExecution,
@@ -61,6 +64,8 @@ import {
 	type Dialog as DialogItem,
 	type FanoutRun,
 	type PlanStatus,
+	type StageRun,
+	type StageRunScope,
 } from '@/features/dialogs/api/dialogs'
 import { useDialog } from '@/features/dialogs/dialog-context'
 import { dialogDisplayTitle } from '@/features/dialogs/lib/dialog-title'
@@ -82,10 +87,7 @@ import {
 import { actionPlanNumberForKey } from '../lib/action-plan-number'
 import { executeActionMessage } from '../lib/execute-action-message'
 import {
-	fanoutStageClass,
-	fanoutStageLabel,
-} from '../lib/fanout-stage-status'
-import {
+	planRollbackMessage,
 	planStageMessage,
 	processPlanMessage,
 	replanAllStagesMessage,
@@ -201,7 +203,6 @@ export function WorkplaceDetail() {
 	const [reportExpanded, setReportExpanded] = useState(false)
 	const [dagExpanded, setDagExpanded] = useState(true)
 	const [actionListExpanded, setActionListExpanded] = useState(true)
-	const [stagesExpanded, setStagesExpanded] = useState(true)
 	const [processingPlan, setProcessingPlan] = useState(false)
 	const [isEditingTitle, setIsEditingTitle] = useState(false)
 	const [titleDraft, setTitleDraft] = useState('')
@@ -212,6 +213,11 @@ export function WorkplaceDetail() {
 	const [savingCategories, setSavingCategories] = useState(false)
 	const [liveActionPlanVersion, setLiveActionPlanVersion] = useState(0)
 	const [execRuns, setExecRuns] = useState<ActionExecRuns>({})
+	const [stageRun, setStageRun] = useState<StageRun | null>(null)
+	const [stageRunBusy, setStageRunBusy] = useState(false)
+	// A refused "run all" is reported beside the list rather than through
+	// setError, which would replace the whole page with the message.
+	const [stageRunError, setStageRunError] = useState<string | null>(null)
 	const [executorType, setExecutorType] = useState<ExecutorType | null>(null)
 	// The action row whose container logs are open. The log text itself lives in
 	// the dialog, which Radix unmounts on close, so nothing about it is kept here.
@@ -236,6 +242,7 @@ export function WorkplaceDetail() {
 				actionPlanData,
 				run,
 				runs,
+				latestStageRun,
 			] = await Promise.all([
 				getDialog(dialogId),
 				getDialogSummary(dialogId),
@@ -245,6 +252,7 @@ export function WorkplaceDetail() {
 				getDialogActionPlan(dialogId),
 				getPlanFanout(dialogId),
 				getActionPlanExecRuns(dialogId),
+				getStageRun(dialogId),
 			])
 			setDialog(dialogData)
 			setSummaryContent(summary)
@@ -255,6 +263,7 @@ export function WorkplaceDetail() {
 			setActionPlanChecked(actionPlanData?.checked ?? [])
 			setActionPlanComments(actionPlanData?.comments ?? {})
 			setExecRuns(runs)
+			setStageRun(latestStageRun)
 			setPlanStatus(planState.status)
 			setPlanScheduledAt(planState.scheduledAt)
 		} catch (err) {
@@ -267,6 +276,7 @@ export function WorkplaceDetail() {
 			setActionPlanChecked([])
 			setActionPlanComments({})
 			setExecRuns({})
+			setStageRun(null)
 			setPlanStatus('draft')
 			setPlanScheduledAt(0)
 			setError(
@@ -337,6 +347,13 @@ export function WorkplaceDetail() {
 				ev.kind === 'action_exec_done' ||
 				ev.kind === 'action_exec_failed'
 			) {
+				void getActionPlanExecRuns(id).then(setExecRuns).catch(() => {})
+				return
+			}
+			// A stage run moves on from one item to the next with nobody on the
+			// page pressing anything, so both records are re-read on each step.
+			if (ev.kind === 'stage_run_updated') {
+				void getStageRun(id).then(setStageRun).catch(() => {})
 				void getActionPlanExecRuns(id).then(setExecRuns).catch(() => {})
 			}
 		})
@@ -981,6 +998,51 @@ export function WorkplaceDetail() {
 		[id, enqueuePendingMessage, setActiveDialogId],
 	)
 
+	const handleReplanRollback = useCallback(() => {
+		if (!id) return
+		enqueuePendingMessage({ dialogId: id, text: planRollbackMessage() })
+		setActiveDialogId(id)
+	}, [id, enqueuePendingMessage, setActiveDialogId])
+
+	// "Run all" is an endpoint rather than a chat message, unlike a single
+	// action: an item's result lands in the chat without starting a turn, so an
+	// orchestrator asked to run a stage would have nothing to wake it for the
+	// next item. The server walks the stage instead.
+	const handleRunStage = useCallback(
+		async (scope: StageRunScope, stage: number) => {
+			if (!id || stageRunBusy) return
+			setStageRunBusy(true)
+			setStageRunError(null)
+			try {
+				setStageRun(await startStageRun(id, scope, stage))
+				setExecRuns(await getActionPlanExecRuns(id))
+			} catch (err) {
+				setStageRunError(
+					err instanceof Error ? err.message : 'Failed to start the stage run',
+				)
+			} finally {
+				setStageRunBusy(false)
+			}
+		},
+		[id, stageRunBusy],
+	)
+
+	const handleStopStageRun = useCallback(async () => {
+		if (!id || stageRunBusy) return
+		setStageRunBusy(true)
+		setStageRunError(null)
+		try {
+			setStageRun(await stopStageRun(id))
+			setExecRuns(await getActionPlanExecRuns(id))
+		} catch (err) {
+			setStageRunError(
+				err instanceof Error ? err.message : 'Failed to stop the stage run',
+			)
+		} finally {
+			setStageRunBusy(false)
+		}
+	}, [id, stageRunBusy])
+
 	// A force stop is an endpoint rather than a chat message: it has to work
 	// while the agent loop holding the execution is wedged, which is exactly when
 	// it is reached for.
@@ -1467,104 +1529,18 @@ export function WorkplaceDetail() {
 						</p>
 					)}
 
-					{fanoutRun && fanoutRun.stages.length > 0 && (
-						<div className="space-y-1 rounded-md border p-3">
-							<div
-								role="button"
-								tabIndex={0}
-								aria-expanded={stagesExpanded}
-								className="flex cursor-pointer items-center gap-2 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								onClick={() => setStagesExpanded((prev) => !prev)}
-								onKeyDown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault()
-										setStagesExpanded((prev) => !prev)
-									}
-								}}
-							>
-								{stagesExpanded ? (
-									<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-								) : (
-									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-								)}
-								Stages{' '}
-								<span className="text-muted-foreground">
-									(
-									{
-										fanoutRun.stages.filter((st) => st.status === 'done')
-											.length
-									}
-									/{fanoutRun.stages.length})
-								</span>
-							</div>
-							{stagesExpanded && (
-								<>
-									{fanoutRun.stages.map((stage) => (
-										<div
-											key={`${stage.kind ?? 'stage'}:${stage.title}`}
-											className="flex items-center justify-between gap-2 text-sm"
-										>
-											<span
-												className={cn(
-													'truncate',
-													stage.carried && 'text-muted-foreground',
-												)}
-												title={
-													stage.carried
-														? 'Kept from an earlier round; this run does not replan it'
-														: undefined
-												}
-											>
-												{stage.title}
-											</span>
-											<span className="flex shrink-0 items-center gap-2">
-												<span
-													className={fanoutStageClass(stage.status)}
-													title={stage.error}
-												>
-													{fanoutStageLabel(stage.status)}
-												</span>
-												{stage.dialogId && (
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														onClick={() =>
-															handleOpenStageDialog(stage.dialogId as string)
-														}
-													>
-														Open
-													</Button>
-												)}
-												{stage.kind !== 'rollback' &&
-													!fanoutRunning &&
-													dialog.mode === 'main' && (
-														<Button
-															type="button"
-															variant="ghost"
-															size="sm"
-															onClick={() => handleReplanStage(stage.title)}
-														>
-															Replan
-														</Button>
-													)}
-											</span>
-										</div>
-									))}
-									{fanoutRun.stages.some(
-										(st) => st.status === 'awaiting_input',
-									) && (
-										<p className="pt-2 text-sm text-muted-foreground">
-											A stage is waiting on your answer in the chat. The others
-											keep planning until then.
-										</p>
-									)}
-								</>
-							)}
-						</div>
+					{fanoutRun?.stages.some((st) => st.status === 'awaiting_input') && (
+						<p className="text-sm text-muted-foreground">
+							A stage is waiting on your answer in the chat. The others keep
+							planning until then.
+						</p>
 					)}
 
-					{actionPlan ? (
+					{stageRunError && (
+						<p className="text-sm text-destructive">{stageRunError}</p>
+					)}
+
+					{actionPlan || (fanoutRun && fanoutRun.stages.length > 0) ? (
 						<ActionPlanView
 							plan={actionPlan}
 							checked={actionPlanChecked}
@@ -1582,6 +1558,16 @@ export function WorkplaceDetail() {
 							}
 							reordering={reordering}
 							executorDisabled={executorType === 'disabled'}
+							fanoutRun={fanoutRun}
+							fanoutRunning={fanoutRunning}
+							stageRun={stageRun}
+							stageRunBusy={stageRunBusy}
+							canReplan={!fanoutRunning && dialog.mode === 'main'}
+							onOpenStageChat={handleOpenStageDialog}
+							onReplanStage={handleReplanStage}
+							onReplanRollback={handleReplanRollback}
+							onRunStage={(scope, stage) => void handleRunStage(scope, stage)}
+							onStopStageRun={() => void handleStopStageRun()}
 						/>
 					) : fanoutRun ? (
 						<p className="text-sm text-muted-foreground">

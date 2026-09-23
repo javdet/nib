@@ -185,6 +185,17 @@ type ChatService struct {
 	// nil when nothing is running. See ExecutionLease for why it is one.
 	execLease *ExecutionLease
 
+	// stageRunMu guards the "run all" record of every plan and stageRunActive.
+	// It is a leaf: nothing that launches work, appends a message or takes the
+	// execution lease runs while it is held.
+	stageRunMu sync.Mutex
+	// stageRunActive is the plan whose stage run is going, or uuid.Nil. One at a
+	// time across every plan, for the same reason as the lease.
+	stageRunActive uuid.UUID
+	// stageRunStart launches one item of a stage run. Nil means startPlanItem;
+	// tests replace it to drive the sequencer without an agent or a container.
+	stageRunStart func(ctx context.Context, planID uuid.UUID, key string) error
+
 	// subagentClaims holds a mutex per orchestrator subagent, keyed by root
 	// dialog and subagent name, so two concurrent turns on one plan cannot run
 	// the same subagent twice over the same transcript.

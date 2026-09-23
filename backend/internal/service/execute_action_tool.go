@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/llm"
 )
@@ -86,58 +87,91 @@ func (s *ChatService) executePlanItem(
 		display = raw
 	}
 
+	started, err := s.startPlanItem(ctx, planID, key, rerun)
+	if err != nil {
+		text, ok := planItemRefusal(err, display)
+		if !ok {
+			return "", false, err
+		}
+		return text, false, nil
+	}
+
+	if started.Code {
+		return fmt.Sprintf(
+			"handed %s to the coding agent (job %s, branch %s); the pull request will be attached to the action when it finishes, and its progress is in chat %s",
+			display, started.Run.JobName, started.Run.TargetBranch, started.Dialog.ID,
+		), true, nil
+	}
+	return fmt.Sprintf("started a sub-agent for %s; its result will be posted in the chat when it finishes", display), true, nil
+}
+
+// planItemStart is what launching one plan item produced. Dialog and Run are
+// only set for a code action.
+type planItemStart struct {
+	Code   bool
+	Dialog domain.Dialog
+	Run    executor.ActionRunResult
+}
+
+// startPlanItem launches one item of the root plan planID by its row key. It is
+// the typed half of executePlanItem, shared with the stage run, which has no
+// model to hand a sentence to.
+func (s *ChatService) startPlanItem(ctx context.Context, planID uuid.UUID, key string, rerun bool) (planItemStart, error) {
 	step, err := s.readActionPlanStep(planID, key)
 	if err != nil {
-		if errors.Is(err, ErrActionNotFound) {
-			return fmt.Sprintf("the plan has no item %s; read the action list to see the numbers it does have", display), false, nil
-		}
-		return "", false, err
+		return planItemStart{}, err
 	}
 
 	// A code action is built by the coding agent in a container of its own,
 	// which reports back through the agent-runner webhook rather than a
 	// sub-agent turn.
 	if strings.EqualFold(strings.TrimSpace(step.Type), actionTypeCode) {
-		text, started, err := s.executeCodeActionFromTool(ctx, planID, key, display)
-		return text, started, err
+		dialog, run, err := s.ExecuteCodeAction(ctx, planID, key)
+		if err != nil {
+			return planItemStart{}, err
+		}
+		s.recordCodeActionRun(planID, key, run)
+		return planItemStart{Code: true, Dialog: dialog, Run: run}, nil
 	}
 
 	if _, err := s.StartActionAgent(ctx, planID, key, rerun); err != nil {
-		switch {
-		case errors.Is(err, ErrActionAlreadyRunning):
-			return fmt.Sprintf("%s is already running; ask to restart it if you want a fresh attempt", display), false, nil
-		case errors.Is(err, ErrExecutionBusy):
-			// The error already names what holds the slot.
-			return executionBusyMessage(err), false, nil
-		}
-		return "", false, err
+		return planItemStart{}, err
 	}
-	return fmt.Sprintf("started a sub-agent for %s; its result will be posted in the chat when it finishes", display), true, nil
+	return planItemStart{}, nil
 }
 
-// executeCodeActionFromTool adapts ExecuteCodeAction's failures into tool output.
-// Its preconditions -- an enabled executor, a repository on the step, configured
-// secrets -- are all things the operator fixes in the web interface, so the agent
-// has to be able to say which one is missing.
-func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid.UUID, key, number string) (string, bool, error) {
-	dialog, run, err := s.ExecuteCodeAction(ctx, planID, key)
+// planItemRefusal turns a launch failure the operator can do something about
+// into the sentence saying what. Its preconditions -- an enabled executor, a
+// repository on the step, configured secrets, a free execution slot -- are all
+// fixed in the web interface, so the agent has to be able to say which one is
+// missing. It reports false for a failure that is not one of those.
+func planItemRefusal(err error, number string) (string, bool) {
 	switch {
-	case err == nil:
+	case errors.Is(err, ErrActionNotFound):
+		return fmt.Sprintf("the plan has no item %s; read the action list to see the numbers it does have", number), true
+	case errors.Is(err, ErrActionAlreadyRunning):
+		return fmt.Sprintf("%s is already running; ask to restart it if you want a fresh attempt", number), true
+	case errors.Is(err, ErrExecutionBusy):
+		// The error already names what holds the slot.
+		return executionBusyMessage(err), true
 	case errors.Is(err, executor.ErrExecutorDisabled):
-		return fmt.Sprintf("%s is a code action, but the executor is disabled; switch it on in executor settings to run code actions", number), false, nil
+		return fmt.Sprintf("%s is a code action, but the executor is disabled; switch it on in executor settings to run code actions", number), true
 	case errors.Is(err, ErrActionRepositoryRequired):
-		return fmt.Sprintf("%s is a code action with no repository set; add one to the plan first", number), false, nil
+		return fmt.Sprintf("%s is a code action with no repository set; add one to the plan first", number), true
 	case errors.Is(err, ErrExecutorTokenSecretRequired),
 		errors.Is(err, ErrExecutorGitTokenSecretRequired),
 		errors.Is(err, ErrExecutorSecretMissing):
-		return fmt.Sprintf("%s could not start: %s", number, err.Error()), false, nil
-	case errors.Is(err, ErrExecutionBusy):
-		return executionBusyMessage(err), false, nil
-	default:
-		return "", false, err
+		return fmt.Sprintf("%s could not start: %s", number, err.Error()), true
 	}
+	return "", false
+}
 
-	if _, recErr := s.updateActionPlanExecRun(planID, key, func(r *ActionExecRun) {
+// recordCodeActionRun writes the running record of a code action whose
+// container has just been launched, and says so on the plan's event stream the
+// way a sub-agent run does -- without it the row stayed idle until the result
+// came back.
+func (s *ChatService) recordCodeActionRun(planID uuid.UUID, key string, run executor.ActionRunResult) {
+	if _, err := s.updateActionPlanExecRun(planID, key, func(r *ActionExecRun) {
 		attempt := r.Attempt + 1
 		*r = ActionExecRun{
 			Status:      ActionExecRunning,
@@ -148,14 +182,17 @@ func (s *ChatService) executeCodeActionFromTool(ctx context.Context, planID uuid
 			ContainerID: run.ContainerID,
 			Namespace:   run.Namespace,
 		}
-	}); recErr != nil {
+	}); err != nil {
 		// The container is already building; a missing status row is a cosmetic
-		// loss, not a reason to tell the agent the action failed.
-		slog.Warn("record code action run", "plan_id", planID, "key", key, "error", recErr)
+		// loss, not a reason to report the action as failed.
+		slog.Warn("record code action run", "plan_id", planID, "key", key, "error", err)
 	}
 
-	return fmt.Sprintf(
-		"handed %s to the coding agent (job %s, branch %s); the pull request will be attached to the action when it finishes, and its progress is in chat %s",
-		number, run.JobName, run.TargetBranch, dialog.ID,
-	), true, nil
+	if s.activity != nil {
+		s.activity.Publish(planID, domain.AgentActivity{
+			Kind:   domain.ActivityActionExecStarted,
+			Action: key,
+			Status: string(ActionExecRunning),
+		})
+	}
 }

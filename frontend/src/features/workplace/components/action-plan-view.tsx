@@ -10,7 +10,6 @@ import {
 import {
 	AlertTriangle,
 	ChevronDown,
-	ChevronRight,
 	ChevronUp,
 	FolderGit2,
 	GripVertical,
@@ -38,10 +37,14 @@ import type {
 	ActionExecRuns,
 	ActionPlan,
 	ActionStep,
+	FanoutRun,
+	StageRun,
+	StageRunScope,
 } from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
 import type { ExecutorType } from '@/features/executor/api/executor'
 import { actionTypeIcon } from '../lib/action-type-icon'
+import { DONE_SURFACE, HeaderButton } from './plan-row-parts'
 import { canViewContainerLogs } from '../lib/container-logs'
 import {
 	impactedIndexes,
@@ -51,8 +54,20 @@ import {
 } from '../lib/step-impact'
 import {
 	actionPlanItemNumber,
+	actionPlanNumberForKey,
 	actionPlanStageNumber,
 } from '../lib/action-plan-number'
+import {
+	deriveStageStatus,
+	findFanoutRollback,
+	isItemsComplete,
+	isStageRunFor,
+	mergePlanStages,
+	rollbackItemKeys,
+	runAllDisabledReason,
+	stageItemKeys,
+} from '../lib/stage-status'
+import { StageBlock } from './stage-block'
 
 // The status of a sub-agent run, shown beside the row it belongs to. The record
 // is separate from the checkbox on purpose: "the sub-agent finished" is a weaker
@@ -100,15 +115,10 @@ const EXECUTOR_DISABLED_REASON =
 // lines of prose at the body's leading.
 const COLLAPSED_BODY_PX = 132
 
-// Done is an opaque emerald surface rather than a translucent green wash, so a
-// finished row reads as a settled state instead of a film laid over the card.
-// Redefining --border retints every divider inside the row at once: the base
-// layer resolves every border-color through it.
-const DONE_SURFACE =
-	'border-success-border bg-success-surface [--border:var(--success-border)]'
-
 interface ActionPlanViewProps {
-	plan: ActionPlan
+	// plan is null while the first planning run has not written a stage yet; the
+	// stages it is working on are drawn from fanoutRun instead.
+	plan: ActionPlan | null
 	checked: string[]
 	comments: Record<string, string>
 	onToggle: (key: string, nextChecked: boolean) => void
@@ -131,6 +141,19 @@ interface ActionPlanViewProps {
 	// executorDisabled mirrors the "disabled" executor type: code actions have
 	// nowhere to run, so their Execute button is turned off.
 	executorDisabled?: boolean
+	// The planning run supplies each stage header's planning status and the
+	// planner chat it opens.
+	fanoutRun?: FanoutRun | null
+	fanoutRunning?: boolean
+	stageRun?: StageRun | null
+	// stageRunBusy is a start or stop request in flight.
+	stageRunBusy?: boolean
+	canReplan?: boolean
+	onOpenStageChat?: (dialogId: string) => void
+	onReplanStage?: (title: string) => void
+	onReplanRollback?: () => void
+	onRunStage?: (scope: StageRunScope, stage: number) => void
+	onStopStageRun?: () => void
 }
 
 function isCodeStep(step: ActionStep): boolean {
@@ -227,54 +250,6 @@ function RowGutter({
 				onGripPointerUp={onGripPointerUp}
 			/>
 		</div>
-	)
-}
-
-interface HeaderButtonProps {
-	label: string
-	tooltip: ReactNode
-	onClick: () => void
-	disabled?: boolean
-	active?: boolean
-	children: ReactNode
-}
-
-function HeaderButton({
-	label,
-	tooltip,
-	onClick,
-	disabled = false,
-	active = false,
-	children,
-}: HeaderButtonProps) {
-	return (
-		<Tooltip>
-			{/* The button is wrapped so the tooltip still explains why it is off:
-			    a natively disabled button swallows its own pointer events. */}
-			<TooltipTrigger asChild>
-				<span className="flex h-9 w-9 shrink-0">
-					<button
-						type="button"
-						onClick={onClick}
-						disabled={disabled}
-						className={cn(
-							'flex flex-1 items-center justify-center rounded-sm',
-							'transition-colors duration-[var(--dur-fast)] focus-ring-inset',
-							disabled && 'cursor-not-allowed text-muted-foreground/40',
-							!disabled && 'cursor-pointer hover:bg-foreground/[0.07]',
-							!disabled &&
-								(active
-									? 'text-primary hover:text-primary'
-									: 'text-muted-foreground hover:text-foreground'),
-						)}
-						aria-label={label}
-					>
-						{children}
-					</button>
-				</span>
-			</TooltipTrigger>
-			<TooltipContent>{tooltip}</TooltipContent>
-		</Tooltip>
 	)
 }
 
@@ -872,15 +847,21 @@ export function ActionPlanView({
 	onReorder,
 	reordering = false,
 	executorDisabled = false,
+	fanoutRun = null,
+	fanoutRunning = false,
+	stageRun = null,
+	stageRunBusy = false,
+	canReplan = false,
+	onOpenStageChat,
+	onReplanStage,
+	onReplanRollback,
+	onRunStage,
+	onStopStageRun,
 }: ActionPlanViewProps) {
-	const checkedSet = new Set(checked)
 	const gripEnabledRef = useRef(false)
 	const [gripActive, setGripActive] = useState(false)
 	const [dragState, setDragState] = useState<DragState | null>(null)
 	const [dropTarget, setDropTarget] = useState<number | null>(null)
-	// Rollback is the plan's escape hatch, not part of reading it: collapsed
-	// until the operator goes looking for it.
-	const [rollbackExpanded, setRollbackExpanded] = useState(false)
 
 	const dragDisabled = reordering
 	const dragEnabled = gripActive && !dragDisabled
@@ -988,206 +969,305 @@ export function ActionPlanView({
 		[dragState, onReorder, clearDrag],
 	)
 
+	const checkedSet = new Set(checked)
+	const stages = plan?.stages ?? []
+	const runningElsewhere = (scope: StageRunScope, idx: number) =>
+		stageRun?.status === 'running' && !isStageRunFor(stageRun, scope, idx)
+			? stageRun
+			: null
+
+	// Only the run of this stage explains itself here; any other stage's stop
+	// reason belongs to that stage.
+	const stopNote = (scope: StageRunScope, idx: number) => {
+		if (!stageRun || stageRun.status !== 'stopped' || stageRun.scope !== scope) {
+			return null
+		}
+		if (scope === 'stage' && stageRun.stage !== idx) return null
+		const at = stageRun.current ? actionPlanNumberForKey(stageRun.current) : ''
+		return (
+			<p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+				Run stopped{at ? ` at ${at}` : ''}
+				{stageRun.reason ? `: ${stageRun.reason}` : ''}
+			</p>
+		)
+	}
+
+	const rollbackFanout = findFanoutRollback(fanoutRun)
+	const rollbackKeys = plan ? rollbackItemKeys(plan) : []
+	const rollbackRunActive = isStageRunFor(stageRun, 'rollback', 0)
+	const showRollback = (plan?.rollback.length ?? 0) > 0 || Boolean(rollbackFanout)
+
 	return (
-		<div className="space-y-6">
-			{plan.stages.map((stage, stageIdx) => (
-				<section key={`stage-${stageIdx}`} className="space-y-3">
-					<h3 className="flex items-center gap-2 text-lg font-semibold">
-						<span>
-							{actionPlanStageNumber(stageIdx)}. {stage.title}
-						</span>
-						<StageImpactBadge
-							steps={stage.steps}
-							numberOf={(i) => actionPlanItemNumber('step', stageIdx, i)}
-						/>
-					</h3>
+		<div className="space-y-4">
+			{mergePlanStages(plan, fanoutRun).map((entry) => {
+				const stageIdx = entry.index
+				const stage = stageIdx === null ? null : stages[stageIdx]
+				const keys = plan && stageIdx !== null ? stageItemKeys(plan, stageIdx) : []
+				const runActive = stageIdx !== null && isStageRunFor(stageRun, 'stage', stageIdx)
+				const dialogId = entry.fanout?.dialogId
+				const codeBlocked =
+					executorDisabled &&
+					(stage?.steps ?? []).some(
+						(step, i) => isCodeStep(step) && !checkedSet.has(`s${stageIdx}.step${i}`),
+					)
 
-					{stage.steps.length > 0 ? (
-						<ul className="space-y-2">
-							{stage.steps.map((step, stepIdx) => {
-								const key = `s${stageIdx}.step${stepIdx}`
-								return (
-									<SortableListItem
-										key={key}
-										scope="steps"
-										stage={stageIdx}
-										index={stepIdx}
-										dragState={dragState}
-										dropTarget={dropTarget}
-										dragEnabled={dragEnabled}
-										onDragStart={(e) =>
-											handleDragStart(e, 'steps', stageIdx, stepIdx)
+				return (
+					<StageBlock
+						key={stageIdx === null ? `pending:${entry.title}` : `stage-${stageIdx}`}
+						heading={
+							stageIdx === null
+								? entry.title
+								: `${actionPlanStageNumber(stageIdx)}. ${entry.title}`
+						}
+						badge={
+							stage && stageIdx !== null ? (
+								<StageImpactBadge
+									steps={stage.steps}
+									numberOf={(i) => actionPlanItemNumber('step', stageIdx, i)}
+								/>
+							) : null
+						}
+						status={deriveStageStatus({
+							keys,
+							checked: checkedSet,
+							execRuns,
+							fanout: entry.fanout,
+							fanoutRunning,
+							runActive,
+						})}
+						complete={isItemsComplete(keys, checkedSet)}
+						onOpenChat={
+							dialogId && onOpenStageChat ? () => onOpenStageChat(dialogId) : undefined
+						}
+						onReplan={
+							canReplan && onReplanStage ? () => onReplanStage(entry.title) : undefined
+						}
+						runActive={runActive}
+						runDisabledReason={runAllDisabledReason({
+							keys,
+							checked: checkedSet,
+							execRuns,
+							fanoutRunning,
+							otherRun: stageIdx === null ? null : runningElsewhere('stage', stageIdx),
+							codeBlocked,
+						})}
+						runBusy={stageRunBusy}
+						onRun={() => stageIdx !== null && onRunStage?.('stage', stageIdx)}
+						onStop={() => onStopStageRun?.()}
+						note={stageIdx === null ? null : stopNote('stage', stageIdx)}
+					>
+						{stage &&
+						stageIdx !== null &&
+						(stage.steps.length > 0 || stage.checks.length > 0) ? (
+							<>
+								{stage.steps.length > 0 ? (
+									<ul className="space-y-2">
+										{stage.steps.map((step, stepIdx) => {
+											const key = `s${stageIdx}.step${stepIdx}`
+											return (
+												<SortableListItem
+													key={key}
+													scope="steps"
+													stage={stageIdx}
+													index={stepIdx}
+													dragState={dragState}
+													dropTarget={dropTarget}
+													dragEnabled={dragEnabled}
+													onDragStart={(e) =>
+														handleDragStart(e, 'steps', stageIdx, stepIdx)
+													}
+													onDragEnd={clearDrag}
+													onDragOver={(e) =>
+														handleDragOver(e, 'steps', stageIdx, stepIdx)
+													}
+													onDrop={(e) =>
+														handleDrop(e, 'steps', stageIdx, stepIdx)
+													}
+												>
+													<ExecutableActionRow
+														id={key}
+														number={actionPlanItemNumber(
+															'step',
+															stageIdx,
+															stepIdx,
+														)}
+														checked={checkedSet.has(key)}
+														comment={comments[key] ?? ''}
+														header={<ActionRowHeader step={step} />}
+														onToggle={onToggle}
+														onComment={() => onComment(key)}
+														onEdit={() => onEdit(key)}
+														onExecute={() => onExecute(key)}
+														onStop={onStop}
+														onViewLogs={
+															onViewLogs ? () => onViewLogs(key) : undefined
+														}
+														execRun={execRuns[key]}
+														executorType={executorType}
+														executeDisabled={
+															executorDisabled && isCodeStep(step)
+														}
+														executeDisabledReason={EXECUTOR_DISABLED_REASON}
+														dragDisabled={dragDisabled}
+														onGripPointerDown={handleGripPointerDown}
+														onGripPointerUp={handleGripPointerUp}
+													>
+														<ActionBody step={step} />
+													</ExecutableActionRow>
+												</SortableListItem>
+											)
+										})}
+									</ul>
+								) : null}
+
+								{stage.checks.length > 0 ? (
+									<div className="space-y-2">
+										<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+											Checks
+										</p>
+										<ul className="space-y-2">
+											{stage.checks.map((check, checkIdx) => {
+												const key = `s${stageIdx}.check${checkIdx}`
+												return (
+													<SortableListItem
+														key={key}
+														scope="checks"
+														stage={stageIdx}
+														index={checkIdx}
+														dragState={dragState}
+														dropTarget={dropTarget}
+														dragEnabled={dragEnabled}
+														onDragStart={(e) =>
+															handleDragStart(e, 'checks', stageIdx, checkIdx)
+														}
+														onDragEnd={clearDrag}
+														onDragOver={(e) =>
+															handleDragOver(e, 'checks', stageIdx, checkIdx)
+														}
+														onDrop={(e) =>
+															handleDrop(e, 'checks', stageIdx, checkIdx)
+														}
+													>
+														<CheckableRow
+															id={key}
+															number={actionPlanItemNumber(
+																'check',
+																stageIdx,
+																checkIdx,
+															)}
+															checked={checkedSet.has(key)}
+															onToggle={onToggle}
+															onExecute={() => onExecute(key)}
+															onStop={onStop}
+															execRun={execRuns[key]}
+															dragDisabled={dragDisabled}
+															onGripPointerDown={handleGripPointerDown}
+															onGripPointerUp={handleGripPointerUp}
+														>
+															<MarkdownMessage content={check.check} />
+															{check.expectation ? (
+																<div className="mt-1 text-xs text-muted-foreground">
+																	<MarkdownMessage content={check.expectation} />
+																</div>
+															) : null}
+														</CheckableRow>
+													</SortableListItem>
+												)
+											})}
+										</ul>
+									</div>
+								) : null}
+							</>
+						) : null}
+					</StageBlock>
+				)
+			})}
+
+			{showRollback ? (
+				<StageBlock
+					heading="Rollback"
+					badge={
+						plan ? (
+							<StageImpactBadge
+								steps={plan.rollback}
+								numberOf={(i) => actionPlanItemNumber('rollback', 0, i)}
+							/>
+						) : null
+					}
+					// Rollback is the plan's escape hatch, not part of reading it:
+					// collapsed until the operator goes looking for it.
+					defaultExpanded={false}
+					status={deriveStageStatus({
+						keys: rollbackKeys,
+						checked: checkedSet,
+						execRuns,
+						fanout: rollbackFanout,
+						fanoutRunning,
+						runActive: rollbackRunActive,
+					})}
+					complete={isItemsComplete(rollbackKeys, checkedSet)}
+					onOpenChat={
+						rollbackFanout?.dialogId && onOpenStageChat
+							? () => onOpenStageChat(rollbackFanout.dialogId as string)
+							: undefined
+					}
+					onReplan={canReplan && onReplanRollback ? onReplanRollback : undefined}
+					runActive={rollbackRunActive}
+					runDisabledReason={runAllDisabledReason({
+						keys: rollbackKeys,
+						checked: checkedSet,
+						execRuns,
+						fanoutRunning,
+						otherRun: runningElsewhere('rollback', 0),
+						codeBlocked:
+							executorDisabled &&
+							(plan?.rollback ?? []).some(
+								(step, i) => isCodeStep(step) && !checkedSet.has(`rollback.${i}`),
+							),
+					})}
+					runBusy={stageRunBusy}
+					onRun={() => onRunStage?.('rollback', 0)}
+					onStop={() => onStopStageRun?.()}
+					note={stopNote('rollback', 0)}
+				>
+					{plan && plan.rollback.length > 0 ? (
+					<ul className="space-y-2">
+						{plan.rollback.map((step, idx) => {
+							const key = `rollback.${idx}`
+							return (
+								<li key={key}>
+									<ExecutableActionRow
+										id={key}
+										number={actionPlanItemNumber('rollback', 0, idx)}
+										checked={checkedSet.has(key)}
+										comment={comments[key] ?? ''}
+										header={<ActionRowHeader step={step} />}
+										onToggle={onToggle}
+										onComment={() => onComment(key)}
+										onEdit={() => onEdit(key)}
+										onExecute={() => onExecute(key)}
+										onStop={onStop}
+										onViewLogs={
+											onViewLogs ? () => onViewLogs(key) : undefined
 										}
-										onDragEnd={clearDrag}
-										onDragOver={(e) =>
-											handleDragOver(e, 'steps', stageIdx, stepIdx)
+										execRun={execRuns[key]}
+										executorType={executorType}
+										executeDisabled={
+											executorDisabled && isCodeStep(step)
 										}
-										onDrop={(e) =>
-											handleDrop(e, 'steps', stageIdx, stepIdx)
-										}
+										executeDisabledReason={EXECUTOR_DISABLED_REASON}
+										dragDisabled
+										onGripPointerDown={() => {}}
+										onGripPointerUp={() => {}}
 									>
-										<ExecutableActionRow
-											id={key}
-											number={actionPlanItemNumber(
-												'step',
-												stageIdx,
-												stepIdx,
-											)}
-											checked={checkedSet.has(key)}
-											comment={comments[key] ?? ''}
-											header={<ActionRowHeader step={step} />}
-											onToggle={onToggle}
-											onComment={() => onComment(key)}
-											onEdit={() => onEdit(key)}
-											onExecute={() => onExecute(key)}
-											onStop={onStop}
-											onViewLogs={
-												onViewLogs ? () => onViewLogs(key) : undefined
-											}
-											execRun={execRuns[key]}
-											executorType={executorType}
-											executeDisabled={
-												executorDisabled && isCodeStep(step)
-											}
-											executeDisabledReason={EXECUTOR_DISABLED_REASON}
-											dragDisabled={dragDisabled}
-											onGripPointerDown={handleGripPointerDown}
-											onGripPointerUp={handleGripPointerUp}
-										>
-											<ActionBody step={step} />
-										</ExecutableActionRow>
-									</SortableListItem>
-								)
-							})}
-						</ul>
+										<ActionBody step={step} />
+									</ExecutableActionRow>
+								</li>
+							)
+						})}
+					</ul>
 					) : null}
-
-					{stage.checks.length > 0 ? (
-						<div className="space-y-2">
-							<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-								Checks
-							</p>
-							<ul className="space-y-2">
-								{stage.checks.map((check, checkIdx) => {
-									const key = `s${stageIdx}.check${checkIdx}`
-									return (
-										<SortableListItem
-											key={key}
-											scope="checks"
-											stage={stageIdx}
-											index={checkIdx}
-											dragState={dragState}
-											dropTarget={dropTarget}
-											dragEnabled={dragEnabled}
-											onDragStart={(e) =>
-												handleDragStart(e, 'checks', stageIdx, checkIdx)
-											}
-											onDragEnd={clearDrag}
-											onDragOver={(e) =>
-												handleDragOver(e, 'checks', stageIdx, checkIdx)
-											}
-											onDrop={(e) =>
-												handleDrop(e, 'checks', stageIdx, checkIdx)
-											}
-										>
-											<CheckableRow
-												id={key}
-												number={actionPlanItemNumber(
-													'check',
-													stageIdx,
-													checkIdx,
-												)}
-												checked={checkedSet.has(key)}
-												onToggle={onToggle}
-												onExecute={() => onExecute(key)}
-												onStop={onStop}
-												execRun={execRuns[key]}
-												dragDisabled={dragDisabled}
-												onGripPointerDown={handleGripPointerDown}
-												onGripPointerUp={handleGripPointerUp}
-											>
-												<MarkdownMessage content={check.check} />
-												{check.expectation ? (
-													<div className="mt-1 text-xs text-muted-foreground">
-														<MarkdownMessage content={check.expectation} />
-													</div>
-												) : null}
-											</CheckableRow>
-										</SortableListItem>
-									)
-								})}
-							</ul>
-						</div>
-					) : null}
-				</section>
-			))}
-
-			{plan.rollback.length > 0 ? (
-				<section className="space-y-3">
-					<h3 className="flex items-center gap-2 text-lg font-semibold">
-						<span
-							role="button"
-							tabIndex={0}
-							aria-expanded={rollbackExpanded}
-							className="flex cursor-pointer items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							onClick={() => setRollbackExpanded((prev) => !prev)}
-							onKeyDown={(e) => {
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault()
-									setRollbackExpanded((prev) => !prev)
-								}
-							}}
-						>
-							{rollbackExpanded ? (
-								<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-							) : (
-								<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-							)}
-							Rollback
-						</span>
-						<StageImpactBadge
-							steps={plan.rollback}
-							numberOf={(i) => actionPlanItemNumber('rollback', 0, i)}
-						/>
-					</h3>
-					{rollbackExpanded ? (
-						<ul className="space-y-2">
-							{plan.rollback.map((step, idx) => {
-								const key = `rollback.${idx}`
-								return (
-									<li key={key}>
-										<ExecutableActionRow
-											id={key}
-											number={actionPlanItemNumber('rollback', 0, idx)}
-											checked={checkedSet.has(key)}
-											comment={comments[key] ?? ''}
-											header={<ActionRowHeader step={step} />}
-											onToggle={onToggle}
-											onComment={() => onComment(key)}
-											onEdit={() => onEdit(key)}
-											onExecute={() => onExecute(key)}
-											onStop={onStop}
-											onViewLogs={
-												onViewLogs ? () => onViewLogs(key) : undefined
-											}
-											execRun={execRuns[key]}
-											executorType={executorType}
-											executeDisabled={
-												executorDisabled && isCodeStep(step)
-											}
-											executeDisabledReason={EXECUTOR_DISABLED_REASON}
-											dragDisabled
-											onGripPointerDown={() => {}}
-											onGripPointerUp={() => {}}
-										>
-											<ActionBody step={step} />
-										</ExecutableActionRow>
-									</li>
-								)
-							})}
-						</ul>
-					) : null}
-				</section>
+				</StageBlock>
 			) : null}
 		</div>
 	)
