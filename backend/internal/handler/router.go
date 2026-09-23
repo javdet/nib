@@ -157,6 +157,8 @@ func NewRouter(d Deps) chi.Router {
 			r.Get("/documents", knowledge.GetDocument())
 			r.Post("/documents", knowledge.UploadDocument())
 			r.Get("/status", knowledge.GetStatus())
+			r.Get("/settings", knowledge.GetSettings())
+			r.Put("/settings", knowledge.UpdateSettings())
 		})
 
 		r.With(agentRun).Post("/chat", chat.Send())
@@ -244,6 +246,7 @@ func NewRouter(d Deps) chi.Router {
 				r.Put("/action-plan/comments", dialogs.SetActionPlanComments())
 				r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
 				r.Get("/action-plan/exec", dialogs.ActionPlanExecRuns())
+				r.Get("/action-plan/logs", dialogs.ActionPlanActionLogs())
 				// The fan-out answers 202 and runs on past this request, so it
 				// deliberately does not take the agentRun write deadline.
 				r.Post("/plan-fanout", dialogs.StartPlanFanout())

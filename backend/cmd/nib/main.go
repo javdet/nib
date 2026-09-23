@@ -26,6 +26,7 @@ import (
 	"github.com/javdet/nib/internal/includedtools"
 	"github.com/javdet/nib/internal/kb"
 	"github.com/javdet/nib/internal/kbdoc"
+	"github.com/javdet/nib/internal/kbsettings"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/logging"
 	"github.com/javdet/nib/internal/mcpclient"
@@ -292,6 +293,8 @@ func run() error {
 		llmProvider,
 		kbDocSvc,
 	)
+	kbSettingsStore := kbsettings.NewStore(cfg.DataDir, cfg.KnowledgeSettingsFile)
+	knowledgeSvc.SetSettingsStore(kbSettingsStore)
 	toolCatalogStore := toolcatalog.NewWithPool(pool)
 	toolCategorySvc := service.NewToolCategoryService(variableRepo, toolCatalogStore)
 	if err := toolCategorySvc.EnsureCategories(ctx); err != nil {
@@ -382,6 +385,7 @@ func run() error {
 	// recording calls are no-ops, which is what keeps the service tests working.
 	statsRepo := postgres.NewStatsRepo(pool)
 	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
+	chatSvc.SetKBSettings(kbSettingsStore)
 	statsSvc := service.NewStatsService(statsRepo, chatSvc)
 
 	if cfg.Agent.ActionExecConcurrency > 1 {

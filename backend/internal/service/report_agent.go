@@ -55,6 +55,12 @@ func (s *ChatService) StartReportAgent(ctx context.Context, planID uuid.UUID) er
 	if _, found, err := s.ReadReport(rootID); err != nil {
 		return fmt.Errorf("start report agent: read report: %w", err)
 	} else if found {
+		// The report is done, but the knowledge-base update chained after it may
+		// not be: a failed one deliberately leaves no record, and this is the
+		// only path a second press of Finish can retry it from.
+		if err := s.StartKBUpdateAgent(ctx, rootID); err != nil {
+			slog.Error("kb update agent: start", "plan_id", rootID, "error", err)
+		}
 		return nil
 	}
 
@@ -137,6 +143,14 @@ func (s *ChatService) runReportAgent(ctx context.Context, rootID uuid.UUID) {
 	// the deliverable, and a model can end its turn without making it.
 	if _, found, err := s.ReadReport(rootID); err == nil && !found {
 		slog.Warn("report agent finished without calling set_report", "plan_id", rootID, "dialog_id", dialog.ID)
+	}
+
+	// Chained rather than launched beside the report agent so it can be seeded
+	// with the report: that is already the account of what the plan did, and
+	// deriving it a second time from the raw notes would only disagree. It
+	// re-detaches from ctx, which the caller's defer is about to cancel.
+	if err := s.StartKBUpdateAgent(ctx, rootID); err != nil {
+		slog.Error("kb update agent: start", "plan_id", rootID, "error", err)
 	}
 }
 

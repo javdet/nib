@@ -77,6 +77,11 @@ func (s *ChatService) actionAgentAllowSet(ctx context.Context, categories []stri
 	// one action. It is in no mode allow list, so this only guards against an
 	// operator adding the name to data/tools/execute.json by hand.
 	delete(allow, SetReportToolName)
+	// update_kb rewrites a whole knowledge base collection. Like set_report it
+	// belongs to a subagent launched when the plan ends, and both run in execute
+	// mode, so a mode list cannot tell them apart. It is absent from
+	// data/tools/execute.json, so this only guards a hand-edit.
+	delete(allow, UpdateKBToolName)
 	return allow, nil
 }
 

@@ -505,6 +505,29 @@ export function getActionPlanExecRuns(id: string): Promise<ActionExecRuns> {
 	)
 }
 
+/** A point-in-time snapshot of a running action container's output. */
+export interface ActionContainerLogs {
+	logs: string
+	/** The oldest output was dropped to fit the cap. */
+	truncated: boolean
+}
+
+/**
+ * Reads what the agent-runner container of one running `code` action has
+ * written so far. A snapshot rather than a stream: an action runs for tens of
+ * minutes, so the caller polls instead of holding a response open.
+ */
+export function getActionContainerLogs(
+	id: string,
+	key: string,
+	signal?: AbortSignal,
+): Promise<ActionContainerLogs> {
+	return api.get<ActionContainerLogs>(
+		`/dialogs/${encodeURIComponent(id)}/action-plan/logs?key=${encodeURIComponent(key)}`,
+		signal,
+	)
+}
+
 export type ActionPlanScope = 'steps' | 'checks'
 
 export function reorderActionPlanItems(

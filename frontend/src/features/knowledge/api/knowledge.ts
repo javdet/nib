@@ -103,3 +103,20 @@ export function getDiscussPrompt() {
 export function updateDiscussPrompt(content: string) {
 	return api.put<void>('/system-prompts/discuss', { content })
 }
+
+/** Operator switches for the knowledge base, stored on the data volume. */
+export interface KnowledgeSettings {
+	/**
+	 * Whether finishing a plan launches the sub-agent that folds what the plan
+	 * established into its project's collection.
+	 */
+	autoUpdate: boolean
+}
+
+export function getKnowledgeSettings() {
+	return api.get<KnowledgeSettings>('/knowledge/settings')
+}
+
+export function updateKnowledgeSettings(data: Partial<KnowledgeSettings>) {
+	return api.put<KnowledgeSettings>('/knowledge/settings', data)
+}

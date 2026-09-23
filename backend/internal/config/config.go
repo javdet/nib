@@ -14,25 +14,26 @@ import (
 
 // Config is the runtime configuration for the nib backend (env vars + YAML file).
 type Config struct {
-	Server           ServerConfig
-	Database         DatabaseConfig
-	OAuth            OAuthConfig
-	LLM              LLMConfig
-	Projects         []ProjectConfig
-	ConfigPath       string
-	DataDir          string
-	KnowledgeBaseURI string
-	KnowledgeBaseDir string
-	Agent            AgentConfig
-	Log              LogConfig
-	Skills           SkillsConfig
-	Rules            RulesConfig
-	Prompts          PromptsConfig
-	IncludedTools    IncludedToolsConfig
-	MCP              MCPConfig
-	Metrics          MetricsConfig
-	Executor             ExecutorConfig
-	SecretsEncryptionKey []byte
+	Server                ServerConfig
+	Database              DatabaseConfig
+	OAuth                 OAuthConfig
+	LLM                   LLMConfig
+	Projects              []ProjectConfig
+	ConfigPath            string
+	DataDir               string
+	KnowledgeBaseURI      string
+	KnowledgeBaseDir      string
+	KnowledgeSettingsFile string
+	Agent                 AgentConfig
+	Log                   LogConfig
+	Skills                SkillsConfig
+	Rules                 RulesConfig
+	Prompts               PromptsConfig
+	IncludedTools         IncludedToolsConfig
+	MCP                   MCPConfig
+	Metrics               MetricsConfig
+	Executor              ExecutorConfig
+	SecretsEncryptionKey  []byte
 }
 
 const (
@@ -179,6 +180,9 @@ type KnowledgeBaseConfig struct {
 	// Dir holds the last uploaded source document per collection
 	// ({dir}/{collection}.md). Empty resolves to {DATA_DIR}/knowledgebase.
 	Dir string `yaml:"dir"`
+	// SettingsFile holds the operator switches (auto-update). Empty resolves to
+	// {DATA_DIR}/knowledge.json.
+	SettingsFile string `yaml:"settingsFile"`
 }
 
 type OAuthConfig struct {
@@ -351,6 +355,7 @@ func Load(path string) (Config, error) {
 	cfg.DataDir = envOrDefault("DATA_DIR", "data")
 	cfg.KnowledgeBaseURI = strings.TrimSpace(fc.KnowledgeBase.URI)
 	cfg.KnowledgeBaseDir = strings.TrimSpace(fc.KnowledgeBase.Dir)
+	cfg.KnowledgeSettingsFile = strings.TrimSpace(fc.KnowledgeBase.SettingsFile)
 	applyFileLLMConfig(&cfg.LLM, fc.LLM)
 	applyLLMDefaults(&cfg.LLM)
 	applyFileAppConfig(&cfg, fc)

@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/javdet/nib/internal/includedtools"
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
+	"github.com/javdet/nib/internal/includedtools"
+	"github.com/javdet/nib/internal/kbsettings"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/mcpconfig"
@@ -26,15 +28,14 @@ import (
 	"github.com/javdet/nib/internal/skills"
 	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/javdet/nib/internal/toolcatalog"
-	"github.com/google/uuid"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
 	defaultSystemPrompt       = "You are a helpful assistant."
-	defaultMaxIterations        = 10
-	mcpDiscoveryCacheTTL        = 60 * time.Second
-	toolCategoryNamesCacheTTL   = 60 * time.Second
+	defaultMaxIterations      = 10
+	mcpDiscoveryCacheTTL      = 60 * time.Second
+	toolCategoryNamesCacheTTL = 60 * time.Second
 )
 
 type localToolHandler func(ctx context.Context, args map[string]any) (string, error)
@@ -121,6 +122,8 @@ type ChatService struct {
 	planContractsDir string
 	planFanoutDir    string
 	planStateDir     string
+	planSelectionDir string
+	kbUpdatesDir     string
 	subagentsDir     string
 	codeFixesDir     string
 	attachmentsDir   string
@@ -133,6 +136,11 @@ type ChatService struct {
 	// statistics tables are not wired. Set through SetStatsWriter.
 	statsWriter     repository.StatsWriter
 	configuredModel string
+
+	// kbSettings is optional the same way: nil leaves the knowledge-base
+	// auto-update switched off rather than guessing a default. Set through
+	// SetKBSettings.
+	kbSettings *kbsettings.Store
 
 	mcpDiscoveryMu    sync.RWMutex
 	mcpDiscoveryCache []mcpDiscoveryResult
@@ -181,6 +189,11 @@ type ChatService struct {
 	// dialog and subagent name, so two concurrent turns on one plan cannot run
 	// the same subagent twice over the same transcript.
 	subagentClaims sync.Map
+
+	// kbCollectionLocks serialises knowledge-base updates per collection.
+	// update_kb is a read-merge-overwrite, so two plans finishing against one
+	// collection would otherwise lose whichever side wrote first.
+	kbCollectionLocks sync.Map
 }
 
 func NewChatService(
@@ -238,6 +251,8 @@ func NewChatService(
 		planContractsDir: filepath.Join(dataDir, "plan_contracts"),
 		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),
 		planStateDir:     filepath.Join(dataDir, "plan_state"),
+		planSelectionDir: filepath.Join(dataDir, "plan_selection"),
+		kbUpdatesDir:     filepath.Join(dataDir, "kb_updates"),
 		subagentsDir:     filepath.Join(dataDir, "subagents"),
 		codeFixesDir:     filepath.Join(dataDir, "code_fixes"),
 		attachmentsDir:   filepath.Join(dataDir, "attachments"),

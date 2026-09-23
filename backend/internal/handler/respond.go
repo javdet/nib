@@ -91,14 +91,27 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, executor.ErrPromptRequired),
 		errors.Is(err, executor.ErrTargetBranchRequired),
 		errors.Is(err, executor.ErrGitTokenRequired),
-		errors.Is(err, executor.ErrLLMTokenRequired):
+		errors.Is(err, executor.ErrLLMTokenRequired),
+		errors.Is(err, executor.ErrLogTargetRequired):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, executor.ErrNotImplemented):
+	case errors.Is(err, executor.ErrNotImplemented),
+		// Remote Kubernetes runs and stops actions; only reading their logs is
+		// local-only, so the message has to survive rather than be flattened.
+		errors.Is(err, executor.ErrLogsUnsupported):
 		writeError(w, http.StatusNotImplemented, err.Error())
+	case errors.Is(err, executor.ErrActionContainerGone),
+		errors.Is(err, service.ErrActionExecRunNotFound):
+		// Passed through instead of the generic "resource not found": which of
+		// the run and its container is missing is the whole answer.
+		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, executor.ErrImagePull):
 		// The registry or the Docker daemon is what failed, not the request —
 		// the message names the image and the reason, so pass it through.
 		writeError(w, http.StatusBadGateway, err.Error())
+	case errors.Is(err, service.ErrSettingsUnavailable):
+		// Nothing about the request is wrong: the data volume the switches live
+		// on is not wired, which is the deployment's problem to fix.
+		writeError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, kb.ErrCollectionMismatch):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, kb.ErrDimensionMismatch):
@@ -126,12 +139,14 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrActionRepositoryRequired),
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorGitTokenSecretRequired),
-		errors.Is(err, service.ErrExecutorSecretMissing):
+		errors.Is(err, service.ErrExecutorSecretMissing),
+		errors.Is(err, service.ErrActionNotContainerRun):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, service.ErrExecutionBusy),
 		errors.Is(err, service.ErrActionAlreadyRunning),
 		errors.Is(err, service.ErrNoExecutionRunning),
-		errors.Is(err, service.ErrFanoutInProgress):
+		errors.Is(err, service.ErrFanoutInProgress),
+		errors.Is(err, service.ErrActionNotRunning):
 		// The request is well formed; something else holds the resource. The
 		// message names what, because waiting or stopping it is the only choice
 		// the operator has.

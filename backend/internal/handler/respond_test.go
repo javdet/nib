@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/service"
@@ -143,6 +144,52 @@ func TestLLMErrorResponse(t *testing.T) {
 			}
 			if gotMsg != tt.wantMsg {
 				t.Errorf("message = %q, want %q", gotMsg, tt.wantMsg)
+			}
+		})
+	}
+}
+
+// Every sentinel the container-logs endpoint can return needs a case here, or
+// the modal shows "internal server error" instead of the reason it cannot show
+// logs -- and the client cannot tell a terminal refusal from a transient one,
+// so it would keep polling.
+func TestHandleServiceError_containerLogs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"no target", executor.ErrLogTargetRequired, http.StatusBadRequest},
+		{"sub-agent run", service.ErrActionNotContainerRun, http.StatusBadRequest},
+		{"container gone", fmt.Errorf("%w: nib-12345678", executor.ErrActionContainerGone), http.StatusNotFound},
+		{"row never run", service.ErrActionExecRunNotFound, http.StatusNotFound},
+		{"run finished", service.ErrActionNotRunning, http.StatusConflict},
+		{"remote executor", fmt.Errorf("%w: remote kubernetes", executor.ErrLogsUnsupported), http.StatusNotImplemented},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+			handleServiceError(rec, tt.err)
+
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.want)
+			}
+
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			// The message is what the modal renders, so it has to survive rather
+			// than be flattened into a generic one.
+			if !strings.Contains(body.Error, tt.err.Error()) {
+				t.Fatalf("message = %q, want it to carry %q", body.Error, tt.err.Error())
 			}
 		})
 	}

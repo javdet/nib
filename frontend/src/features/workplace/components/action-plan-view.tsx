@@ -10,6 +10,7 @@ import {
 import {
 	AlertTriangle,
 	ChevronDown,
+	ChevronRight,
 	ChevronUp,
 	FolderGit2,
 	GripVertical,
@@ -18,6 +19,7 @@ import {
 	OctagonAlert,
 	Pencil,
 	Play,
+	ScrollText,
 	Square,
 	type LucideIcon,
 } from 'lucide-react'
@@ -38,7 +40,9 @@ import type {
 	ActionStep,
 } from '@/features/dialogs/api/dialogs'
 import type { ActionPlanScope } from '@/features/dialogs/api/dialogs'
+import type { ExecutorType } from '@/features/executor/api/executor'
 import { actionTypeIcon } from '../lib/action-type-icon'
+import { canViewContainerLogs } from '../lib/container-logs'
 import {
 	impactedIndexes,
 	stepImpact,
@@ -115,7 +119,13 @@ interface ActionPlanViewProps {
 	// run that is wedged, so it is offered on every running row rather than only
 	// on the one the operator started.
 	onStop: () => void
+	// onViewLogs opens the container logs of one running code action. Its row
+	// key is passed back because the modal reads them per action.
+	onViewLogs?: (key: string) => void
 	execRuns: ActionExecRuns
+	// executorType gates the logs button: only the local docker executor can be
+	// read from.
+	executorType?: ExecutorType | null
 	onReorder: (scope: ActionPlanScope, stage: number, from: number, to: number) => void
 	reordering?: boolean
 	// executorDisabled mirrors the "disabled" executor type: code actions have
@@ -337,19 +347,23 @@ function CollapsibleBody({ id, children }: { id: string; children: ReactNode }) 
 	)
 }
 
+// The repository rides in the bar beside the type tile, so it is sized to that
+// bar rather than to the badge scale the impact labels use.
 function RepositoryBadge({ step }: { step: ActionStep }) {
 	const repository = step.repository?.trim()
 	if (!isCodeStep(step) || !repository) return null
 
 	return (
-		<Badge
-			variant="outline"
-			className="max-w-full font-normal"
+		<span
+			className={cn(
+				'inline-flex h-5 max-w-full items-center gap-1.5 rounded-md border',
+				'border-border bg-background/40 px-2 text-xs text-foreground',
+			)}
 			title={`repository: ${repository}`}
 		>
 			<FolderGit2 className="size-3.5 shrink-0" aria-hidden />
 			<span className="truncate">{repository}</span>
-		</Badge>
+		</span>
 	)
 }
 
@@ -409,7 +423,6 @@ function ActionRowHeader({ step }: { step: ActionStep }) {
 	return (
 		<div className="flex min-w-0 items-center gap-2">
 			<ImpactBadge step={step} />
-			<RepositoryBadge step={step} />
 		</div>
 	)
 }
@@ -452,8 +465,8 @@ function StageImpactBadge({
 	)
 }
 
-// The type icon sits beside the narrative in a flex row so every line of text
-// shares the same left edge instead of wrapping around a float.
+// The type icon sits in the body's top-left corner and is floated, so the
+// narrative runs beside its lower half and then wraps back under it.
 function ActionTypeTile({ type }: { type: string }) {
 	const TypeIcon = actionTypeIcon(type)
 
@@ -464,7 +477,7 @@ function ActionTypeTile({ type }: { type: string }) {
 					tabIndex={0}
 					aria-label={type}
 					className={cn(
-						'flex size-10 shrink-0 items-center justify-center',
+						'float-left mr-3 flex size-10 shrink-0 items-center justify-center',
 						'rounded-md border bg-background/60 text-muted-foreground',
 					)}
 				>
@@ -482,12 +495,32 @@ function ActionBody({ step }: { step: ActionStep }) {
 	const command = step.command?.trim()
 	const type = step.type?.trim()
 	const prURL = step.pr_url?.trim()
+	const hasRepository = Boolean(isCodeStep(step) && step.repository?.trim())
 
-	const narrative = (
-		<div className="min-w-0 flex-1">
-			<MarkdownMessage content={step.action} />
+	return (
+		// The clearfix is what makes the body enclose the floated tile, so a
+		// one-line narrative still measures tall enough to hold it.
+		<div className="min-w-0 after:block after:clear-both after:content-['']">
+			{type ? <ActionTypeTile type={type} /> : null}
+			{/* A bar half the tile's height: it carries the repository when the
+			    step has one, and either way it is what drops the narrative down
+			    to the tile's lower half before the text wraps back under it. */}
+			{type || hasRepository ? (
+				<div className="flex h-5 min-w-0 items-center">
+					<RepositoryBadge step={step} />
+				</div>
+			) : null}
+			{/* Only prose wraps around the tile. A list, a rule or a quote is a
+			    block, so it would slide underneath the tile and put its bullets
+			    and borders behind it -- those start below it instead. Code
+			    blocks and tables scroll, which already keeps them clear. */}
+			<div className="[&_ul]:clear-left [&_ol]:clear-left [&_blockquote]:clear-left [&_hr]:clear-left">
+				<MarkdownMessage content={step.action} />
+			</div>
+			{/* Clearing keeps a short narrative from leaving these beside the
+			    tile, where they would read as its caption. */}
 			{isCodeStep(step) ? (
-				<div className="mt-2 text-xs">
+				<div className="clear-left mt-2 text-xs">
 					<span className="text-muted-foreground">Pull request: </span>
 					{prURL ? (
 						<a
@@ -504,22 +537,13 @@ function ActionBody({ step }: { step: ActionStep }) {
 				</div>
 			) : null}
 			{command ? (
-				<div className="mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
+				<div className="clear-left mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
 					<code className="min-w-0 flex-1 overflow-x-auto whitespace-pre py-1 font-mono text-xs leading-relaxed">
 						{command}
 					</code>
 					<CopyButton text={command} label="Copy command" />
 				</div>
 			) : null}
-		</div>
-	)
-
-	if (!type) return narrative
-
-	return (
-		<div className="flex items-start gap-3">
-			<ActionTypeTile type={type} />
-			{narrative}
 		</div>
 	)
 }
@@ -547,13 +571,20 @@ function RowBody({ id, checked, children }: RowBodyProps) {
 interface RunControlsProps {
 	execRun?: ActionExecRun
 	onStop: () => void
+	onViewLogs?: () => void
+	executorType?: ExecutorType | null
 }
 
 // The two controls every executable row shows about a run in flight: what it is
 // doing and the way out of it. Stop is offered on any running row rather than
 // only the one this operator started -- it is the only way out of a wedged
 // execution, which holds the single slot for every plan.
-function RunControls({ execRun, onStop }: RunControlsProps) {
+function RunControls({
+	execRun,
+	onStop,
+	onViewLogs,
+	executorType = null,
+}: RunControlsProps) {
 	if (!execRun) return null
 
 	return (
@@ -566,6 +597,15 @@ function RunControls({ execRun, onStop }: RunControlsProps) {
 				</TooltipTrigger>
 				<TooltipContent>{execRunTooltip(execRun)}</TooltipContent>
 			</Tooltip>
+			{onViewLogs && canViewContainerLogs(execRun, executorType) && (
+				<HeaderButton
+					label="View container logs"
+					tooltip="View container logs"
+					onClick={onViewLogs}
+				>
+					<ScrollText className="h-4 w-4" />
+				</HeaderButton>
+			)}
 			{execRun.status === 'running' && (
 				<HeaderButton
 					label="Stop execution"
@@ -672,7 +712,9 @@ interface ExecutableActionRowProps {
 	onEdit: () => void
 	onExecute: () => void
 	onStop: () => void
+	onViewLogs?: () => void
 	execRun?: ActionExecRun
+	executorType?: ExecutorType | null
 	executeDisabled?: boolean
 	executeDisabledReason?: string
 	dragDisabled?: boolean
@@ -692,7 +734,9 @@ function ExecutableActionRow({
 	onEdit,
 	onExecute,
 	onStop,
+	onViewLogs,
 	execRun,
+	executorType = null,
 	executeDisabled = false,
 	executeDisabledReason,
 	dragDisabled,
@@ -721,7 +765,12 @@ function ExecutableActionRow({
 			<div className="flex min-w-0 flex-1 flex-col">
 				<div className="flex h-9 shrink-0 items-center pl-3">
 					<div className="flex min-w-0 flex-1 items-center pr-2">{header}</div>
-					<RunControls execRun={execRun} onStop={onStop} />
+					<RunControls
+						execRun={execRun}
+						onStop={onStop}
+						onViewLogs={onViewLogs}
+						executorType={executorType}
+					/>
 					<HeaderButton
 						label="Edit action"
 						tooltip="Edit action"
@@ -817,7 +866,9 @@ export function ActionPlanView({
 	onEdit,
 	onExecute,
 	onStop,
+	onViewLogs,
 	execRuns,
+	executorType = null,
 	onReorder,
 	reordering = false,
 	executorDisabled = false,
@@ -827,6 +878,9 @@ export function ActionPlanView({
 	const [gripActive, setGripActive] = useState(false)
 	const [dragState, setDragState] = useState<DragState | null>(null)
 	const [dropTarget, setDropTarget] = useState<number | null>(null)
+	// Rollback is the plan's escape hatch, not part of reading it: collapsed
+	// until the operator goes looking for it.
+	const [rollbackExpanded, setRollbackExpanded] = useState(false)
 
 	const dragDisabled = reordering
 	const dragEnabled = gripActive && !dragDisabled
@@ -987,7 +1041,11 @@ export function ActionPlanView({
 											onEdit={() => onEdit(key)}
 											onExecute={() => onExecute(key)}
 											onStop={onStop}
+											onViewLogs={
+												onViewLogs ? () => onViewLogs(key) : undefined
+											}
 											execRun={execRuns[key]}
+											executorType={executorType}
 											executeDisabled={
 												executorDisabled && isCodeStep(step)
 											}
@@ -1067,43 +1125,68 @@ export function ActionPlanView({
 			{plan.rollback.length > 0 ? (
 				<section className="space-y-3">
 					<h3 className="flex items-center gap-2 text-lg font-semibold">
-						<span>Rollback</span>
+						<span
+							role="button"
+							tabIndex={0}
+							aria-expanded={rollbackExpanded}
+							className="flex cursor-pointer items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onClick={() => setRollbackExpanded((prev) => !prev)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault()
+									setRollbackExpanded((prev) => !prev)
+								}
+							}}
+						>
+							{rollbackExpanded ? (
+								<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+							) : (
+								<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+							)}
+							Rollback
+						</span>
 						<StageImpactBadge
 							steps={plan.rollback}
 							numberOf={(i) => actionPlanItemNumber('rollback', 0, i)}
 						/>
 					</h3>
-					<ul className="space-y-2">
-						{plan.rollback.map((step, idx) => {
-							const key = `rollback.${idx}`
-							return (
-								<li key={key}>
-									<ExecutableActionRow
-										id={key}
-										number={actionPlanItemNumber('rollback', 0, idx)}
-										checked={checkedSet.has(key)}
-										comment={comments[key] ?? ''}
-										header={<ActionRowHeader step={step} />}
-										onToggle={onToggle}
-										onComment={() => onComment(key)}
-										onEdit={() => onEdit(key)}
-										onExecute={() => onExecute(key)}
-										onStop={onStop}
-										execRun={execRuns[key]}
-										executeDisabled={
-											executorDisabled && isCodeStep(step)
-										}
-										executeDisabledReason={EXECUTOR_DISABLED_REASON}
-										dragDisabled
-										onGripPointerDown={() => {}}
-										onGripPointerUp={() => {}}
-									>
-										<ActionBody step={step} />
-									</ExecutableActionRow>
-								</li>
-							)
-						})}
-					</ul>
+					{rollbackExpanded ? (
+						<ul className="space-y-2">
+							{plan.rollback.map((step, idx) => {
+								const key = `rollback.${idx}`
+								return (
+									<li key={key}>
+										<ExecutableActionRow
+											id={key}
+											number={actionPlanItemNumber('rollback', 0, idx)}
+											checked={checkedSet.has(key)}
+											comment={comments[key] ?? ''}
+											header={<ActionRowHeader step={step} />}
+											onToggle={onToggle}
+											onComment={() => onComment(key)}
+											onEdit={() => onEdit(key)}
+											onExecute={() => onExecute(key)}
+											onStop={onStop}
+											onViewLogs={
+												onViewLogs ? () => onViewLogs(key) : undefined
+											}
+											execRun={execRuns[key]}
+											executorType={executorType}
+											executeDisabled={
+												executorDisabled && isCodeStep(step)
+											}
+											executeDisabledReason={EXECUTOR_DISABLED_REASON}
+											dragDisabled
+											onGripPointerDown={() => {}}
+											onGripPointerUp={() => {}}
+										>
+											<ActionBody step={step} />
+										</ExecutableActionRow>
+									</li>
+								)
+							})}
+						</ul>
+					) : null}
 				</section>
 			) : null}
 		</div>
