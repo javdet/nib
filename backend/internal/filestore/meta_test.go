@@ -68,3 +68,22 @@ do something`,
 		})
 	}
 }
+
+func TestParseFrontmatterFieldsKeepsEveryKey(t *testing.T) {
+	t.Parallel()
+
+	content := "---\nname: demo\naccess: \"explicit\"\n# a comment\nowner: ops\n---\nbody"
+	got := filestore.ParseFrontmatterFields(content)
+	for key, want := range map[string]string{"name": "demo", "access": "explicit", "owner": "ops"} {
+		if got[key] != want {
+			t.Fatalf("fields[%q] = %q, want %q", key, got[key], want)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("len(fields) = %d, want 3: %v", len(got), got)
+	}
+
+	if got := filestore.ParseFrontmatterFields("no frontmatter"); len(got) != 0 {
+		t.Fatalf("fields without frontmatter = %v, want empty", got)
+	}
+}

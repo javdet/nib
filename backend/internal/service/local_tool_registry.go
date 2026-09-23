@@ -120,11 +120,11 @@ func registerToolSearchTool(s *ChatService, catalog *toolCatalog, _ toolBinding,
 	catalog.tools = append(catalog.tools, ToolSearchToolDef())
 }
 
-func registerGetSkillTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {
+func registerGetSkillTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
 	if s.skillsSvc == nil || !localToolAllowed(allow, GetSkillToolName) {
 		return
 	}
-	catalog.localHandlers[GetSkillToolName] = s.ExecuteGetSkill
+	catalog.localHandlers[GetSkillToolName] = s.getSkillHandler(b)
 	catalog.tools = append(catalog.tools, GetSkillToolDef())
 }
 

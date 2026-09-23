@@ -89,6 +89,10 @@ Returns each match with its server, name, description and per-tool categories
 
 Loads the full instructions of a skill by name.
 
+A skill whose `access` is `disabled` is refused. One set to `explicit` is served
+only when an operator message in the root dialog carries its `/name` slash
+command; system skills are always enabled.
+
 It also reaches the two read-only system skills, `nib-configuration` and
 `nib-internals`, which the HTTP API does not list.
 

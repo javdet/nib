@@ -9,8 +9,12 @@ import {
 	skillMenuQuery,
 } from './skill-suggest'
 
-function skill(name: string, description = ''): SkillMeta {
-	return { name, description }
+function skill(
+	name: string,
+	description = '',
+	access: SkillMeta['access'] = 'enabled',
+): SkillMeta {
+	return { name, description, access }
 }
 
 describe('parseSkillQuery', () => {
@@ -40,6 +44,20 @@ describe('matchSkills', () => {
 		skill('jira-get-board', 'Show the board as a table.'),
 		skill('deploy-service', 'Roll out a service to an environment.'),
 	]
+
+
+	it('leaves disabled skills out and keeps explicit ones', () => {
+		const mixed = [
+			skill('get-jira-task', '', 'explicit'),
+			skill('retired', '', 'disabled'),
+			skill('deploy-service'),
+		]
+		expect(matchSkills(mixed, '').map((s) => s.name)).toEqual([
+			'deploy-service',
+			'get-jira-task',
+		])
+		expect(matchSkills(mixed, 'ret')).toEqual([])
+	})
 
 	it('lists everything alphabetically for an empty query', () => {
 		expect(matchSkills(skills, '').map((s) => s.name)).toEqual([

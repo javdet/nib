@@ -41,6 +41,8 @@ describe('buildKnowledgeBaseRequest', () => {
 
 	it('names the skill so the invocation does not depend on description matching', () => {
 		expect(request).toContain(`name "${BUILD_KNOWLEDGE_BASE_SKILL}"`)
+		// The slash command is what unlocks a skill the operator set to explicit.
+		expect(request.startsWith(`/${BUILD_KNOWLEDGE_BASE_SKILL} `)).toBe(true)
 		expect(request).toContain('get_skill')
 	})
 

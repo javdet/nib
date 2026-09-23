@@ -29,7 +29,8 @@ function toolLine(tool: CategorizedTool): string {
 /**
  * The message that invokes the categorize-tools skill unambiguously.
  *
- * Skills are not slash commands - the text goes to the model verbatim, so
+ * The text goes to the model verbatim. The leading `/name` is the slash command
+ * get_skill needs before it serves a skill the operator set to explicit, and
  * asking for the get_skill call by name takes the guess out of the invocation.
  * Both lists the skill requires travel in the message: it has no tool that can
  * read the category list or the uncategorized bucket for itself.
@@ -39,7 +40,7 @@ export function buildCategorizeToolsRequest(
 	tools: CategorizedTool[],
 ): string {
 	return [
-		`Call get_skill with name "${CATEGORIZE_TOOLS_SKILL}" and follow its instructions exactly.`,
+		`/${CATEGORIZE_TOOLS_SKILL} - call get_skill with name "${CATEGORIZE_TOOLS_SKILL}" and follow its instructions exactly.`,
 		'',
 		'categories:',
 		...categories.map(categoryLine),

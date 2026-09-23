@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { FileCode2, Plus } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FrontmatterEditor } from '@/components/frontmatter-editor'
 import { cn } from '@/lib/utils'
@@ -17,6 +18,10 @@ interface MarkdownResourcePageProps {
 	loadingSelectionMessage: string
 	createDialog: ReactNode
 	resource: NamedMarkdownResource
+	/** Passed to the editor; only skills carry an access setting. */
+	showAccess?: boolean
+	/** A short label shown beside a name in the list, keyed by name. */
+	badges?: Record<string, string>
 }
 
 export function MarkdownResourcePage({
@@ -31,6 +36,8 @@ export function MarkdownResourcePage({
 	loadingSelectionMessage,
 	createDialog,
 	resource,
+	showAccess = false,
+	badges,
 }: MarkdownResourcePageProps) {
 	const items = resource.names
 
@@ -93,6 +100,11 @@ export function MarkdownResourcePage({
 												<span className="truncate font-mono">
 													{name}.md
 												</span>
+												{badges?.[name] && (
+													<Badge variant="outline" className="shrink-0 px-1.5 py-0">
+														{badges[name]}
+													</Badge>
+												)}
 											</button>
 										</li>
 									)
@@ -110,6 +122,7 @@ export function MarkdownResourcePage({
 							isDirty={resource.isDirty}
 							loading={resource.contentLoading}
 							saving={resource.saving}
+							showAccess={showAccess}
 							onChange={resource.setContent}
 							onSave={() => void resource.save()}
 							onDelete={() => void resource.remove()}

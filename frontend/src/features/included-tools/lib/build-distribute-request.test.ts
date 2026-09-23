@@ -20,6 +20,8 @@ describe('buildDistributeToolsRequest', () => {
 
 	it('names the skill so the invocation does not depend on description matching', () => {
 		expect(request).toContain(`name "${DISTRIBUTE_TOOLS_SKILL}"`)
+		// The slash command is what unlocks a skill the operator set to explicit.
+		expect(request.startsWith(`/${DISTRIBUTE_TOOLS_SKILL} `)).toBe(true)
 		expect(request).toContain('get_skill')
 	})
 

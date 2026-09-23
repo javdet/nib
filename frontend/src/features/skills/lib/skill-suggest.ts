@@ -61,7 +61,11 @@ export function matchSkills(
 	limit = MAX_SKILL_SUGGESTIONS,
 ): SkillMeta[] {
 	const needle = query.trim().toLowerCase()
-	const byName = [...skills].sort((a, b) => a.name.localeCompare(b.name))
+	// A disabled skill would only be refused by get_skill; an explicit one stays,
+	// since this menu is exactly how it gets invoked.
+	const byName = skills
+		.filter((skill) => skill.access !== 'disabled')
+		.sort((a, b) => a.name.localeCompare(b.name))
 	if (!needle) {
 		return byName.slice(0, limit)
 	}

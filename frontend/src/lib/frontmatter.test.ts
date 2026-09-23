@@ -56,4 +56,37 @@ body`
 		const rebuilt = buildContent(parsed)
 		expect(rebuilt).not.toContain('category:')
 	})
+
+	it('reads the access setting of a restricted skill', () => {
+		const content = `---
+name: get-jira-task
+description: Fetch one task
+access: explicit
+---
+
+body`
+		expect(parseFrontmatter(content).access).toBe('explicit')
+		expect(buildContent(parseFrontmatter(content))).toBe(content)
+	})
+
+	it('treats an unknown access value as enabled', () => {
+		const content = `---
+name: a
+description: b
+access: sometimes
+---`
+		expect(parseFrontmatter(content).access).toBe('enabled')
+		expect(buildContent(parseFrontmatter(content))).not.toContain('access:')
+	})
+
+	it('never writes access: enabled', () => {
+		const parsed = parseFrontmatter(skillSample)
+		expect(parsed.access).toBeUndefined()
+		expect(buildContent({ ...parsed, access: 'enabled' })).toBe(
+			buildContent(parsed),
+		)
+		expect(buildContent({ ...parsed, access: 'disabled' })).toContain(
+			'\naccess: disabled\n---',
+		)
+	})
 })

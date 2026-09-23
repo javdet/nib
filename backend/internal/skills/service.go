@@ -1,17 +1,23 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 
 	"github.com/javdet/nib/internal/filestore"
+	"github.com/javdet/nib/internal/repository"
 )
 
 const mdSuffix = ".md"
 
 // Meta holds parsed frontmatter metadata for a skill.
-type Meta = filestore.Meta
+type Meta struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Access      Access `json:"access"`
+}
 
 // Skill holds a single skill file.
 type Skill struct {
@@ -49,9 +55,26 @@ func (s *Service) Dir() string {
 // system skill never reaches the interface: the agent-facing listing is
 // ListAll.
 func (s *Service) List() (ListResult, error) {
-	metas, err := s.store.ListMeta()
+	names, err := s.store.ListNames()
 	if err != nil {
 		return ListResult{}, err
+	}
+	metas := make([]Meta, 0, len(names))
+	for _, name := range names {
+		doc, err := s.store.Get(name)
+		if errors.Is(err, repository.ErrNotFound) {
+			// Deleted between the listing and the read.
+			continue
+		}
+		if err != nil {
+			return ListResult{}, err
+		}
+		// Name is always the basename on disk, whatever the frontmatter claims.
+		metas = append(metas, Meta{
+			Name:        name,
+			Description: filestore.ParseFrontmatter(doc.Content).Description,
+			Access:      ParseAccess(doc.Content),
+		})
 	}
 	return ListResult{Skills: metas}, nil
 }
@@ -105,6 +128,20 @@ func (s *Service) GetAny(name string) (Skill, error) {
 		return Skill{Name: name, Content: content}, nil
 	}
 	return s.Get(name)
+}
+
+// AccessOf returns a skill's access setting. A system skill is always enabled:
+// it has no frontmatter to carry one, and it is how the agent answers questions
+// about nib itself.
+func (s *Service) AccessOf(name string) (Access, error) {
+	if IsSystem(name) {
+		return AccessEnabled, nil
+	}
+	skill, err := s.Get(name)
+	if err != nil {
+		return "", err
+	}
+	return ParseAccess(skill.Content), nil
 }
 
 // Create writes a new skill file. Fails if the skill already exists.

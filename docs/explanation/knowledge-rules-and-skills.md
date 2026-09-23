@@ -20,10 +20,10 @@ the task touches; where a rule exists for one of them, its text is added to the
 prompt during detailed planning. It reaches the model because the *subject*
 matched, not because a search did.
 
-**Skills** are requested. Every skill's name and description are listed at the
-end of the `main` and `discuss` prompts, and the agent loads the full text of
-one on demand. It reaches the model because the agent decided it needed that
-procedure.
+**Skills** are requested. Every enabled skill's name and description are listed
+at the end of the `main` and `discuss` prompts, and the agent loads the full text
+of one on demand. It reaches the model because the agent decided it needed that
+procedure — or because you told it to with a `/name` command.
 
 So: knowledge is *what is true here*, rules are *what we require*, skills are
 *how we do a particular thing*.
@@ -88,6 +88,30 @@ agent so it can answer questions about itself rather than guessing.
 They are deliberately invisible to the API: they are not content an operator
 authored, they change with the image, and listing them among your skills would
 invite editing something that is regenerated on every release.
+
+## Who decides a skill runs
+
+Each skill has an **Access** setting on the Skills page, stored as the `access`
+frontmatter key:
+
+| Access | In the prompt catalog | `get_skill` serves it |
+|---|---|---|
+| **Enabled** (default) | yes | always |
+| **Explicit** | no | only after an operator message in this chat carries `/name` |
+| **Disabled** | no | never |
+
+Explicit is for a procedure you want run only when you ask — `/get-jira-task
+PROJ-42` — and never picked because a description looked relevant. The agent is
+told only that a slash command means "load that skill"; it cannot see the list.
+The check covers every message you have sent in the plan or discuss chat, and a
+plan's sub-agents share it, so a plan started with `/name` can use the skill in
+any of its stages. A bare mention of the name does not count.
+
+The prompt catalog is only the hint; `get_skill` is the gate, so a sub-agent
+guessing a name meets the same refusal. System skills are always enabled. The
+Knowledge Base, Distribute tools and Categorize tools buttons open their message
+with the skill's `/name`, so they still work when you set their skill to
+Explicit, and fail when you disable it.
 
 ## Where variables fit
 

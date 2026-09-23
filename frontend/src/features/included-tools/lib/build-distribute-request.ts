@@ -21,7 +21,8 @@ function toolLine(tool: CatalogTool): string {
 /**
  * The message that invokes the distribute-tools skill unambiguously.
  *
- * Skills are not slash commands - the text goes to the model verbatim, so
+ * The text goes to the model verbatim. The leading `/name` is the slash command
+ * get_skill needs before it serves a skill the operator set to explicit, and
  * asking for the get_skill call by name takes the guess out of the invocation.
  * Only data travels in the message: the per-mode policy lives in the skill
  * markdown, which is seeded to the skills directory and editable by an
@@ -32,7 +33,7 @@ export function buildDistributeToolsRequest(
 	tools: CatalogTool[],
 ): string {
 	return [
-		`Call get_skill with name "${DISTRIBUTE_TOOLS_SKILL}" and follow its instructions exactly.`,
+		`/${DISTRIBUTE_TOOLS_SKILL} - call get_skill with name "${DISTRIBUTE_TOOLS_SKILL}" and follow its instructions exactly.`,
 		'',
 		'modes:',
 		...modes.map((mode) => `- ${mode}`),
