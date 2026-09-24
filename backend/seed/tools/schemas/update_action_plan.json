@@ -22,7 +22,7 @@
               "type": {
                 "type": "string",
                 "enum": ["code", "web", "curl", "shell", "other"],
-                "description": "Management surface used by the step: code (infrastructure code change), web (web interface), curl (API request), shell (CLI command), other."
+                "description": "Management surface used by the step: code (infrastructure code change), web (an operation on a hosted service with a web interface, such as dispatching a CI workflow or merging a pull request; the executor picks MCP tools or the service CLI at run time), curl (API request), shell (CLI command against a host or cluster), other. Steps change the system; anything that only observes is a check."
               },
               "action": {
                 "type": "string",
@@ -66,7 +66,7 @@
         },
         "checks": {
           "type": "array",
-          "description": "One or two verification checks that prove the stage succeeded.",
+          "description": "Verification checks that prove the stage succeeded, one per distinct outcome. Anything that monitors, waits for, validates or confirms a step belongs here, not in steps.",
           "items": {
             "type": "object",
             "properties": {
