@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router'
 import {
 	Plus,
 	Pencil,
@@ -32,7 +33,19 @@ import {
 
 type ViewMode = 'servers' | 'raw'
 
+const TABS = ['servers', 'categories', 'included', 'executor'] as const
+type TabValue = (typeof TABS)[number]
+
+// The tab lives in the URL so other pages can link straight to one -- an
+// action that cannot run without the executor sends the operator to
+// ?tab=executor.
+function tabFromParam(value: string | null): TabValue {
+	return TABS.includes(value as TabValue) ? (value as TabValue) : 'servers'
+}
+
 export function ToolsPage() {
+	const [searchParams, setSearchParams] = useSearchParams()
+	const tab = tabFromParam(searchParams.get('tab'))
 	const [view, setView] = useState<ViewMode>('servers')
 	const [servers, setServers] = useState<MCPServer[]>([])
 	const [listLoading, setListLoading] = useState(true)
@@ -191,7 +204,14 @@ export function ToolsPage() {
 				</ul>
 			)}
 
-			<Tabs defaultValue="servers">
+			<Tabs
+				value={tab}
+				onValueChange={(next) => {
+					const params = new URLSearchParams(searchParams)
+					params.set('tab', next)
+					setSearchParams(params, { replace: true })
+				}}
+			>
 				<TabsList>
 					<TabsTrigger value="servers">MCP Servers</TabsTrigger>
 					<TabsTrigger value="categories">Categories</TabsTrigger>

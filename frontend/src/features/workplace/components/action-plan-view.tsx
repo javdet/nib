@@ -109,6 +109,9 @@ function execRunTooltip(run: ActionExecRun): string {
 const EXECUTOR_DISABLED_REASON =
 	'Executor is disabled — set its type in executor settings to run code actions'
 
+const EXECUTOR_SETUP_TOOLTIP =
+	'Executor is disabled — open executor settings to enable it'
+
 // Rows open collapsed so a ten-step plan stays scannable. The cut is a height
 // rather than a sentence count: an action is markdown, and lists, tables and
 // code blocks have no sentences to count but do have lines to clip. Roughly six
@@ -139,8 +142,13 @@ interface ActionPlanViewProps {
 	onReorder: (scope: ActionPlanScope, stage: number, from: number, to: number) => void
 	reordering?: boolean
 	// executorDisabled mirrors the "disabled" executor type: code actions have
-	// nowhere to run, so their Execute button is turned off.
+	// nowhere to run, so their Execute button stops starting one and a stage
+	// holding an unticked code action cannot be run all at once.
 	executorDisabled?: boolean
+	// onConfigureExecutor opens the executor settings. With it, a code action
+	// blocked by a disabled executor takes the operator there on click instead
+	// of refusing it -- enabling the executor is the only way to run the row.
+	onConfigureExecutor?: () => void
 	// The planning run supplies each stage header's planning status and the
 	// planner chat it opens.
 	fanoutRun?: FanoutRun | null
@@ -597,14 +605,14 @@ function RunControls({
 interface ExecuteButtonProps {
 	onClick: () => void
 	disabled?: boolean
-	disabledReason?: string
+	tooltip?: string
 }
 
-function ExecuteButton({ onClick, disabled, disabledReason }: ExecuteButtonProps) {
+function ExecuteButton({ onClick, disabled, tooltip }: ExecuteButtonProps) {
 	return (
 		<HeaderButton
 			label="Execute action"
-			tooltip={disabled && disabledReason ? disabledReason : 'Execute action'}
+			tooltip={tooltip ?? 'Execute action'}
 			onClick={onClick}
 			disabled={disabled}
 		>
@@ -691,7 +699,7 @@ interface ExecutableActionRowProps {
 	execRun?: ActionExecRun
 	executorType?: ExecutorType | null
 	executeDisabled?: boolean
-	executeDisabledReason?: string
+	executeTooltip?: string
 	dragDisabled?: boolean
 	onGripPointerDown: () => void
 	onGripPointerUp: () => void
@@ -713,7 +721,7 @@ function ExecutableActionRow({
 	execRun,
 	executorType = null,
 	executeDisabled = false,
-	executeDisabledReason,
+	executeTooltip,
 	dragDisabled,
 	onGripPointerDown,
 	onGripPointerUp,
@@ -766,7 +774,7 @@ function ExecutableActionRow({
 					<ExecuteButton
 						onClick={onExecute}
 						disabled={executeDisabled}
-						disabledReason={executeDisabledReason}
+						tooltip={executeTooltip}
 					/>
 				</div>
 				<RowBody id={id} checked={checked}>
@@ -847,6 +855,7 @@ export function ActionPlanView({
 	onReorder,
 	reordering = false,
 	executorDisabled = false,
+	onConfigureExecutor,
 	fanoutRun = null,
 	fanoutRunning = false,
 	stageRun = null,
@@ -881,6 +890,29 @@ export function ActionPlanView({
 	const handleGripPointerUp = useCallback(() => {
 		resetGrip()
 	}, [resetGrip])
+
+	// What Execute does on one row. A code action with the executor disabled has
+	// nowhere to run, so the click goes to the executor settings rather than
+	// nowhere; without a way there the button falls back to being refused.
+	const executeProps = useCallback(
+		(key: string, step: ActionStep) => {
+			if (!executorDisabled || !isCodeStep(step)) {
+				return { onExecute: () => onExecute(key) }
+			}
+			if (!onConfigureExecutor) {
+				return {
+					onExecute: () => onExecute(key),
+					executeDisabled: true,
+					executeTooltip: EXECUTOR_DISABLED_REASON,
+				}
+			}
+			return {
+				onExecute: onConfigureExecutor,
+				executeTooltip: EXECUTOR_SETUP_TOOLTIP,
+			}
+		},
+		[executorDisabled, onExecute, onConfigureExecutor],
+	)
 
 	const clearDrag = useCallback(() => {
 		resetGrip()
@@ -1097,17 +1129,13 @@ export function ActionPlanView({
 														onToggle={onToggle}
 														onComment={() => onComment(key)}
 														onEdit={() => onEdit(key)}
-														onExecute={() => onExecute(key)}
+														{...executeProps(key, step)}
 														onStop={onStop}
 														onViewLogs={
 															onViewLogs ? () => onViewLogs(key) : undefined
 														}
 														execRun={execRuns[key]}
 														executorType={executorType}
-														executeDisabled={
-															executorDisabled && isCodeStep(step)
-														}
-														executeDisabledReason={EXECUTOR_DISABLED_REASON}
 														dragDisabled={dragDisabled}
 														onGripPointerDown={handleGripPointerDown}
 														onGripPointerUp={handleGripPointerUp}
@@ -1245,17 +1273,13 @@ export function ActionPlanView({
 										onToggle={onToggle}
 										onComment={() => onComment(key)}
 										onEdit={() => onEdit(key)}
-										onExecute={() => onExecute(key)}
+										{...executeProps(key, step)}
 										onStop={onStop}
 										onViewLogs={
 											onViewLogs ? () => onViewLogs(key) : undefined
 										}
 										execRun={execRuns[key]}
 										executorType={executorType}
-										executeDisabled={
-											executorDisabled && isCodeStep(step)
-										}
-										executeDisabledReason={EXECUTOR_DISABLED_REASON}
 										dragDisabled
 										onGripPointerDown={() => {}}
 										onGripPointerUp={() => {}}

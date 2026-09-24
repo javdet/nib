@@ -1558,6 +1558,7 @@ export function WorkplaceDetail() {
 							}
 							reordering={reordering}
 							executorDisabled={executorType === 'disabled'}
+							onConfigureExecutor={() => navigate('/tools?tab=executor')}
 							fanoutRun={fanoutRun}
 							fanoutRunning={fanoutRunning}
 							stageRun={stageRun}
