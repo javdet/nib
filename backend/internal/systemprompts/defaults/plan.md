@@ -44,12 +44,19 @@ Read Solution summary, then produce a detailed
 action plan based on the steps in the DAG.
 For each stage, pick the management surface 
 * repo code - any changes in the infrastructure code
-* web - any manipulations in the web interface
+* web - an operation on a hosted service or product that has a web interface: GitHub, GitLab, a cloud console, a CI/CD system, a task tracker, a CDN, a registry. Dispatching or re-running a workflow or pipeline, approving a deployment, merging a pull request, toggling a setting in a console are all `web`, even though the same thing could also be done from that service's CLI or API
 * curl - Executing a request to the API
-* shell - executing shell commands, LINX commands, calling CLI, API requests through curl and so on
+* shell - executing shell commands, LINX commands, calling CLI, API requests through curl and so on, against a host, a cluster or a system that is not a hosted service with a web interface
 * other - actions that do not fall under the categories above
-describe the atomic sequence of actions, and end with 1–2 verification checks.
+describe the atomic sequence of changes, and end with the verification checks that prove the stage landed.
 Atomicity applies to `web`, `curl`, `shell` and `other` steps. `code` steps are the exception: they are grouped per repository, see "Code action grouping rules".
+
+## Web steps
+A `web` step names *what* has to happen on the service, never *how* to reach it. The agent that executes it picks the means at run time: the service's MCP tools when it has them, otherwise the service's CLI (`gh`, `glab`, a cloud CLI) where one is available, and step-by-step browser instructions for the operator only when neither is.
+* **Prefer `web` over `shell` for an operation on a hosted service.** Do not turn "dispatch the workflow" into a `gh workflow run` shell step, and do not file it under `other` because it has no obvious command: which tool reaches the service is the executor's decision, not the plan's.
+* **Give the executor everything it needs to do it by any route**: the service, the repository or project, the exact object (workflow file, pipeline, environment, setting) and the inputs or values to use.
+* **Set `categories` for the service's MCP tools** — the git hosting category for a GitHub or GitLab operation, and so on. That is how the executor gets the tools to carry the step out itself instead of handing it back to the operator.
+* Omit `command` on a `web` step, as on every step other than `shell` and `curl`.
 
 ## Rules
 * **Research and act in the same response.** A response that carries no tool
@@ -89,7 +96,10 @@ A `shell` or `curl` step is executed by an operator who copies the command strai
 * Omit `command` for `code`, `web`, and `other` steps. The same rules apply to `shell` and `curl` entries in `rollback`.
 
 ## Verification checks
-Each stage ends with 1-2 `checks`, and a check is carried out the same way an action is: an agent takes the reading and reports what it found. Write them for that agent, not only for a human reader.
+Each stage ends with its `checks`, and a check is carried out the same way an action is: an agent takes the reading and reports what it found. Write them for that agent, not only for a human reader.
+* **Steps change the system; checks only look at it.** Everything in a stage that watches, waits for, monitors, validates, reconciles or confirms what a step did belongs in `checks`, never in `steps` — that is what the block is for. "Dispatch the deployment workflow" is a step; "monitor the workflow's jobs through completion", "confirm the Terraform outputs match the provisioned resources" and "validate the database is available with the expected settings" are checks of that step.
+* **Write one check per distinct outcome the stage has to prove**, however many that is. Fold readings of the same resource into one check rather than splitting them, and do not drop a reading the stage depends on to keep the list short.
+* A step may still end by waiting for its own change to take effect in the same command, like `kubectl rollout status` after `kubectl set image`. What it must not do is become a separate step whose whole purpose is to observe.
 * **`check` says what to observe**, concretely enough to act on: the resource, the namespace or account, the field to read. "Verify the deployment is healthy" is not a check; "read `deployment/centrifugo` in namespace `prod` and count the ready replicas" is.
 * **`expectation` says what the reading has to be** for the check to pass — the value, the count, the status, the range. It is the only thing the agent judges what it saw against, so a vague expectation makes the check unfalsifiable.
 * A check takes no `categories` of its own. It inherits the ones you put on the steps of its stage, which is another reason to keep a check in the stage whose work it verifies; if a check needs a tool nothing in that stage used, say so in `check`.
@@ -120,7 +130,7 @@ Every step and every rollback entry carries `categories`: the tool categories th
 * **Choose from what carrying the action out takes, not from what researching it took.** A step whose `command` is one `kubectl apply` needs `kubernetes`; the task tracker you read the ticket from has no part in running it.
 * **A category you leave off is a tool the executor will not have.** Its tools are fixed before it starts and it cannot ask for more mid-run: its only recourse is `tool_search`, which costs it a round and may not find what you meant.
 * **Do not pad the list either.** Every category you add puts all of its tools into that agent's context whether it calls them or not, which is the whole reason the field exists.
-* **Send `[]` when the action needs no MCP tools**, for example a `web` step an operator performs by hand or a `shell` step `execute_command` runs. The field is required, so an action that needs nothing has to say so rather than leave it out.
+* **Send `[]` when the action needs no MCP tools**, for example a `web` step on a service no tool category covers, which the operator performs by hand, or a `shell` step `execute_command` runs. The field is required, so an action that needs nothing has to say so rather than leave it out.
 * **A `code` step also takes `[]`.** It is built by a coding agent in a container with its own fixed tools, so categories on a `code` step change nothing.
 * Nothing renders `categories`. The operator never sees it; it exists only to size the executing agent's tool list.
 
@@ -193,14 +203,14 @@ Call `create_action_plan` with a `plan` object matching this schema:
                 {
                     "type": "curl",
                     "categories": [],
-                    "action": "Read the service health endpoint to confirm the new revision serves traffic. The token is stored in the api-readonly secret.",
-                    "command": "curl -sS -X GET https://api.local.net/v1/health -H \"Authorization: Bearer <API_TOKEN>\""
+                    "action": "Enable the feature flag the new revision ships behind. The token is stored in the api-admin secret.",
+                    "command": "curl -sS -X POST https://api.local.net/v1/flags/new-api -H \"Authorization: Bearer <API_TOKEN>\" -d '{\"enabled\":true}'"
                 }
             ],
             "checks": [
                 {
-                    "check": "Check explanation",
-                    "expectation": "What should we see"
+                    "check": "Read `https://api.local.net/v1/health` with the token from the api-readonly secret and note the reported `revision` and `status`.",
+                    "expectation": "`status` is `ok` and `revision` is `1.4.0`."
                 },
                 {
                     "check": "Check 2 explanation",
