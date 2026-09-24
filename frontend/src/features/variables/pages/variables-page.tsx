@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Braces, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Braces, KeyRound, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VariableDialog } from '../components/variable-dialog'
+import { filterByQuery } from '../lib/filter-variables'
 import { SecretDialog } from '@/features/secrets/components/secret-dialog'
 import {
 	listVariables,
@@ -36,6 +39,8 @@ export function VariablesPage() {
 	const [variablesLoading, setVariablesLoading] = useState(true)
 	const [variableDialogOpen, setVariableDialogOpen] = useState(false)
 	const [editingVariable, setEditingVariable] = useState<Variable | null>(null)
+	const [searchInput, setSearchInput] = useState('')
+	const [activeQuery, setActiveQuery] = useState('')
 
 	const [secrets, setSecrets] = useState<Secret[]>([])
 	const [secretsLoading, setSecretsLoading] = useState(true)
@@ -118,6 +123,24 @@ export function VariablesPage() {
 		[editingSecret],
 	)
 
+	const handleSearch = useCallback(
+		(e: React.FormEvent) => {
+			e.preventDefault()
+			setActiveQuery(searchInput.trim())
+		},
+		[searchInput],
+	)
+
+	const handleClearSearch = useCallback(() => {
+		setSearchInput('')
+		setActiveQuery('')
+	}, [])
+
+	const visibleVariables = useMemo(
+		() => filterByQuery(variables, activeQuery),
+		[variables, activeQuery],
+	)
+
 	const handleDeleteSecret = useCallback(async (id: string) => {
 		setError(null)
 		try {
@@ -171,18 +194,46 @@ export function VariablesPage() {
 							</div>
 						</CardHeader>
 						<CardContent>
+							<form onSubmit={handleSearch} className="mb-4 flex gap-2">
+								<Input
+									type="search"
+									placeholder="Search variables by name..."
+									value={searchInput}
+									onChange={(e) => setSearchInput(e.target.value)}
+									className="max-w-sm"
+								/>
+								<Button type="submit" variant="secondary" size="sm">
+									<Search className="mr-2 h-4 w-4" />
+									Search
+								</Button>
+								{activeQuery && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										onClick={handleClearSearch}
+									>
+										<X className="mr-2 h-4 w-4" />
+										Clear
+									</Button>
+								)}
+							</form>
 							{variablesLoading ? (
 								<p className="py-4 text-center text-sm text-muted-foreground">
 									Loading...
 								</p>
-							) : variables.length === 0 ? (
+							) : visibleVariables.length === 0 ? (
 								<div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
 									<Braces className="h-8 w-8" />
-									<p className="text-sm">No variables added yet.</p>
+									<p className="text-sm">
+										{activeQuery
+											? 'No variables match your search.'
+											: 'No variables added yet.'}
+									</p>
 								</div>
 							) : (
 								<div className="space-y-3">
-									{variables.map((variable) => (
+									{visibleVariables.map((variable) => (
 										<div
 											key={variable.id}
 											className={cn(
