@@ -188,7 +188,9 @@ neither written nor read. Values are redacted from every MCP transport error.
 The executor launches an agent-runner container per action; it is **operator-configured, never
 detected**, at **Executor**, and persisted under `DATA_DIR`.
 
-- Type: `disabled` (nothing is ever launched), `local`, `remote`.
+- Type: `disabled` (nothing is ever launched), `local`, `remote`. While it is `disabled`, a code
+  action's *Execute action* button is not refused — pressing it opens **Executor**
+  (`/tools?tab=executor`), since enabling the executor is the only thing that makes the row runnable.
 - Remote platform: `docker`, `kubernetes` (auth `local_config` — kubeconfig, falling back to
   in-cluster — or `token`), `kubefoundry`.
 - Agent image: `claude-code` or `codex`; auth `api_key` or `oauth_token`, from `EXECUTOR_*`.
