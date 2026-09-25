@@ -17,9 +17,10 @@ secrets:
   dbPassword: "nib"
   llmApiKey: ""
   openaiApiKey: ""
+  ## Only when embeddings come from a different provider than completions.
+  ## Empty falls back to llmApiKey.
+  llmEmbeddingsApiKey: ""
   secretsEncryptionKey: ""
-  atlassianClientId: ""
-  atlassianClientSecret: ""
   executorLlmApiKey: ""
   executorLlmModel: ""
 
@@ -82,8 +83,22 @@ backend:
       ## gpt-5.6 needs responses to combine function tools with reasoning.
       api: responses
       ## Allowed: none, minimal, low, medium, high, xhigh.
+      ## Sent on every completion whatever the model is. Clear it for a
+      ## provider that rejects the parameter (Grok, Kimi) or accepts a
+      ## narrower set (Gemini). An explicit "" overrides LLM_REASONING_EFFORT.
       reasoningEffort: medium
       timeoutSeconds: 300
+      ## Embeddings endpoint. Each field falls back to the llm.* value above,
+      ## so omitting the block keeps one provider serving both. Set baseURL
+      ## when the completion provider serves no /embeddings route (DeepSeek,
+      ## xAI, Kimi); set dimensions when the model is not natively 1536 wide
+      ## (Gemini 3072, Qwen 1024). The key, when it differs, is the
+      ## llmEmbeddingsApiKey secret. Must agree with kbMcp.embeddings below.
+      ## See docs/how-to/switch-llm-provider.md#provider-presets
+      # embeddings:
+      #   baseURL: https://api.openai.com/v1
+      #   model: text-embedding-3-small
+      #   dimensions: 1536
       ## OpenRouter-only attribution headers; ignored by the OpenAI platform.
       httpReferer: ""
       appTitle: ""
@@ -121,10 +136,6 @@ backend:
   ## Optional mcp.json bootstrap (copied only when absent in the PVC).
   ## When empty and kbMcp.enabled, defaults to knowledge-base pointing at the in-cluster kb-mcp Service.
   mcpServers: {}
-
-  oauth:
-    callbackBaseURL: ""
-    frontendBaseURL: ""
 
   ## Mount host Docker socket for local executor (run_executor tool). Not recommended in production.
   dockerSocket:
@@ -210,8 +221,14 @@ kbMcp:
 
   ## The kb CLI "openrouter" provider is a generic OpenAI-compatible
   ## /embeddings client; point it at any provider and reuse LLM_API_KEY.
+  ##
+  ## This container embeds the queries that search the chunks the backend
+  ## ingested, so both fields must agree with backend.config.llm.embeddings.
+  ## A width mismatch returns no search results and reports no error.
   embeddings:
     baseURL: https://api.openai.com/v1
+    ## Empty omits the parameter. Set to 1536 whenever the backend sets it.
+    dimensions: ""
 
   podAnnotations: {}
   podLabels: {}

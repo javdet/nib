@@ -27,6 +27,11 @@ type OpenRouterOptions struct {
 	AppTitle    string
 	// Timeout bounds the entire HTTP request. Zero means no client timeout.
 	Timeout time.Duration
+	// Dimensions is sent as the request's `dimensions` parameter when
+	// positive; zero omits it. It has to match what the backend ingested with,
+	// because this client embeds the *queries* that search those vectors: a
+	// width mismatch returns nothing and reports no error.
+	Dimensions int
 }
 
 // OpenRouterEmbedder calls POST {BaseURL}/embeddings with an OpenAI-shaped body.
@@ -37,6 +42,7 @@ type OpenRouterEmbedder struct {
 	apiKey      string
 	httpReferer string
 	appTitle    string
+	dimensions  int
 }
 
 // NewOpenRouterEmbedder validates options and returns an Embedder.
@@ -59,6 +65,7 @@ func NewOpenRouterEmbedder(opts OpenRouterOptions) (*OpenRouterEmbedder, error) 
 		apiKey:      opts.APIKey,
 		httpReferer: opts.HTTPReferer,
 		appTitle:    opts.AppTitle,
+		dimensions:  opts.Dimensions,
 	}, nil
 }
 
@@ -68,7 +75,11 @@ func (c *OpenRouterEmbedder) Embed(ctx context.Context, texts []string) ([][]flo
 		return nil, 0, nil
 	}
 
-	payload, err := json.Marshal(openRouterEmbeddingsRequest{Model: c.model, Input: texts})
+	payload, err := json.Marshal(openRouterEmbeddingsRequest{
+		Model:      c.model,
+		Input:      texts,
+		Dimensions: c.dimensions,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("embed: marshal openrouter request: %w", err)
 	}
@@ -128,12 +139,18 @@ func (c *OpenRouterEmbedder) Embed(ctx context.Context, texts []string) ([][]flo
 		}
 		out[item.Index] = row
 	}
+	if c.dimensions > 0 && dim != c.dimensions {
+		return nil, 0, fmt.Errorf("embed: openrouter returned %d dimensions, want %d (the endpoint or model does not honour `dimensions`)", dim, c.dimensions)
+	}
 	return out, dim, nil
 }
 
 type openRouterEmbeddingsRequest struct {
 	Model string   `json:"model"`
 	Input []string `json:"input"`
+	// omitempty, because a provider that does not know the parameter rejects
+	// the whole request rather than ignoring it.
+	Dimensions int `json:"dimensions,omitempty"`
 }
 
 type openRouterEmbeddingsResponse struct {

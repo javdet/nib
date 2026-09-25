@@ -17,6 +17,20 @@ type APIError struct {
 	err        error
 }
 
+// ErrTruncated is returned when the provider stopped at the output cap. The
+// partial reply is deliberately not returned with it: a half-written tool-call
+// argument object, or a plan cut off mid-stage, is worse than no answer, and
+// the agent loops treat a reply with no tool calls as the final answer.
+var ErrTruncated = errors.New("llm: response truncated by the output token limit")
+
+// ErrRefused is returned when the model declined outright, either through a
+// refusal message or a content filter.
+var ErrRefused = errors.New("llm: model refused the request")
+
+// ErrNoOutput is returned when a completion carried neither text nor tool
+// calls. It is the shape a silently dropped tool call used to take.
+var ErrNoOutput = errors.New("llm: completion carried no content and no tool calls")
+
 func (e *APIError) Error() string {
 	if e.Message != "" {
 		return fmt.Sprintf("%s: %s", e.Op, e.Message)

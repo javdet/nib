@@ -35,20 +35,6 @@ without a restart.
 Never write a token into this file literally — see [How to keep tokens out of
 `mcp.json`](keep-tokens-out-of-mcp-json.md).
 
-## Connect a server that needs OAuth
-
-**Tools → MCP Servers** also holds connections that authenticate with an OAuth
-round trip rather than a static header. Atlassian is the one that ships
-configured: set `ATLASSIAN_CLIENT_ID` and `ATLASSIAN_CLIENT_SECRET`, register
-the callback URL with your OAuth app as
-
-```
-{OAUTH_CALLBACK_BASE_URL}/api/v1/mcp/connections/jira/callback
-```
-
-and start the flow from the page. These connections live in Postgres, not in
-`mcp.json`.
-
 ## Use a stdio-only server
 
 Put an HTTP bridge in front of it and register the bridge's URL. A `command`/

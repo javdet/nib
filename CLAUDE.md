@@ -53,8 +53,8 @@ reload.
 - `backend/config.yaml` (mounted at `/app/config.yaml`, selected by `-config` flag or `CONFIG_FILE`):
   structure — LLM base URL/model/api, agent `maxIterations`, KB DSN, directories, and the static
   projects/environments/clouds/locations tree.
-- `.env` / environment: secrets only (`LLM_API_KEY`, `SECRETS_ENCRYPTION_KEY`, `ATLASSIAN_*`,
-  `EXECUTOR_*`, `AGENT_WEBHOOK_TOKEN`). Never put keys in `config.yaml`.
+- `.env` / environment: secrets only (`LLM_API_KEY`, `SECRETS_ENCRYPTION_KEY`, `EXECUTOR_*`,
+  `AGENT_WEBHOOK_TOKEN`). Never put keys in `config.yaml`.
 - `DATA_DIR` (default `data/`) is the root for every file-backed store; per-store `dir` settings are
   resolved relative to it unless absolute.
 - `knowledge_base.dir` (default `{DATA_DIR}/knowledgebase`) keeps the file last uploaded to each
@@ -93,8 +93,8 @@ Two independent sources feed the tool catalog, merged in `buildToolCatalog`:
    "http://host:port/mcp", "headers": {...}}}}`. JSONC comments are allowed, unknown fields are
    preserved on edit. Editable at **MCP → Config** or by hand; a change invalidates the 60s
    discovery cache.
-2. OAuth/token connections in Postgres, added at **MCP → Servers** (Atlassian OAuth needs
-   `ATLASSIAN_*`).
+2. Token connections in Postgres (URL plus API token), added at **MCP → Servers**. There is
+   no OAuth flow; a server that needs OAuth has to be reached through a static token.
 
 Any value in `mcp.json` may reference `${NAME}`, expanded from the encrypted secret store at call
 time only — never from process environment. Without `SECRETS_ENCRYPTION_KEY` every `${NAME}` stays
@@ -233,7 +233,32 @@ backend's PATH says nothing about what the executor can run, and vice versa.
 
 `llm.baseURL`, `llm.model`, `llm.embeddingModel`, `llm.api` (`chat` vs `responses`),
 `llm.reasoningEffort`, `llm.timeoutSeconds` in `config.yaml`; the key comes from `LLM_API_KEY`
-(fallback `OPENAI_API_KEY`). Any OpenAI-compatible endpoint works — see `docs/llm-providers.md`.
+(fallback `OPENAI_API_KEY`). Any OpenAI-compatible endpoint works — see
+`docs/how-to/switch-llm-provider.md`, which carries a ready-made block per provider.
+
+**Completions and embeddings are configured separately.** The `llm.embeddings` block has its own
+`baseURL`, `model` and `dimensions` (key: `LLM_EMBEDDINGS_API_KEY`), each falling back to the
+matching `llm.*` value, so omitting the block keeps one provider serving both. It exists because
+DeepSeek, xAI Grok and Moonshot Kimi serve chat completions and **no `/embeddings` route at all**;
+without a second host, pointing `llm.baseURL` at one of them breaks knowledge search and the tool
+catalog. `kb_chunks.embedding` is `vector(1536)`, so a model that is not natively that wide
+(Gemini 3072, Qwen 1024) needs `llm.embeddings.dimensions: 1536`; an endpoint that ignores the
+parameter fails the request rather than storing vectors that would never match. The `kb-mcp`
+container embeds the *queries* and must agree on both model and width
+(`KB_EMBEDDINGS_BASE_URL`, `KB_EMBEDDINGS_DIMENSIONS`).
+
+`/v1/responses` is OpenAI-only; everything else needs `api: chat`, which costs reasoning replay.
+`reasoningEffort` is sent on every request whatever the model is — Grok and Kimi reject it, Gemini
+accepts only `none`/`low`/`medium`/`high` — so those presets clear it. An explicit
+`reasoningEffort: ""` in the file overrides `LLM_REASONING_EFFORT`; deleting the key defers to it.
+
+The `chat` path is deliberately tolerant of the dialects gateways emit: tool calls missing `type`
+or `id`, arguments sent as an object rather than a string, `reasoning_content` (captured, never
+replayed — DeepSeek rejects it coming back), and `finish_reason`/`refusal`, where a `length`
+truncation is an error rather than a short answer. Tool schemas and tool names are rewritten onto
+the subset every provider accepts before they are sent, since a strict validator rejects the whole
+request rather than the offending tool; dispatch keeps the server's own spelling on the route.
+
 Round budgets are `agent.maxIterations` and the per-sub-agent `stageMaxIterations` /
 `actionExecMaxIterations`. Only one execution runs at a time, by policy, and
 `agent.actionExecConcurrency` is clamped to 1.
@@ -297,7 +322,7 @@ The tool catalog combines:
   [local_tool_registry.go](backend/internal/service/local_tool_registry.go). Adding one means a
   `register*` function plus a `…ToolDef()`/handler pair; it then shows up in the developer catalog
   ([system_tools.go](backend/internal/service/system_tools.go)) automatically.
-- **MCP tools** — discovered concurrently from OAuth connections and `data/mcp.json` servers, cached
+- **MCP tools** — discovered concurrently from Postgres token connections and `data/mcp.json` servers, cached
   60s; `InvalidateMCPToolDiscoveryCache` fires on mcp.json or secret changes (wired in `main.go`).
 
 Which tools a turn sees is the union of `data/tools/{mode}.json` (`allow_tools`, built-ins) and

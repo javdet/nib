@@ -34,7 +34,6 @@ import (
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/nibdocs"
-	"github.com/javdet/nib/internal/oauth"
 	"github.com/javdet/nib/internal/repository/postgres"
 	"github.com/javdet/nib/internal/repository/static"
 	"github.com/javdet/nib/internal/rules"
@@ -152,21 +151,7 @@ func run() error {
 	mcpManager := mcpclient.NewManager()
 	defer mcpManager.Close()
 
-	var oauthProviders []oauth.Provider
-	if cfg.OAuth.AtlassianClientID != "" {
-		callbackURL := cfg.OAuth.CallbackBaseURL + "/api/v1/mcp/connections/jira/callback"
-		jira := oauth.NewAtlassianProvider(oauth.AtlassianConfig{
-			ClientID:     cfg.OAuth.AtlassianClientID,
-			ClientSecret: cfg.OAuth.AtlassianClientSecret,
-			RedirectURL:  callbackURL,
-			MCPURL:       cfg.OAuth.AtlassianMCPURL,
-		})
-		oauthProviders = append(oauthProviders, jira)
-		slog.Info("jira oauth provider configured", "callbackURL", callbackURL)
-	}
-
-	stateStore := oauth.NewStateStore(10 * time.Minute)
-	mcpSvc := service.NewMCPService(mcpRepo, mcpManager, oauthProviders, stateStore)
+	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
 	defer mcpSvc.Close()
 
 	// Prompts are compiled into the binary: an image built without one must fail to
@@ -490,7 +475,6 @@ func run() error {
 		MCPConfig:     mcpConfigSvc,
 		Executor:      executorSvc,
 
-		FrontendBaseURL:   cfg.OAuth.FrontendBaseURL,
 		AgentWebhookToken: cfg.Executor.WebhookToken,
 	})
 

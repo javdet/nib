@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,7 @@ func runIngest(args []string) int {
 		replace           bool
 		timeout           time.Duration
 		embeddingsBaseURL string
+		dimensions        int
 		googleBaseURL     string
 		httpReferer       string
 		appTitle          string
@@ -74,6 +76,7 @@ func runIngest(args []string) int {
 	fs.BoolVar(&replace, "replace", false, "delete existing chunks for the same source_uri values before insert")
 	fs.DurationVar(&timeout, "timeout", 120*time.Second, "HTTP timeout for embedding requests")
 	fs.StringVar(&embeddingsBaseURL, "embeddings-base-url", "", "OpenAI-compatible API base URL ($EMBEDDINGS_BASE_URL)")
+	fs.IntVar(&dimensions, "dimensions", envInt("EMBEDDINGS_DIMENSIONS", 0), "embedding width to request; must match what the collection was ingested with (0 omits the parameter) ($EMBEDDINGS_DIMENSIONS)")
 	fs.StringVar(&embeddingsBaseURL, "openrouter-base-url", "", "Deprecated alias for -embeddings-base-url")
 	fs.StringVar(&googleBaseURL, "google-base-url", "", "Google Generative Language API base (default from embed package or $GOOGLE_API_BASE_URL)")
 	fs.StringVar(&httpReferer, "http-referer", "", "HTTP-Referer for OpenRouter ($HTTP_REFERER)")
@@ -114,7 +117,7 @@ func runIngest(args []string) int {
 		return 1
 	}
 
-	embedder, err := buildEmbedder(provider, model, timeout, embeddingsBaseURL, googleBaseURL, httpReferer, appTitle)
+	embedder, err := buildEmbedder(provider, model, timeout, dimensions, embeddingsBaseURL, googleBaseURL, httpReferer, appTitle)
 	if err != nil {
 		logger.Error("embedder", "err", err)
 		return 1
@@ -259,9 +262,9 @@ func resolveDSN(flagDSN, configPath string) (string, error) {
 	return "", fmt.Errorf("set -dsn, environment DATABASE_URL, or -config with knowledge_base.uri")
 }
 
-func buildEmbedder(provider, model string, timeout time.Duration, embeddingsBase, googleBase, referer, title string) (embed.Embedder, error) {
+func buildEmbedder(provider, model string, timeout time.Duration, dimensions int, embeddingsBase, googleBase, referer, title string) (embed.Embedder, error) {
 	p := strings.ToLower(strings.TrimSpace(provider))
-	opts := embed.FactoryOptions{Timeout: timeout}
+	opts := embed.FactoryOptions{Timeout: timeout, Dimensions: dimensions}
 	switch p {
 	case "openrouter":
 		apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
@@ -276,6 +279,7 @@ func buildEmbedder(provider, model string, timeout time.Duration, embeddingsBase
 			HTTPReferer: firstNonEmpty(referer, os.Getenv("HTTP_REFERER")),
 			AppTitle:    firstNonEmpty(title, os.Getenv("OPENROUTER_APP_TITLE")),
 			Timeout:     timeout,
+			Dimensions:  dimensions,
 		}
 	case "google":
 		apiKey := firstNonEmpty(os.Getenv("GEMINI_API_KEY"), os.Getenv("GOOGLE_API_KEY"))
@@ -306,6 +310,21 @@ func resolveEmbeddingsBaseURL(flagValue string) string {
 		return base
 	}
 	return strings.TrimSpace(os.Getenv("OPENROUTER_BASE_URL"))
+}
+
+// envInt reads an integer from the environment, falling back on an unset or
+// unparseable value. It backs -dimensions, whose default has to come from the
+// environment so the kb-mcp container can be configured without a flag.
+func envInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func firstNonEmpty(a, b string) string {

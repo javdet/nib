@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
@@ -212,18 +211,12 @@ func (emptyMCPRepo) GetByID(context.Context, uuid.UUID) (domain.MCPConnection, e
 func (emptyMCPRepo) Create(_ context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	return conn, nil
 }
-func (emptyMCPRepo) UpsertByTypeName(_ context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
-	return conn, nil
-}
 func (emptyMCPRepo) Update(_ context.Context, _ uuid.UUID, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	return conn, nil
-}
-func (emptyMCPRepo) UpdateTokens(context.Context, uuid.UUID, string, string, *time.Time) error {
-	return nil
 }
 func (emptyMCPRepo) UpdateStatus(context.Context, uuid.UUID, string) error { return nil }
 func (emptyMCPRepo) Delete(context.Context, uuid.UUID) error               { return nil }
 
 func stubMCPService() *MCPService {
-	return NewMCPService(emptyMCPRepo{}, mcpclient.NewManager(), nil, nil)
+	return NewMCPService(emptyMCPRepo{}, mcpclient.NewManager())
 }

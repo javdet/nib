@@ -42,7 +42,6 @@ type Deps struct {
 	MCPConfig     *mcpconfig.Service
 	Executor      *executor.Service
 
-	FrontendBaseURL   string
 	AgentWebhookToken string
 }
 
@@ -64,7 +63,7 @@ func NewRouter(d Deps) chi.Router {
 	clouds := NewCloudHandler(d.Clouds)
 	locations := NewLocationHandler(d.Locations)
 	knowledge := NewKnowledgeHandler(d.Knowledge)
-	mcpHandler := NewMCPHandler(d.MCP, d.FrontendBaseURL)
+	mcpHandler := NewMCPHandler(d.MCP)
 	chat := NewChatHandler(d.Chat)
 	systemTools := NewSystemToolsHandler(d.Chat)
 	systemPrompts := NewSystemPromptsHandler(d.SystemPrompts)
@@ -321,14 +320,6 @@ func NewRouter(d Deps) chi.Router {
 		r.Route("/mcp/connections", func(r chi.Router) {
 			r.Get("/", mcpHandler.List())
 			r.Post("/", mcpHandler.Create())
-
-			r.Route("/{type}/auth", func(r chi.Router) {
-				r.Get("/", mcpHandler.InitiateOAuth())
-			})
-
-			r.Route("/{type}/callback", func(r chi.Router) {
-				r.Get("/", mcpHandler.OAuthCallback())
-			})
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Put("/", mcpHandler.Update())

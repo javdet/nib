@@ -144,7 +144,7 @@ the API.
 |---|---|
 | `mcp_servers` | Registered servers. |
 | `mcp_tools` | Every discovered tool, with its embedding. |
-| `mcp_connections` | OAuth-based connections and their identity. |
+| `mcp_connections` | Token-authenticated MCP connections added at **Tools → MCP Servers**. |
 | `tool_categories` | Category names. |
 | `tool_category_patterns` | Patterns that assign tools to a category. |
 | `mcp_tool_categories`, `mcp_server_categories` | The resulting assignments. |

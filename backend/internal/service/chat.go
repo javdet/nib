@@ -50,6 +50,11 @@ type toolRoute struct {
 	connID    uuid.UUID
 	serverURL string
 	headers   map[string]string
+	// remoteName is the tool's name on the MCP server. It differs from the
+	// name the model is offered whenever the server's spelling had to be
+	// rewritten to satisfy the provider, and dispatch must use this rather
+	// than the name the model called back with -- the rewrite has no inverse.
+	remoteName string
 	// secrets holds the values expanded from ${NAME} references in mcp.json.
 	// Transport errors embed the request URL, so they are stripped before the
 	// error reaches a log line or the model.
@@ -738,23 +743,37 @@ func appendMCPTools(catalog *toolCatalog, tools []mcpclient.ToolInfo, allow map[
 		if name == "" {
 			continue
 		}
+		exposed := sanitizeToolName(name)
+		if exposed == "" {
+			slog.Warn("mcp tool name has no provider-safe form, skipping", "name", name, routeKey, routeValue)
+			continue
+		}
 		if allow != nil {
-			if _, ok := allow[name]; !ok {
+			// Either spelling matches: operators write allow lists against the
+			// name the server publishes, not against the rewritten one.
+			_, byRemote := allow[name]
+			_, byExposed := allow[exposed]
+			if !byRemote && !byExposed {
 				continue
 			}
 		}
-		if _, exists := catalog.localHandlers[name]; exists {
+		if _, exists := catalog.localHandlers[exposed]; exists {
 			continue
 		}
-		if _, exists := catalog.mcpRoutes[name]; exists {
-			slog.Warn("duplicate mcp tool name, skipping", "name", name, routeKey, routeValue)
+		if _, exists := catalog.mcpRoutes[exposed]; exists {
+			slog.Warn("duplicate mcp tool name, skipping", "name", exposed, routeKey, routeValue)
 			continue
 		}
+		if exposed != name {
+			slog.Info("renamed mcp tool for provider compatibility", "name", exposed, "remote_name", name, routeKey, routeValue)
+		}
+		toolRoute := route
+		toolRoute.remoteName = name
 		catalog.addMCPTool(llm.ToolDef{
-			Name:        name,
+			Name:        exposed,
 			Description: t.Description,
 			Parameters:  toolParametersJSON(t.InputSchema),
-		}, route)
+		}, toolRoute)
 	}
 }
 
@@ -925,11 +944,18 @@ func (s *ChatService) dispatchToolCall(ctx context.Context, catalog *toolCatalog
 		route = resolved
 	}
 
+	// The server knows the tool by its own spelling, which the catalog kept on
+	// the route when it rewrote the name for the provider.
+	remote := strings.TrimSpace(route.remoteName)
+	if remote == "" {
+		remote = tc.Name
+	}
+
 	var raw any
 	if route.connID != uuid.Nil {
-		raw, err = s.mcpSvc.CallTool(ctx, route.connID, tc.Name, args)
+		raw, err = s.mcpSvc.CallTool(ctx, route.connID, remote, args)
 	} else if strings.TrimSpace(route.serverURL) != "" {
-		raw, err = mcpclient.CallToolFromURL(ctx, route.serverURL, route.headers, tc.Name, args)
+		raw, err = mcpclient.CallToolFromURL(ctx, route.serverURL, route.headers, remote, args)
 	} else {
 		return "", fmt.Errorf("tool %q has no MCP route", tc.Name)
 	}

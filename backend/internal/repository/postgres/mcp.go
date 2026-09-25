@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
@@ -95,41 +94,6 @@ func (r *MCPRepo) Create(ctx context.Context, conn domain.MCPConnection) (domain
 	return result, nil
 }
 
-func (r *MCPRepo) UpsertByTypeName(ctx context.Context, conn domain.MCPConnection) (domain.MCPConnection, error) {
-	meta := conn.Metadata
-	if len(meta) == 0 {
-		meta = json.RawMessage("{}")
-	}
-
-	row := r.pool.QueryRow(ctx,
-		`INSERT INTO mcp_connections (type, name, server_url, auth_method,
-		        access_token, refresh_token, token_expires_at,
-		        api_token, status, metadata)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 ON CONFLICT (type, name) DO UPDATE SET
-		     server_url = EXCLUDED.server_url,
-		     auth_method = EXCLUDED.auth_method,
-		     access_token = EXCLUDED.access_token,
-		     refresh_token = EXCLUDED.refresh_token,
-		     token_expires_at = EXCLUDED.token_expires_at,
-		     api_token = COALESCE(EXCLUDED.api_token, mcp_connections.api_token),
-		     status = EXCLUDED.status,
-		     metadata = EXCLUDED.metadata,
-		     updated_at = now()
-		 RETURNING id, type, name, server_url, auth_method,
-		           access_token, refresh_token, token_expires_at,
-		           api_token, status, metadata, created_at, updated_at`,
-		conn.Type, conn.Name, conn.ServerURL, conn.AuthMethod,
-		nilIfEmpty(conn.AccessToken), nilIfEmpty(conn.RefreshToken), conn.TokenExpiresAt,
-		nilIfEmpty(conn.APIToken), conn.Status, meta)
-
-	result, err := scanConnectionRow(row)
-	if err != nil {
-		return domain.MCPConnection{}, fmt.Errorf("upsert mcp connection: %w", err)
-	}
-	return result, nil
-}
-
 func (r *MCPRepo) Update(ctx context.Context, id uuid.UUID, conn domain.MCPConnection) (domain.MCPConnection, error) {
 	// A nil metadata means the request did not carry the field, so COALESCE keeps
 	// what is stored -- the same protection api_token already had. Writing $5
@@ -157,22 +121,6 @@ func (r *MCPRepo) Update(ctx context.Context, id uuid.UUID, conn domain.MCPConne
 		return domain.MCPConnection{}, fmt.Errorf("update mcp connection: %w", err)
 	}
 	return result, nil
-}
-
-func (r *MCPRepo) UpdateTokens(ctx context.Context, id uuid.UUID, accessToken, refreshToken string, expiresAt *time.Time) error {
-	tag, err := r.pool.Exec(ctx,
-		`UPDATE mcp_connections
-		 SET access_token = $2, refresh_token = $3, token_expires_at = $4,
-		     status = 'connected', updated_at = now()
-		 WHERE id = $1`,
-		id, accessToken, nilIfEmpty(refreshToken), expiresAt)
-	if err != nil {
-		return fmt.Errorf("update mcp tokens: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return repository.ErrNotFound
-	}
-	return nil
 }
 
 func (r *MCPRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {

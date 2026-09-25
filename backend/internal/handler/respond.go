@@ -163,6 +163,18 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusGatewayTimeout, "The AI provider did not respond in time. Try again.")
+	case errors.Is(err, llm.ErrTruncated):
+		// 502 rather than 500 throughout: the provider answered and the answer
+		// was unusable. A 500 reads as a nib fault and sends the operator to
+		// the wrong logs.
+		writeError(w, http.StatusBadGateway,
+			"The AI provider cut the reply off at its output token limit. Retry, or lower the amount of context the request carries.")
+	case errors.Is(err, llm.ErrRefused):
+		writeError(w, http.StatusBadGateway,
+			"The AI model declined to answer this request. Rephrase the message, or check the provider's content filters.")
+	case errors.Is(err, llm.ErrNoOutput):
+		writeError(w, http.StatusBadGateway,
+			"The AI provider returned an empty reply with no tool calls. This usually means the model is not compatible with the configured endpoint — see docs/how-to/switch-llm-provider.md.")
 	default:
 		var llmErr *llm.APIError
 		if errors.As(err, &llmErr) {

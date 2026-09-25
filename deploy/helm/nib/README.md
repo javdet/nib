@@ -45,8 +45,6 @@ By default the chart creates a Secret (`<release>-app`) with these keys:
 | `LLM_API_KEY`            | `secrets.llmApiKey`       | LLM / OpenRouter API key       |
 | `OPENAI_API_KEY`         | `secrets.openaiApiKey`    | Fallback LLM key               |
 | `SECRETS_ENCRYPTION_KEY` | `secrets.secretsEncryptionKey` | Encrypt prompt secrets   |
-| `ATLASSIAN_CLIENT_ID`    | `secrets.atlassianClientId`  | Jira OAuth                 |
-| `ATLASSIAN_CLIENT_SECRET`| `secrets.atlassianClientSecret` | Jira OAuth secret      |
 | `EXECUTOR_*`             | `secrets.executor*`       | Agent-runner executor          |
 | `mcp.json`               | auto-generated            | MCP server bootstrap           |
 
@@ -97,8 +95,6 @@ ingress:
       hosts:
         - nib.example.com
 ```
-
-When ingress is enabled, `OAUTH_CALLBACK_BASE_URL` and `FRONTEND_BASE_URL` default to the ingress host.
 
 Set `ingress.routeApiToBackend: true` to route `/api` directly to the backend Service (bypassing frontend nginx).
 

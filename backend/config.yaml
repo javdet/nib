@@ -2,11 +2,20 @@
 # Copy to a local path and pass it to the CLI with -config.
 # API key is read from LLM_API_KEY env (fallback: OPENAI_API_KEY).
 
-# Provider presets (set baseURL + model; API key via env):
-# OpenAI:       baseURL https://api.openai.com/v1  (models: gpt-5.6, gpt-5.6-terra, gpt-5.6-luna)
-# OpenRouter:   baseURL https://openrouter.ai/api/v1  (+ httpReferer/appTitle)
-# DO Gradient:  baseURL https://inference.do-ai.run/v1
-# Google:       baseURL https://generativelanguage.googleapis.com/v1beta/openai/
+# Provider presets (set baseURL + model; API key via env).
+# Ready-made blocks per provider: docs/how-to/switch-llm-provider.md#provider-presets
+#
+#   OpenAI:       https://api.openai.com/v1                        (api: responses)
+#   OpenRouter:   https://openrouter.ai/api/v1                     (+ httpReferer/appTitle)
+#   DO Gradient:  https://inference.do-ai.run/v1
+#   Gemini:       https://generativelanguage.googleapis.com/v1beta/openai/
+#   Qwen:         https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+#   DeepSeek:     https://api.deepseek.com/v1          -- no /embeddings
+#   xAI Grok:     https://api.x.ai/v1                  -- no /embeddings
+#   Kimi:         https://api.moonshot.ai/v1           -- no /embeddings
+#
+# Everything but OpenAI needs `api: chat` and an empty `reasoningEffort`.
+# The three marked "no /embeddings" need the `embeddings` block below.
 llm:
   # Base URL for the OpenAI-compatible API (no trailing slash required).
   baseURL: https://api.openai.com/v1
@@ -23,11 +32,32 @@ llm:
   # Completion endpoint: chat (/v1/chat/completions) or responses (/v1/responses).
   # gpt-5.6 rejects function tools on chat completions unless reasoning is off,
   # so tools + reasoning requires responses. Use chat for gateways whose
-  # responses support is absent or unverified — see docs/llm-providers.md.
+  # responses support is absent or unverified — see docs/how-to/switch-llm-provider.md.
   api: responses
 
-  # reasoning_effort sent with every completion (empty = provider default: medium).
+  # Embeddings endpoint. Every field falls back to the llm.* value above, so
+  # omitting the block keeps one provider serving both.
+  #
+  # Set baseURL when the completion provider serves no /embeddings route
+  # (DeepSeek, xAI, Kimi). Set dimensions when the embedding model is not
+  # natively 1536 wide (Gemini is 3072, Qwen is 1024) -- kb_chunks.embedding is
+  # vector(1536), and a width that does not match is refused rather than stored.
+  # The key, when it differs, is LLM_EMBEDDINGS_API_KEY in the environment.
+  #
+  # Whatever is set here must match the kb-mcp container, which embeds the
+  # queries that search these chunks: KB_EMBEDDINGS_BASE_URL and
+  # KB_EMBEDDINGS_DIMENSIONS in .env.
+  # embeddings:
+  #   baseURL: https://api.openai.com/v1
+  #   model: text-embedding-3-small
+  #   dimensions: 1536
+
+  # reasoning_effort sent with every completion, whatever the model is.
   # Allowed: none, minimal, low, medium, high, xhigh.
+  #
+  # Clear it for any provider that rejects the parameter (Grok, Kimi) or that
+  # accepts a narrower set (Gemini: none/low/medium/high). An explicit "" here
+  # overrides LLM_REASONING_EFFORT; deleting the key defers to it instead.
   reasoningEffort: high
 
   # HTTP client timeout for the chat completion request (seconds).

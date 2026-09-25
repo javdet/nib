@@ -73,7 +73,14 @@ type AssistantMessage struct {
 	Content   string
 	ToolCalls []ToolCall
 	Reasoning []ReasoningItem
-	Usage     Usage
+	// FinishReason is the provider's own word for why generation stopped
+	// ("stop", "tool_calls", "length", "content_filter"), lower-cased. Empty
+	// when the provider omits it.
+	FinishReason string
+	// Refusal is the model's refusal text, when it declined rather than
+	// answered. Content is empty when it is set.
+	Refusal string
+	Usage   Usage
 }
 
 // Provider abstracts LLM text completion so implementations

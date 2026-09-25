@@ -216,34 +216,6 @@ Primary ingress host (first configured host).
 {{- end }}
 
 {{/*
-OAuth callback base URL.
-*/}}
-{{- define "nib.oauth.callbackBaseURL" -}}
-{{- if .Values.backend.oauth.callbackBaseURL }}
-{{- .Values.backend.oauth.callbackBaseURL }}
-{{- else if include "nib.ingress.host" . }}
-{{- $scheme := "http" -}}
-{{- if gt (len .Values.ingress.tls) 0 -}}
-{{- $scheme = "https" -}}
-{{- end -}}
-{{- printf "%s://%s" $scheme (include "nib.ingress.host" .) }}
-{{- else }}
-{{- printf "http://%s:%d" (include "nib.backend.fullname" .) (int .Values.backend.service.port) }}
-{{- end }}
-{{- end }}
-
-{{/*
-Frontend base URL for OAuth redirects.
-*/}}
-{{- define "nib.oauth.frontendBaseURL" -}}
-{{- if .Values.backend.oauth.frontendBaseURL }}
-{{- .Values.backend.oauth.frontendBaseURL }}
-{{- else }}
-{{- include "nib.oauth.callbackBaseURL" . }}
-{{- end }}
-{{- end }}
-
-{{/*
 Backend Service URL for frontend nginx API_UPSTREAM.
 */}}
 {{- define "nib.backend.serviceURL" -}}
