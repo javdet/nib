@@ -14,17 +14,29 @@ cd nib
 cp .env.example .env
 ```
 
-Set `LLM_API_KEY` in `.env`. Nothing else is required to start.
+Set `LLM_API_KEY` and `NIB_API_TOKEN` in `.env`. Nothing else is required to start.
+Generate the token with:
+
+```bash
+openssl rand -hex 32
+```
 
 ```bash
 docker compose up -d
 ```
 
-The UI is on <http://localhost:8080>.
+The UI is on <http://localhost:8080>. It asks for the API token once, then keeps
+a session cookie for 30 days.
 
 Four containers come up. If one restarts in a loop, `docker compose logs
-backend` names the reason — a bad `LLM_API_KEY` and a `metrics.port` colliding
-with the API port are the two that stop startup outright.
+backend` names the reason. Three things stop startup outright:
+
+- a bad `LLM_API_KEY`
+- a missing or short `NIB_API_TOKEN`
+- a `metrics.port` colliding with the API port
+
+`NIB_INSECURE_NO_AUTH=true` starts without a token and leaves the API open to
+anything that can reach it. Keep it for a machine only you can reach.
 
 ## Choose which ports reach the host
 
@@ -39,8 +51,9 @@ Defaults in `.env`:
 The metrics endpoint is unauthenticated and its metric names alone report plan
 counts, the model in use and cumulative LLM cost. If nothing on the host
 scrapes it, comment `NIB_METRICS_PORT` out so it stays inside the Compose
-network. The same goes for `NIB_BACKEND_PORT` — the API has no authentication
-of its own.
+network. `NIB_BACKEND_PORT` is guarded by `NIB_API_TOKEN` (scripts send
+`Authorization: Bearer <token>`), but if nothing uses it directly, comment it out
+too.
 
 ## Enable encrypted secrets
 

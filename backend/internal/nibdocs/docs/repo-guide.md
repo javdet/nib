@@ -54,7 +54,8 @@ reload.
   structure — LLM base URL/model/api, agent `maxIterations`, KB DSN, directories, and the static
   projects/environments/clouds/locations tree.
 - `.env` / environment: secrets only (`LLM_API_KEY`, `SECRETS_ENCRYPTION_KEY`, `EXECUTOR_*`,
-  `AGENT_WEBHOOK_TOKEN`). Never put keys in `config.yaml`.
+  `AGENT_WEBHOOK_TOKEN`, `NIB_API_TOKEN`), plus the auth switches `NIB_INSECURE_NO_AUTH`,
+  `NIB_ALLOWED_ORIGINS` and `NIB_ALLOWED_HOSTS`. Never put keys in `config.yaml`.
 - `DATA_DIR` (default `data/`) is the root for every file-backed store; per-store `dir` settings are
   resolved relative to it unless absolute.
 - `knowledge_base.dir` (default `{DATA_DIR}/knowledgebase`) keeps the file last uploaded to each
@@ -176,6 +177,29 @@ carries.
 `execute_command` is not a shell: one binary through argv, no pipes, redirects, `&&`, globs or
 `$VAR` expansion, 60s timeout, 1 MiB of captured output. `api_call` is the same shape fixed to
 `curl`.
+
+### API authentication
+
+Every `/api/v1` route except `/health`, `/version`, `/auth/session` and the agent-runner webhook
+requires `NIB_API_TOKEN` (at least 32 characters). Scripts send `Authorization: Bearer <token>`.
+The web UI asks for the token once and posts it to `/auth/session`, which sets an HttpOnly
+`SameSite=Strict` cookie holding a signed expiry, never the token. So rotating the token signs
+every browser out.
+
+**The backend refuses to start without a token** unless `NIB_INSECURE_NO_AUTH=true`, which opens
+the API to anyone who can reach it. A configured token always wins over that switch.
+`cmd/toolcatalog` loads the same config and needs neither, since it serves nothing.
+
+Two browser guards apply whatever the auth mode:
+
+- A cross-site `POST`/`PUT`/`DELETE` is refused with 403 (`http.CrossOriginProtection`, trusting
+  `NIB_ALLOWED_ORIGINS`).
+- A JSON route refuses any `Content-Type` other than `application/json` with 415.
+
+`NIB_ALLOWED_HOSTS`, when set, refuses any other `Host` with 421 to block DNS rebinding. The
+machine endpoints skip both guards, since probes and the agent-runner come from other hosts. The
+webhook answers to `AGENT_WEBHOOK_TOKEN` alone and rejects every callback while that is empty,
+unless `NIB_INSECURE_NO_AUTH` is set.
 
 ### Secrets
 

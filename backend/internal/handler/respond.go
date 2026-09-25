@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 
 	"github.com/javdet/nib/internal/executor"
@@ -216,10 +217,26 @@ func llmErrorResponse(err *llm.APIError) (int, string) {
 }
 
 // decodeJSON reads a JSON request body into dst. Returns false and writes
-// an error response if the body cannot be decoded.
+// an error response if the body is not declared as JSON or cannot be decoded.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if !requireJSONContentType(w, r) {
+		return false
+	}
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return false
+	}
+	return true
+}
+
+// requireJSONContentType refuses a body not declared as application/json. A
+// browser sends text/plain, form and multipart bodies cross-site without a
+// CORS preflight; decoding them as JSON anyway is what turned every write
+// route into a CSRF target.
+func requireJSONContentType(w http.ResponseWriter, r *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 		return false
 	}
 	return true

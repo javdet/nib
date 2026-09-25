@@ -61,8 +61,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "nib.secretName" . }}
                   key: LLM_API_KEY
+            # kbMcp.openrouter.baseURL is the pre-rename key. Read through dig
+            # because the block is gone from values.yaml, and preferred when an
+            # older values file still sets it: embeddings.baseURL now carries a
+            # default that would otherwise override the operator's choice.
             - name: EMBEDDINGS_BASE_URL
-              value: {{ default .Values.kbMcp.openrouter.baseURL .Values.kbMcp.embeddings.baseURL | quote }}
+              value: {{ default .Values.kbMcp.embeddings.baseURL (dig "openrouter" "baseURL" "" .Values.kbMcp) | quote }}
             {{- with .Values.kbMcp.embeddings.dimensions }}
             - name: EMBEDDINGS_DIMENSIONS
               value: {{ . | quote }}

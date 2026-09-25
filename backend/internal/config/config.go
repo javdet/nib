@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -32,6 +33,7 @@ type Config struct {
 	MCP                   MCPConfig
 	Metrics               MetricsConfig
 	Executor              ExecutorConfig
+	Auth                  AuthConfig
 	SecretsEncryptionKey  []byte
 }
 
@@ -209,6 +211,29 @@ type ServerConfig struct {
 	Port int
 }
 
+// minAPITokenLength keeps the token long enough that guessing it through the
+// login endpoint is impractical, which is why that endpoint needs no rate limit.
+const minAPITokenLength = 32
+
+// defaultAllowedOrigin is the Vite dev server, the only cross-origin caller
+// the SPA has out of the box.
+const defaultAllowedOrigin = "http://localhost:5173"
+
+// AuthConfig guards /api/v1. It comes from the environment only: the token is
+// a secret, and the rest decides who may reach the API at all.
+type AuthConfig struct {
+	// APIToken is accepted as a bearer token and exchanged for a session
+	// cookie at login.
+	APIToken string
+	// InsecureNoAuth is the explicit opt-out; without it an empty APIToken
+	// refuses to boot.
+	InsecureNoAuth bool
+	// AllowedOrigins may make cross-origin writes besides the API's own origin.
+	AllowedOrigins []string
+	// AllowedHosts, when non-empty, is the only set of Host headers served.
+	AllowedHosts []string
+}
+
 type DatabaseConfig struct {
 	Host     string
 	Port     int
@@ -366,6 +391,12 @@ func Load(path string) (Config, error) {
 	}
 	cfg.SecretsEncryptionKey = secretsKey
 
+	auth, err := loadAuthConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth = auth
+
 	fc, err := readFileConfig(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("load config file: %w", err)
@@ -401,7 +432,74 @@ func validateAppConfig(cfg Config) error {
 	if err := validateMetricsConfig(cfg.Metrics, cfg.Server); err != nil {
 		return err
 	}
+	if err := validateAuthConfig(cfg.Auth); err != nil {
+		return err
+	}
 	return nil
+}
+
+func loadAuthConfig() (AuthConfig, error) {
+	// Parsed strictly rather than through envOrDefaultBool: a typo there falls
+	// back silently, and this is the one switch whose value must be exactly
+	// what the operator meant.
+	insecure := false
+	if raw := strings.TrimSpace(os.Getenv("NIB_INSECURE_NO_AUTH")); raw != "" {
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return AuthConfig{}, fmt.Errorf("config: NIB_INSECURE_NO_AUTH must be true or false, got %q", raw)
+		}
+		insecure = b
+	}
+
+	origins := splitList(os.Getenv("NIB_ALLOWED_ORIGINS"))
+	if len(origins) == 0 {
+		origins = []string{defaultAllowedOrigin}
+	}
+	for i, o := range origins {
+		origins[i] = strings.TrimRight(o, "/")
+	}
+
+	return AuthConfig{
+		APIToken:       strings.TrimSpace(os.Getenv("NIB_API_TOKEN")),
+		InsecureNoAuth: insecure,
+		AllowedOrigins: origins,
+		AllowedHosts:   splitList(os.Getenv("NIB_ALLOWED_HOSTS")),
+	}, nil
+}
+
+// ValidateServing is the check for a process that serves the API: it needs a
+// token or the explicit opt-out. Load leaves it out because the toolcatalog
+// CLI loads the same config and serves nothing.
+func (a AuthConfig) ValidateServing() error {
+	if a.APIToken == "" && !a.InsecureNoAuth {
+		return fmt.Errorf(`config: NIB_API_TOKEN is required (generate one with "openssl rand -hex 32"); set NIB_INSECURE_NO_AUTH=true to run without authentication`)
+	}
+	return nil
+}
+
+// validateAuthConfig checks the shape of whatever was set.
+func validateAuthConfig(a AuthConfig) error {
+	if a.APIToken != "" && len(a.APIToken) < minAPITokenLength {
+		return fmt.Errorf("config: NIB_API_TOKEN must be at least %d characters, got %d", minAPITokenLength, len(a.APIToken))
+	}
+	for _, o := range a.AllowedOrigins {
+		u, err := url.Parse(o)
+		if err != nil || u.Scheme == "" || u.Host == "" || u.Path != "" || u.RawQuery != "" {
+			return fmt.Errorf("config: NIB_ALLOWED_ORIGINS entry %q must be scheme://host[:port]", o)
+		}
+	}
+	return nil
+}
+
+// splitList parses a comma-separated env value, dropping blanks.
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func validateMetricsConfig(m MetricsConfig, server ServerConfig) error {

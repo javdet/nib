@@ -15,13 +15,16 @@ import (
 type AgentWebhookHandler struct {
 	chatSvc      *service.ChatService
 	webhookToken string
+	insecure     bool
 }
 
-// NewAgentWebhookHandler creates an AgentWebhookHandler.
-func NewAgentWebhookHandler(chatSvc *service.ChatService, webhookToken string) *AgentWebhookHandler {
+// NewAgentWebhookHandler creates an AgentWebhookHandler. insecure mirrors
+// NIB_INSECURE_NO_AUTH: only then does an empty token accept every caller.
+func NewAgentWebhookHandler(chatSvc *service.ChatService, webhookToken string, insecure bool) *AgentWebhookHandler {
 	return &AgentWebhookHandler{
 		chatSvc:      chatSvc,
 		webhookToken: strings.TrimSpace(webhookToken),
+		insecure:     insecure,
 	}
 }
 
@@ -141,8 +144,10 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 }
 
 func (h *AgentWebhookHandler) authorize(r *http.Request) bool {
+	// Fails closed: an open webhook lets anyone post a forged action result
+	// into a plan.
 	if h.webhookToken == "" {
-		return true
+		return h.insecure
 	}
 
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))

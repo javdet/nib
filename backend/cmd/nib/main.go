@@ -60,6 +60,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	if err := cfg.Auth.ValidateServing(); err != nil {
+		return err
+	}
 
 	cleanup, err := logging.Setup(cfg.Log)
 	if err != nil {
@@ -450,8 +453,15 @@ func run() error {
 	includedToolsAppSvc := service.NewIncludedToolsService(includedToolsSvc, toolCatalogStore, chatSvc)
 	skillAppSvc := service.NewSkillService(skillSvc, variableRepo, selectionStore)
 
+	logAuthPosture(cfg)
+
 	router := handler.NewRouter(handler.Deps{
-		AllowedOrigins: []string{"http://localhost:5173"},
+		Auth: handler.AuthOptions{
+			Token:          cfg.Auth.APIToken,
+			Insecure:       cfg.Auth.InsecureNoAuth,
+			AllowedOrigins: cfg.Auth.AllowedOrigins,
+			AllowedHosts:   cfg.Auth.AllowedHosts,
+		},
 
 		Projects:       projectSvc,
 		Environments:   envSvc,
@@ -551,6 +561,27 @@ func run() error {
 }
 
 // resolveConfigPath picks the config file: -config flag, then CONFIG_FILE env, then config.yaml.
+// logAuthPosture says out loud when a guard is off, since each one fails in a
+// way nobody notices until it matters.
+func logAuthPosture(cfg config.Config) {
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	switch {
+	case cfg.Auth.APIToken != "":
+		slog.Info("API authentication enabled", "allowed_hosts", cfg.Auth.AllowedHosts)
+	case cfg.Auth.InsecureNoAuth:
+		slog.Warn("authentication disabled by NIB_INSECURE_NO_AUTH; the API is open to anyone who can reach it",
+			"addr", addr)
+		if len(cfg.Auth.AllowedHosts) == 0 {
+			slog.Warn("NIB_ALLOWED_HOSTS is empty; without authentication a DNS-rebinding page can reach the API")
+		}
+	}
+	// A configured token wins over the opt-out, for the webhook as for the API.
+	insecure := cfg.Auth.InsecureNoAuth && cfg.Auth.APIToken == ""
+	if cfg.Executor.WebhookToken == "" && !insecure {
+		slog.Warn("AGENT_WEBHOOK_TOKEN not set; agent-runner webhook callbacks will be rejected")
+	}
+}
+
 func resolveConfigPath(flagPath string) string {
 	if flagPath != "" {
 		return flagPath

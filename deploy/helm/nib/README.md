@@ -19,6 +19,7 @@ This chart packages the services from `docker-compose.yml` using production cont
 - Helm 3.8+
 - A default StorageClass (for PVCs) unless you provide `storageClass` values
 - `LLM_API_KEY` (or `OPENAI_API_KEY`) for LLM and knowledge-base features
+- An API token for the UI and API: `openssl rand -hex 32`
 
 ## Quick start
 
@@ -26,7 +27,8 @@ This chart packages the services from `docker-compose.yml` using production cont
 # Install with bundled PostgreSQL
 helm install nib ./deploy/helm/nib \
   --namespace nib --create-namespace \
-  --set secrets.llmApiKey="$LLM_API_KEY"
+  --set secrets.llmApiKey="$LLM_API_KEY" \
+  --set secrets.apiToken="$(openssl rand -hex 32)"
 
 # Port-forward the UI
 kubectl port-forward svc/nib-frontend 8080:80 -n nib
@@ -46,6 +48,8 @@ By default the chart creates a Secret (`<release>-app`) with these keys:
 | `OPENAI_API_KEY`         | `secrets.openaiApiKey`    | Fallback LLM key               |
 | `SECRETS_ENCRYPTION_KEY` | `secrets.secretsEncryptionKey` | Encrypt prompt secrets   |
 | `EXECUTOR_*`             | `secrets.executor*`       | Agent-runner executor          |
+| `NIB_API_TOKEN`          | `secrets.apiToken`        | API / UI login token (required)|
+| `AGENT_WEBHOOK_TOKEN`    | `secrets.agentWebhookToken` | Agent-runner webhook auth    |
 | `mcp.json`               | auto-generated            | MCP server bootstrap           |
 
 To use an existing Secret instead:
@@ -55,7 +59,25 @@ secrets:
   existingSecret: my-nib-secrets
 ```
 
-The Secret must contain at minimum `DB_PASSWORD` and `LLM_API_KEY`.
+The Secret must contain at minimum `DB_PASSWORD`, `LLM_API_KEY` and `NIB_API_TOKEN`.
+
+### API authentication
+
+Every `/api/v1` route except `/health`, `/version` and the agent-runner webhook
+requires `NIB_API_TOKEN` (at least 32 characters, `openssl rand -hex 32`). The UI
+asks for it once and keeps an HttpOnly session cookie; scripts send
+`Authorization: Bearer <token>`. Rendering fails when `secrets.apiToken` is empty
+and no `existingSecret` is set, and the backend refuses to start without a token.
+
+```yaml
+secrets:
+  apiToken: "<openssl rand -hex 32>"
+  agentWebhookToken: "<openssl rand -hex 32>"
+backend:
+  auth:
+    allowedHosts: ["nib.example.com"]   # blocks DNS rebinding
+    # insecureNoAuth: true              # no authentication at all
+```
 
 ### External PostgreSQL
 
@@ -234,8 +256,12 @@ kbMcp:
 ```bash
 helm upgrade nib ./deploy/helm/nib \
   --namespace nib \
-  --set secrets.llmApiKey="$LLM_API_KEY"
+  --set secrets.llmApiKey="$LLM_API_KEY" \
+  --set secrets.apiToken="$NIB_API_TOKEN"
 ```
+
+An upgrade from a release before API authentication needs `secrets.apiToken`
+(or `NIB_API_TOKEN` in the existing Secret); without it the render fails.
 
 Database migrations run automatically in-process on backend startup.
 
@@ -255,13 +281,14 @@ kubectl delete pvc -l app.kubernetes.io/instance=nib -n nib
 
 ```bash
 # Lint
-helm lint deploy/helm/nib
+helm lint deploy/helm/nib --set secrets.apiToken=$(openssl rand -hex 32)
 
 # Render templates
-helm template nib deploy/helm/nib
+helm template nib deploy/helm/nib --set secrets.apiToken=$(openssl rand -hex 32)
 
 # External database + ingress
 helm template nib deploy/helm/nib \
+  --set secrets.apiToken=$(openssl rand -hex 32) \
   --set postgresql.enabled=false \
   --set externalDatabase.host=postgres.example.com \
   --set ingress.enabled=true

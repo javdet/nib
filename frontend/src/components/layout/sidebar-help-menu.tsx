@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { BookOpen, CircleHelp, ExternalLink, Info } from 'lucide-react'
+import { BookOpen, CircleHelp, ExternalLink, Info, LogOut } from 'lucide-react'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -11,6 +12,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useAuth } from '@/features/auth/auth-context'
 import { AboutDialog } from '@/features/system/components/about-dialog'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +29,7 @@ function openInNewTab(url: string) {
 
 export function SidebarHelpMenu({ collapsed }: SidebarHelpMenuProps) {
 	const [aboutOpen, setAboutOpen] = useState(false)
+	const { required: authRequired, signOut } = useAuth()
 
 	const triggerClassName = cn(
 		'flex w-full cursor-pointer items-center rounded-md text-sm font-medium',
@@ -79,6 +82,15 @@ export function SidebarHelpMenu({ collapsed }: SidebarHelpMenuProps) {
 						<Info />
 						About Nib
 					</DropdownMenuItem>
+					{authRequired && (
+						<>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onSelect={() => void signOut()}>
+								<LogOut />
+								Sign out
+							</DropdownMenuItem>
+						</>
+					)}
 				</DropdownMenuContent>
 			</DropdownMenu>
 

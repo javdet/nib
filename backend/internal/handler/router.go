@@ -16,7 +16,7 @@ import (
 // obvious when a handler is reaching past the service layer, because the field
 // would be a store or a repository.
 type Deps struct {
-	AllowedOrigins []string
+	Auth AuthOptions
 
 	// Entity services.
 	Projects       *service.ProjectService
@@ -54,7 +54,7 @@ func NewRouter(d Deps) chi.Router {
 	r.Use(middleware.Logger)
 	r.Use(httpMetrics)
 	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware(d.AllowedOrigins))
+	r.Use(corsMiddleware(d.Auth.AllowedOrigins))
 
 	agentRun := writeDeadline(agentWriteTimeout)
 
@@ -79,255 +79,275 @@ func NewRouter(d Deps) chi.Router {
 	selection := NewSelectionHandler(d.Selection)
 	stats := NewStatsHandler(d.Stats)
 	toolCategories := NewToolCategoriesHandler(d.ToolCategories)
-	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookToken)
+	apiAuth := newAPIAuth(d.Auth)
+	authHandler := NewAuthHandler(apiAuth)
+	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookToken, !apiAuth.required())
 	execution := NewExecutionHandler(d.Chat)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Machine endpoints, outside every browser guard: health probes carry
+		// no credentials and arrive with the pod IP as Host, and the webhook
+		// authenticates with its own token from wherever the runner is.
 		r.Get("/health", HealthCheck())
 		r.Get("/version", VersionInfo())
-		r.Get("/modes", ListModes())
-		r.Get("/system/tools", systemTools.List())
-
-		// The execution routes deliberately take no write deadline: a force stop
-		// is a docker or kubernetes call, not an agent run, and it has to work
-		// while the agent loop holding the lease is wedged -- which is exactly
-		// when it is reached for.
-		r.Route("/execution", func(r chi.Router) {
-			r.Get("/", execution.Get())
-			r.Delete("/", execution.Stop())
-		})
 		r.Post("/agent-runner/webhook", agentWebhook.Receive())
 
-		r.Get("/stats", stats.Get())
+		r.Group(func(r chi.Router) {
+			r.Use(hostCheck(d.Auth.AllowedHosts))
+			r.Use(crossOriginProtection(d.Auth.AllowedOrigins))
 
-		r.Route("/selection", func(r chi.Router) {
-			r.Get("/", selection.Get())
-			r.Put("/", selection.Set())
-		})
+			r.Route("/auth/session", func(r chi.Router) {
+				r.Get("/", authHandler.Session())
+				r.Post("/", authHandler.Login())
+				r.Delete("/", authHandler.Logout())
+			})
 
-		r.Route("/projects", func(r chi.Router) {
-			r.Get("/", projects.List())
-			r.Post("/", projects.Create())
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware(apiAuth))
+				r.Get("/modes", ListModes())
+				r.Get("/system/tools", systemTools.List())
 
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", projects.GetByID())
-				r.Put("/", projects.Update())
-				r.Delete("/", projects.Delete())
-
-				r.Route("/environments", func(r chi.Router) {
-					r.Get("/", environments.List())
-					r.Post("/", environments.Create())
-
-					r.Route("/{envID}", func(r chi.Router) {
-						r.Get("/", environments.GetByID())
-						r.Put("/", environments.Update())
-						r.Delete("/", environments.Delete())
-					})
+				// The execution routes deliberately take no write deadline: a force stop
+				// is a docker or kubernetes call, not an agent run, and it has to work
+				// while the agent loop holding the lease is wedged -- which is exactly
+				// when it is reached for.
+				r.Route("/execution", func(r chi.Router) {
+					r.Get("/", execution.Get())
+					r.Delete("/", execution.Stop())
 				})
 
-				r.Route("/clouds", func(r chi.Router) {
-					r.Get("/", clouds.List())
-					r.Post("/", clouds.Create())
+				r.Get("/stats", stats.Get())
 
-					r.Route("/{cloudID}", func(r chi.Router) {
-						r.Get("/", clouds.GetByID())
-						r.Put("/", clouds.Update())
-						r.Delete("/", clouds.Delete())
+				r.Route("/selection", func(r chi.Router) {
+					r.Get("/", selection.Get())
+					r.Put("/", selection.Set())
+				})
 
-						r.Route("/locations", func(r chi.Router) {
-							r.Get("/", locations.List())
-							r.Post("/", locations.Create())
+				r.Route("/projects", func(r chi.Router) {
+					r.Get("/", projects.List())
+					r.Post("/", projects.Create())
 
-							r.Route("/{locationID}", func(r chi.Router) {
-								r.Get("/", locations.GetByID())
-								r.Put("/", locations.Update())
-								r.Delete("/", locations.Delete())
+					r.Route("/{id}", func(r chi.Router) {
+						r.Get("/", projects.GetByID())
+						r.Put("/", projects.Update())
+						r.Delete("/", projects.Delete())
+
+						r.Route("/environments", func(r chi.Router) {
+							r.Get("/", environments.List())
+							r.Post("/", environments.Create())
+
+							r.Route("/{envID}", func(r chi.Router) {
+								r.Get("/", environments.GetByID())
+								r.Put("/", environments.Update())
+								r.Delete("/", environments.Delete())
+							})
+						})
+
+						r.Route("/clouds", func(r chi.Router) {
+							r.Get("/", clouds.List())
+							r.Post("/", clouds.Create())
+
+							r.Route("/{cloudID}", func(r chi.Router) {
+								r.Get("/", clouds.GetByID())
+								r.Put("/", clouds.Update())
+								r.Delete("/", clouds.Delete())
+
+								r.Route("/locations", func(r chi.Router) {
+									r.Get("/", locations.List())
+									r.Post("/", locations.Create())
+
+									r.Route("/{locationID}", func(r chi.Router) {
+										r.Get("/", locations.GetByID())
+										r.Put("/", locations.Update())
+										r.Delete("/", locations.Delete())
+									})
+								})
 							})
 						})
 					})
 				})
-			})
-		})
 
-		r.Route("/knowledge", func(r chi.Router) {
-			r.Get("/connection", knowledge.GetConnection())
-			r.Put("/connection", knowledge.UpdateConnection())
-			r.Get("/collections", knowledge.ListCollections())
-			r.Get("/documents", knowledge.GetDocument())
-			r.Post("/documents", knowledge.UploadDocument())
-			r.Get("/status", knowledge.GetStatus())
-			r.Get("/settings", knowledge.GetSettings())
-			r.Put("/settings", knowledge.UpdateSettings())
-		})
-
-		r.With(agentRun).Post("/chat", chat.Send())
-
-		r.Route("/system-prompts/{name}", func(r chi.Router) {
-			r.Get("/", systemPrompts.Get())
-			r.Put("/", systemPrompts.Update())
-			r.Delete("/", systemPrompts.Reset())
-		})
-
-		r.Route("/skills", func(r chi.Router) {
-			r.Get("/", skills.List())
-			r.Post("/", skills.Create())
-
-			r.Route("/{name}", func(r chi.Router) {
-				r.Get("/rendered", skills.GetRendered())
-				r.Get("/", skills.Get())
-				r.Put("/", skills.Update())
-				r.Delete("/", skills.Delete())
-			})
-		})
-
-		r.Route("/rules", func(r chi.Router) {
-			r.Get("/", rulesHandler.List())
-			r.Post("/", rulesHandler.Create())
-
-			r.Route("/{name}", func(r chi.Router) {
-				r.Get("/", rulesHandler.Get())
-				r.Put("/", rulesHandler.Update())
-				r.Delete("/", rulesHandler.Delete())
-			})
-		})
-
-		r.Route("/variables", func(r chi.Router) {
-			r.Get("/", variables.List())
-			r.Post("/", variables.Create())
-
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", variables.Get())
-				r.Put("/", variables.Update())
-				r.Delete("/", variables.Delete())
-			})
-		})
-
-		r.Route("/secrets", func(r chi.Router) {
-			r.Get("/", secrets.List())
-			r.Post("/", secrets.Create())
-
-			r.Route("/{id}", func(r chi.Router) {
-				r.Put("/", secrets.Update())
-				r.Delete("/", secrets.Delete())
-			})
-		})
-
-		r.Route("/company", func(r chi.Router) {
-			r.Get("/", company.Get())
-			r.Put("/", company.Save())
-		})
-
-		r.Route("/dialogs", func(r chi.Router) {
-			r.Get("/", dialogs.List())
-			r.Post("/", dialogs.Create())
-
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", dialogs.Get())
-				r.Put("/title", dialogs.UpdateTitle())
-				r.Put("/categories", dialogs.UpdateCategories())
-				r.Put("/pin", dialogs.Pin())
-				r.Get("/children", dialogs.ListChildren())
-				r.Get("/dag", dialogs.DAG())
-				r.Get("/summary", dialogs.Summary())
-				r.Put("/summary", dialogs.UpdateSummary())
-				r.Get("/report", dialogs.Report())
-				// The report subagent answers 202 and runs on past this request,
-				// so like the fan-out it takes no write deadline.
-				r.Post("/report", dialogs.StartReport())
-				r.Get("/events", dialogs.Events())
-				r.Get("/plan-state", dialogs.PlanState())
-				r.Put("/plan-state/schedule", dialogs.SetPlanSchedule())
-				r.Put("/plan-state/status", dialogs.SetPlanStatus())
-				r.Get("/action-plan", dialogs.ActionPlan())
-				r.Put("/action-plan", dialogs.UpdateActionPlan())
-				r.Put("/action-plan/reorder", dialogs.ReorderActionPlan())
-				r.Put("/action-plan/checks", dialogs.SetActionPlanChecks())
-				r.Put("/action-plan/comments", dialogs.SetActionPlanComments())
-				r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
-				r.Get("/action-plan/exec", dialogs.ActionPlanExecRuns())
-				r.Get("/action-plan/logs", dialogs.ActionPlanActionLogs())
-				// Starting a stage run launches its first item, which for a code
-				// action can mean pulling an image -- longer than the default
-				// write timeout. The items after it start in the background.
-				r.With(agentRun).Post("/action-plan/stage-run", dialogs.StartStageRun())
-				r.Get("/action-plan/stage-run", dialogs.StageRun())
-				r.Delete("/action-plan/stage-run", dialogs.StopStageRun())
-				// The fan-out answers 202 and runs on past this request, so it
-				// deliberately does not take the agentRun write deadline.
-				r.Post("/plan-fanout", dialogs.StartPlanFanout())
-				r.Get("/plan-fanout", dialogs.PlanFanout())
-				r.Delete("/plan-fanout", dialogs.CancelPlanFanout())
-				r.Delete("/", dialogs.Delete())
-				r.With(agentRun).Post("/tool-results", dialogs.SubmitToolResult())
-
-				r.Route("/messages", func(r chi.Router) {
-					r.Get("/", dialogs.ListMessages())
-					r.With(agentRun).Post("/", dialogs.SendMessage())
-					r.With(agentRun).Post("/retry", dialogs.Retry())
+				r.Route("/knowledge", func(r chi.Router) {
+					r.Get("/connection", knowledge.GetConnection())
+					r.Put("/connection", knowledge.UpdateConnection())
+					r.Get("/collections", knowledge.ListCollections())
+					r.Get("/documents", knowledge.GetDocument())
+					r.Post("/documents", knowledge.UploadDocument())
+					r.Get("/status", knowledge.GetStatus())
+					r.Get("/settings", knowledge.GetSettings())
+					r.Put("/settings", knowledge.UpdateSettings())
 				})
 
-				r.Route("/attachments", func(r chi.Router) {
-					r.Get("/", dialogs.ListAttachments())
-					r.Post("/", dialogs.UploadAttachment())
+				r.With(agentRun).Post("/chat", chat.Send())
 
-					r.Route("/{attachmentId}", func(r chi.Router) {
-						r.Get("/", dialogs.GetAttachment())
-						r.Delete("/", dialogs.DeleteAttachment())
+				r.Route("/system-prompts/{name}", func(r chi.Router) {
+					r.Get("/", systemPrompts.Get())
+					r.Put("/", systemPrompts.Update())
+					r.Delete("/", systemPrompts.Reset())
+				})
+
+				r.Route("/skills", func(r chi.Router) {
+					r.Get("/", skills.List())
+					r.Post("/", skills.Create())
+
+					r.Route("/{name}", func(r chi.Router) {
+						r.Get("/rendered", skills.GetRendered())
+						r.Get("/", skills.Get())
+						r.Put("/", skills.Update())
+						r.Delete("/", skills.Delete())
 					})
 				})
-			})
-		})
 
-		r.Route("/included-tools", func(r chi.Router) {
-			r.Get("/{mode}", includedTools.Get())
-			r.Put("/{mode}", includedTools.Set())
-		})
+				r.Route("/rules", func(r chi.Router) {
+					r.Get("/", rulesHandler.List())
+					r.Post("/", rulesHandler.Create())
 
-		r.Get("/mcp/catalog-tools", includedTools.ListCatalogTools())
+					r.Route("/{name}", func(r chi.Router) {
+						r.Get("/", rulesHandler.Get())
+						r.Put("/", rulesHandler.Update())
+						r.Delete("/", rulesHandler.Delete())
+					})
+				})
 
-		r.Route("/tool-categories", func(r chi.Router) {
-			r.Get("/", toolCategories.List())
-			r.Get("/uncategorized/tools", toolCategories.ListUncategorizedTools())
+				r.Route("/variables", func(r chi.Router) {
+					r.Get("/", variables.List())
+					r.Post("/", variables.Create())
 
-			r.Route("/{name}", func(r chi.Router) {
-				r.Get("/tools", toolCategories.ListTools())
-				r.Put("/patterns", toolCategories.SetPatterns())
-			})
-		})
+					r.Route("/{id}", func(r chi.Router) {
+						r.Get("/", variables.Get())
+						r.Put("/", variables.Update())
+						r.Delete("/", variables.Delete())
+					})
+				})
 
-		r.Route("/mcp/servers", func(r chi.Router) {
-			r.Get("/", mcpConfig.List())
-			r.Post("/", mcpConfig.Create())
+				r.Route("/secrets", func(r chi.Router) {
+					r.Get("/", secrets.List())
+					r.Post("/", secrets.Create())
 
-			r.Route("/{name}", func(r chi.Router) {
-				r.Get("/tools", mcpConfig.ListTools())
-				r.Get("/", mcpConfig.Get())
-				r.Put("/", mcpConfig.Update())
-				r.Delete("/", mcpConfig.Delete())
-			})
-		})
+					r.Route("/{id}", func(r chi.Router) {
+						r.Put("/", secrets.Update())
+						r.Delete("/", secrets.Delete())
+					})
+				})
 
-		r.Route("/mcp/config/raw", func(r chi.Router) {
-			r.Get("/", mcpConfig.GetRaw())
-			r.Put("/", mcpConfig.SetRaw())
-		})
+				r.Route("/company", func(r chi.Router) {
+					r.Get("/", company.Get())
+					r.Put("/", company.Save())
+				})
 
-		r.Route("/executor/config", func(r chi.Router) {
-			r.Get("/", executorHandler.GetConfig())
-			r.Put("/", executorHandler.UpdateConfig())
-		})
+				r.Route("/dialogs", func(r chi.Router) {
+					r.Get("/", dialogs.List())
+					r.Post("/", dialogs.Create())
 
-		r.Route("/mcp/connections", func(r chi.Router) {
-			r.Get("/", mcpHandler.List())
-			r.Post("/", mcpHandler.Create())
+					r.Route("/{id}", func(r chi.Router) {
+						r.Get("/", dialogs.Get())
+						r.Put("/title", dialogs.UpdateTitle())
+						r.Put("/categories", dialogs.UpdateCategories())
+						r.Put("/pin", dialogs.Pin())
+						r.Get("/children", dialogs.ListChildren())
+						r.Get("/dag", dialogs.DAG())
+						r.Get("/summary", dialogs.Summary())
+						r.Put("/summary", dialogs.UpdateSummary())
+						r.Get("/report", dialogs.Report())
+						// The report subagent answers 202 and runs on past this request,
+						// so like the fan-out it takes no write deadline.
+						r.Post("/report", dialogs.StartReport())
+						r.Get("/events", dialogs.Events())
+						r.Get("/plan-state", dialogs.PlanState())
+						r.Put("/plan-state/schedule", dialogs.SetPlanSchedule())
+						r.Put("/plan-state/status", dialogs.SetPlanStatus())
+						r.Get("/action-plan", dialogs.ActionPlan())
+						r.Put("/action-plan", dialogs.UpdateActionPlan())
+						r.Put("/action-plan/reorder", dialogs.ReorderActionPlan())
+						r.Put("/action-plan/checks", dialogs.SetActionPlanChecks())
+						r.Put("/action-plan/comments", dialogs.SetActionPlanComments())
+						r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
+						r.Get("/action-plan/exec", dialogs.ActionPlanExecRuns())
+						r.Get("/action-plan/logs", dialogs.ActionPlanActionLogs())
+						// Starting a stage run launches its first item, which for a code
+						// action can mean pulling an image -- longer than the default
+						// write timeout. The items after it start in the background.
+						r.With(agentRun).Post("/action-plan/stage-run", dialogs.StartStageRun())
+						r.Get("/action-plan/stage-run", dialogs.StageRun())
+						r.Delete("/action-plan/stage-run", dialogs.StopStageRun())
+						// The fan-out answers 202 and runs on past this request, so it
+						// deliberately does not take the agentRun write deadline.
+						r.Post("/plan-fanout", dialogs.StartPlanFanout())
+						r.Get("/plan-fanout", dialogs.PlanFanout())
+						r.Delete("/plan-fanout", dialogs.CancelPlanFanout())
+						r.Delete("/", dialogs.Delete())
+						r.With(agentRun).Post("/tool-results", dialogs.SubmitToolResult())
 
-			r.Route("/{id}", func(r chi.Router) {
-				r.Put("/", mcpHandler.Update())
-				r.Delete("/", mcpHandler.Delete())
+						r.Route("/messages", func(r chi.Router) {
+							r.Get("/", dialogs.ListMessages())
+							r.With(agentRun).Post("/", dialogs.SendMessage())
+							r.With(agentRun).Post("/retry", dialogs.Retry())
+						})
 
-				r.Route("/tools", func(r chi.Router) {
-					r.Get("/", mcpHandler.ListTools())
-					r.Post("/{toolName}", mcpHandler.CallTool())
+						r.Route("/attachments", func(r chi.Router) {
+							r.Get("/", dialogs.ListAttachments())
+							r.Post("/", dialogs.UploadAttachment())
+
+							r.Route("/{attachmentId}", func(r chi.Router) {
+								r.Get("/", dialogs.GetAttachment())
+								r.Delete("/", dialogs.DeleteAttachment())
+							})
+						})
+					})
+				})
+
+				r.Route("/included-tools", func(r chi.Router) {
+					r.Get("/{mode}", includedTools.Get())
+					r.Put("/{mode}", includedTools.Set())
+				})
+
+				r.Get("/mcp/catalog-tools", includedTools.ListCatalogTools())
+
+				r.Route("/tool-categories", func(r chi.Router) {
+					r.Get("/", toolCategories.List())
+					r.Get("/uncategorized/tools", toolCategories.ListUncategorizedTools())
+
+					r.Route("/{name}", func(r chi.Router) {
+						r.Get("/tools", toolCategories.ListTools())
+						r.Put("/patterns", toolCategories.SetPatterns())
+					})
+				})
+
+				r.Route("/mcp/servers", func(r chi.Router) {
+					r.Get("/", mcpConfig.List())
+					r.Post("/", mcpConfig.Create())
+
+					r.Route("/{name}", func(r chi.Router) {
+						r.Get("/tools", mcpConfig.ListTools())
+						r.Get("/", mcpConfig.Get())
+						r.Put("/", mcpConfig.Update())
+						r.Delete("/", mcpConfig.Delete())
+					})
+				})
+
+				r.Route("/mcp/config/raw", func(r chi.Router) {
+					r.Get("/", mcpConfig.GetRaw())
+					r.Put("/", mcpConfig.SetRaw())
+				})
+
+				r.Route("/executor/config", func(r chi.Router) {
+					r.Get("/", executorHandler.GetConfig())
+					r.Put("/", executorHandler.UpdateConfig())
+				})
+
+				r.Route("/mcp/connections", func(r chi.Router) {
+					r.Get("/", mcpHandler.List())
+					r.Post("/", mcpHandler.Create())
+
+					r.Route("/{id}", func(r chi.Router) {
+						r.Put("/", mcpHandler.Update())
+						r.Delete("/", mcpHandler.Delete())
+
+						r.Route("/tools", func(r chi.Router) {
+							r.Get("/", mcpHandler.ListTools())
+							r.Post("/{toolName}", mcpHandler.CallTool())
+						})
+					})
 				})
 			})
 		})
