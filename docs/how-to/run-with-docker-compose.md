@@ -11,6 +11,36 @@ OpenAI-compatible LLM endpoint.
 ```bash
 git clone https://github.com/javdet/nib.git
 cd nib
+make setup
+```
+
+`make setup` asks for:
+
+- the LLM provider, one of the [presets](switch-llm-provider.md#provider-presets),
+  the model (Enter keeps the preset's) and its API key. For DeepSeek, xAI and
+  Kimi it also asks for an OpenAI key, since they serve no `/embeddings` route
+- the first project's name (required), its environments (comma-separated), a
+  cloud and that cloud's region. The last three are optional
+
+It checks the three published ports (`NIB_HTTP_PORT`, `NIB_BACKEND_PORT`,
+`NIB_METRICS_PORT`) before writing anything. When one is in use it asks for
+another, suggesting the next free one. Ports held by nib's own running stack
+count as free, since compose replaces those containers in place.
+
+It installs OpenSSL if it is missing and generates `NIB_API_TOKEN`,
+`SECRETS_ENCRYPTION_KEY` and a Postgres password. It then writes `.env` and
+`deploy/compose/config.local.yaml` (selected through `NIB_CONFIG_FILE`), runs
+`docker compose up -d --wait` and prints the URL and API token.
+
+Running it again backs `.env` up to `.env.bak.*` and rewrites both files, but
+keeps the tokens and passwords already in `.env`. A new encryption key would make
+every stored secret unreadable, and a new Postgres password would not open the
+existing volume. If the embedding model changes, knowledge search still needs the
+[rename](switch-llm-provider.md#rename-the-embedding-model-in-the-database).
+
+To set it up by hand instead:
+
+```bash
 cp .env.example .env
 ```
 

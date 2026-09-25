@@ -10,6 +10,8 @@ data/logs/*
 .DS_Store
 dump/
 deploy/compose/config.yaml
+deploy/compose/config.local.yaml
+.env.bak.*
 # Compiled backend binaries (built into images, never committed)
 backend/nib
 backend/toolcatalog
