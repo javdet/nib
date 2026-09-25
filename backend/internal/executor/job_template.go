@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/javdet/nib/internal/executor/templates"
@@ -166,6 +167,35 @@ func renderJobManifest(dataDir string, values actionRunValues) (*batchv1.Job, er
 		return nil, fmt.Errorf("%w: decode yaml: %v", ErrKubernetesJobRender, err)
 	}
 	return &job, nil
+}
+
+// setAgentEnv sets name on the agent container, replacing any value the
+// template gave it. The webhook token goes in here rather than through the
+// template so an operator's job.yaml.tmpl override cannot drop it, and an
+// explicit env entry also beats the same name arriving through envFrom. The
+// agent container is the one named "agent", else the first.
+func setAgentEnv(job *batchv1.Job, name, value string) {
+	if value == "" {
+		return
+	}
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) == 0 {
+		return
+	}
+	idx := 0
+	for i, c := range containers {
+		if c.Name == "agent" {
+			idx = i
+			break
+		}
+	}
+	env := containers[idx].Env[:0:0]
+	for _, e := range containers[idx].Env {
+		if e.Name != name {
+			env = append(env, e)
+		}
+	}
+	containers[idx].Env = append(env, corev1.EnvVar{Name: name, Value: value})
 }
 
 func quoteYAMLString(value string) (string, error) {

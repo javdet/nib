@@ -250,9 +250,12 @@ type Config struct {
 // (Config.GitTokenSecretName) and read from the encrypted secret store, so an
 // env fallback would be a second, invisible source of truth for one credential.
 type Secrets struct {
-	LLMAPIKey    string
-	LLMModel     string
-	WebhookToken string
+	LLMAPIKey string
+	LLMModel  string
+	// WebhookKey signs each container's webhook token (internal/webhookauth).
+	// It never leaves the backend: a container gets a token bound to its own
+	// chat id and job name, so it cannot vouch for any other run.
+	WebhookKey []byte
 }
 
 // RunRequest is the input for launching an agent-runner task.

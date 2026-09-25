@@ -109,9 +109,11 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		// The registry or the Docker daemon is what failed, not the request —
 		// the message names the image and the reason, so pass it through.
 		writeError(w, http.StatusBadGateway, err.Error())
-	case errors.Is(err, service.ErrSettingsUnavailable):
+	case errors.Is(err, service.ErrSettingsUnavailable),
+		errors.Is(err, executor.ErrWebhookKeyMissing):
 		// Nothing about the request is wrong: the data volume the switches live
-		// on is not wired, which is the deployment's problem to fix.
+		// on, or the key a container reports back with, is not wired, which is
+		// the deployment's problem to fix.
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, kb.ErrCollectionMismatch):
 		writeError(w, http.StatusConflict, err.Error())

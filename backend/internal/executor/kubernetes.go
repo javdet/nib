@@ -31,6 +31,7 @@ func (s *Service) runActionKubernetes(ctx context.Context, cfg Config, req Actio
 	if err != nil {
 		return ActionRunResult{}, err
 	}
+	setAgentEnv(job, webhookAuthHeaderEnv, webhookAuthHeader(s.secrets, values.ChatID, jobName))
 
 	restCfg, err := s.loadKubernetesConfig(ctx, cfg)
 	if err != nil {

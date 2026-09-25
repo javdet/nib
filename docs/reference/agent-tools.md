@@ -171,7 +171,12 @@ Runs a simple command locally on the backend host.
 
 ### `api_call`
 
-Runs `curl` locally on the backend host with the given flags.
+Makes one HTTP(S) request with `curl` from the backend host. Only the curl
+options listed in the tool description are accepted, with exactly one
+`http://` or `https://` URL. Values cannot be read from files, output cannot
+be written anywhere but `/dev/null`, and redirects are not followed.
+Loopback, link-local and cloud metadata addresses are refused, including
+names that resolve to them.
 
 ### `run_executor`
 

@@ -126,6 +126,7 @@ func TestExecuteAPICallValidation(t *testing.T) {
 }
 
 func TestExecuteAPICallRunsCurl(t *testing.T) {
+	stubAPICallLookup(t, "203.0.113.10")
 	orig := runCurl
 	t.Cleanup(func() { runCurl = orig })
 
@@ -145,7 +146,12 @@ func TestExecuteAPICallRunsCurl(t *testing.T) {
 		t.Fatalf("ExecuteAPICall() = %q, want %q", out, `{"ok":true}`)
 	}
 
-	want := []string{"-s", "-X", "GET", "https://api.example.com", "-H", "Authorization: Bearer token"}
+	want := []string{
+		"-q", "--proto", "=http,https", "--proto-redir", "=http,https", "--globoff",
+		"--connect-to", "::203.0.113.10:443",
+		"--silent", "--request", "GET", "--header", "Authorization: Bearer token",
+		"--url", "https://api.example.com",
+	}
 	if len(gotArgv) != len(want) {
 		t.Fatalf("argv = %v, want %v", gotArgv, want)
 	}
@@ -157,6 +163,7 @@ func TestExecuteAPICallRunsCurl(t *testing.T) {
 }
 
 func TestExecuteAPICallCurlErrorIncludedInOutput(t *testing.T) {
+	stubAPICallLookup(t, "203.0.113.10")
 	orig := runCurl
 	t.Cleanup(func() { runCurl = orig })
 
@@ -176,6 +183,7 @@ func TestExecuteAPICallCurlErrorIncludedInOutput(t *testing.T) {
 }
 
 func TestDefaultRunCurlPropagatesUnexpectedError(t *testing.T) {
+	stubAPICallLookup(t, "203.0.113.10")
 	orig := runCurl
 	t.Cleanup(func() { runCurl = orig })
 

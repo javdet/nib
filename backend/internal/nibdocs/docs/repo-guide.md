@@ -180,6 +180,28 @@ carries.
 sees the backend's keys and tokens. They also do not see `HTTP(S)_PROXY`, `KUBECONFIG` or other CLI
 configuration.
 
+`api_call` accepts only the curl options listed in its tool description
+(`internal/service/api_call_guard.go`) and exactly one `http://` or `https://` URL. It refuses:
+
+- reading a value from a file (`-d @file`, `-H @file`, `--data-urlencode name@file`, `-b file`,
+  `-K`);
+- writing output anywhere but `-o /dev/null`;
+- `--unix-socket`, proxies, `--resolve`/`--connect-to`, and following redirects (`-L`). The agent
+  has to read `Location` with `-i` and call that URL itself.
+
+The host is resolved before curl runs. A host with any loopback, link-local (`169.254.0.0/16`,
+cloud metadata) or other metadata address among its answers is refused, and curl is pinned to the
+vetted address with `--connect-to`, so a second DNS answer cannot redirect it. Private
+(RFC 1918) addresses are allowed, since reaching internal APIs is the point. `execute_command` has
+none of these limits: it can still run `curl` itself.
+
+The backend image runs as `nib` (uid/gid 10001), not root. `docker-entrypoint.sh` starts as root
+only long enough to seed `DATA_DIR`, `chown` whatever in it is not `nib:nib` (a volume from an older
+release is root-owned), and join the gid that owns the Docker socket. It then drops to `nib` with
+`setpriv --no-new-privs` and no capabilities. On Docker Desktop that gid is 0, so nib joins the
+root group, which the entrypoint logs as a warning. A container started as another user (a
+Kubernetes `securityContext`) skips all of this.
+
 ### API authentication
 
 Every `/api/v1` route except `/health`, `/version`, `/auth/session` and the agent-runner webhook
@@ -199,9 +221,16 @@ Two browser guards apply whatever the auth mode:
 - A JSON route refuses any `Content-Type` other than `application/json` with 415.
 
 `NIB_ALLOWED_HOSTS`, when set, refuses any other `Host` with 421 to block DNS rebinding. The
-machine endpoints skip both guards, since probes and the agent-runner come from other hosts. The
-webhook answers to `AGENT_WEBHOOK_TOKEN` alone and rejects every callback while that is empty,
-unless `NIB_INSECURE_NO_AUTH` is set.
+machine endpoints skip both guards, since probes and the agent-runner come from other hosts.
+
+The webhook takes neither the API token nor the signing key. It takes the **per-run token**
+handed to each agent-runner container: `HMAC-SHA256(key, chat_id + job_name)`
+(`internal/webhookauth`), checked against the `chat_id` and `job.name` in the body. So a
+container can report its own run and no other, and a replayed delivery is a no-op thanks to the
+per-job dedup. The key is `AGENT_WEBHOOK_TOKEN` when set, otherwise generated once into
+`{DATA_DIR}/.webhook-key` (0600), and it never leaves the backend. There is no insecure bypass:
+`NIB_INSECURE_NO_AUTH` does not open the webhook, and the backend refuses to boot when it can
+neither read nor create the key. Changing the key orphans any run still in flight.
 
 ### Secrets
 
@@ -231,7 +260,10 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   with `ErrExecutorGitTokenSecretRequired`, not at save time, so an executor can be configured
   before its secrets exist. Remote Kubernetes is the exception: the agent Job takes its credentials
   from the operator-managed Secret in `agentSecretName` (`envFrom`), so the git token may be blank.
-- The runner reports back over a webhook guarded by `AGENT_WEBHOOK_TOKEN`.
+- The runner reports back over the webhook with a token bound to its own run, set as
+  `WEBHOOK_AUTH_HEADER` by the backend on both local containers and Kubernetes Jobs (injected after
+  rendering, so a `job.yaml.tmpl` override cannot drop it, and it beats the same name in
+  `agentSecretName`). The Job spec therefore carries that one run's token in plain text.
 - On `local`, a running code action's row in the plan view offers its container logs, polled every
   10 seconds while the modal is open and never stored. They are readable **only while the run is
   running** and **only on `local`**: remote Kubernetes answers that logs are local-only, and a
@@ -550,8 +582,9 @@ socket; remote Kubernetes → `kubernetes.go`, rendering the embedded
 `templates/job.yaml.tmpl` (overridable with `{DATA_DIR}/job.yaml.tmpl`). Two entry points with
 different environment contracts: `Run` (driven by the `run_executor` LLM tool) and `RunAction`
 (operator pressing *Execute action* on a `code` step, with fixed tool surface and timeout constants).
-Finished agents call back into `POST /api/v1/agent-runner/webhook`, authenticated with
-`AGENT_WEBHOOK_TOKEN`. The container images live in `agent-runner/`.
+Finished agents call back into `POST /api/v1/agent-runner/webhook`, authenticated with a per-run
+token signed by the key in `executor.Secrets.WebhookKey`. The container images live in
+`agent-runner/`.
 
 ### Observability
 

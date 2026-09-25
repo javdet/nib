@@ -59,6 +59,41 @@ if [ -d "${SEED_DIR}/tools" ]; then
 	done < <(find "${SEED_DIR}/tools" -type f -name '*.json')
 fi
 
-log "DATA_DIR=${DATA_DIR} ready"
+# nib never runs as root: api_call and execute_command run whatever the model asks for with the
+# backend's own uid. Root is held only this long, for two things the image cannot do ahead of
+# time: handing over a volume a root-running release left root-owned, and joining the group that
+# owns the Docker socket, whose gid is the host's. A container already started as someone else
+# (a Kubernetes securityContext) is left as it is.
+NIB_USER=nib
 
-exec /usr/local/bin/nib "$@"
+if [ "$(id -u)" != "0" ]; then
+	log "DATA_DIR=${DATA_DIR} ready"
+	exec /usr/local/bin/nib "$@"
+fi
+
+find "${DATA_DIR}" \( ! -user "${NIB_USER}" -o ! -group "${NIB_USER}" \) -exec chown -h "${NIB_USER}:${NIB_USER}" {} + \
+	|| log "warning: could not hand ${DATA_DIR} over to ${NIB_USER}; the backend may fail to write it"
+
+groups="$(id -g "${NIB_USER}")"
+docker_sock=/var/run/docker.sock
+case "${DOCKER_HOST:-}" in
+	unix://*) docker_sock="${DOCKER_HOST#unix://}" ;;
+esac
+if [ -S "${docker_sock}" ]; then
+	sock_gid="$(stat -c %g "${docker_sock}")"
+	groups="${groups},${sock_gid}"
+	if [ "${sock_gid}" = "0" ]; then
+		# Docker Desktop hands the socket over as root:root. The group grants no capabilities,
+		# but it does open every root-group file in the image.
+		log "warning: ${docker_sock} is owned by gid 0, joining the root group to reach it"
+	else
+		log "joining gid ${sock_gid} for ${docker_sock}"
+	fi
+fi
+
+log "DATA_DIR=${DATA_DIR} ready, starting as ${NIB_USER}"
+
+HOME="$(getent passwd "${NIB_USER}" | cut -d: -f6)"
+export HOME
+exec setpriv --reuid="${NIB_USER}" --regid="${NIB_USER}" --groups="${groups}" \
+	--inh-caps=-all --no-new-privs /usr/local/bin/nib "$@"

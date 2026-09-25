@@ -63,7 +63,7 @@ These variables work identically for both agents:
 | `REQUIRE_MCP` | no | `1` | Fail if MCP servers do not connect |
 | `TIMEOUT_SECONDS` | no | – | Hard cap on agent run |
 | `WEBHOOK_URL` | no | – | POST callback URL on exit |
-| `WEBHOOK_AUTH_HEADER` | no | – | e.g. `Authorization: Bearer <token>` |
+| `WEBHOOK_AUTH_HEADER` | no | – | e.g. `Authorization: Bearer <token>`. Nib sets it per run; its token is bound to `CHAT_ID` and `JOB_NAME` |
 | `TASK_ID` | no | – | Echoed in webhook |
 | `THREAD_ROOT_ID` | no | – | Echoed in webhook |
 | `CHAT_ID` | no | – | Echoed in webhook (required by Nib backend) |

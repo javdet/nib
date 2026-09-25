@@ -90,8 +90,9 @@ Each `code` action becomes a Kubernetes Job.
    - `GITHUB_TOKEN`, or equivalently `GITLAB_TOKEN` or `GIT_TOKEN` — supply any
      one and the container derives the others
    - `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
-   - optionally `WEBHOOK_AUTH_HEADER`, for example
-     `Authorization: Bearer <AGENT_WEBHOOK_TOKEN>`
+
+   `WEBHOOK_AUTH_HEADER` does not belong here: the backend adds it to every Job,
+   with a token that authenticates that run only.
 5. **Webhook base URL** — must be reachable **from inside the cluster**.
    `http://localhost:8080` works only if the backend is in the same pod network.
    `/api/v1/agent-runner/webhook` is appended for you.

@@ -1,32 +1,32 @@
 package handler
 
 import (
-	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/service"
+	"github.com/javdet/nib/internal/webhookauth"
 	"github.com/google/uuid"
 )
 
 // AgentWebhookHandler receives completion callbacks from agent-runner containers.
 type AgentWebhookHandler struct {
-	chatSvc      *service.ChatService
-	webhookToken string
-	insecure     bool
+	chatSvc *service.ChatService
+	key     []byte
 }
 
-// NewAgentWebhookHandler creates an AgentWebhookHandler. insecure mirrors
-// NIB_INSECURE_NO_AUTH: only then does an empty token accept every caller.
-func NewAgentWebhookHandler(chatSvc *service.ChatService, webhookToken string, insecure bool) *AgentWebhookHandler {
-	return &AgentWebhookHandler{
-		chatSvc:      chatSvc,
-		webhookToken: strings.TrimSpace(webhookToken),
-		insecure:     insecure,
-	}
+// NewAgentWebhookHandler creates an AgentWebhookHandler. key is the backend-only
+// secret each container's token is derived from (internal/webhookauth).
+func NewAgentWebhookHandler(chatSvc *service.ChatService, key []byte) *AgentWebhookHandler {
+	return &AgentWebhookHandler{chatSvc: chatSvc, key: key}
 }
+
+// agentWebhookMaxBytes caps the body, which is decoded before the caller is
+// authenticated: the token is bound to fields inside it. The container already
+// caps its result and log tail at 16 KiB each.
+const agentWebhookMaxBytes = 1 << 20
 
 type agentWebhookPayload struct {
 	Status       string  `json:"status"`
@@ -73,12 +73,7 @@ type usageInfo struct {
 
 func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !h.authorize(r) {
-			metrics.RecordAgentRunnerWebhook(metrics.WebhookUnauthorized)
-			writeError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-
+		r.Body = http.MaxBytesReader(w, r.Body, agentWebhookMaxBytes)
 		var req agentWebhookPayload
 		if !decodeJSON(w, r, &req) {
 			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
@@ -95,6 +90,18 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 		if err != nil {
 			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
 			writeError(w, http.StatusBadRequest, "chat_id must be a valid UUID")
+			return
+		}
+		jobName := strings.TrimSpace(req.Job.Name)
+		if jobName == "" {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookBadRequest)
+			writeError(w, http.StatusBadRequest, "job.name is required")
+			return
+		}
+
+		if !h.authorize(r, chatID, jobName) {
+			metrics.RecordAgentRunnerWebhook(metrics.WebhookUnauthorized)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
@@ -143,20 +150,18 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 	}
 }
 
-func (h *AgentWebhookHandler) authorize(r *http.Request) bool {
-	// Fails closed: an open webhook lets anyone post a forged action result
-	// into a plan.
-	if h.webhookToken == "" {
-		return h.insecure
-	}
-
+// authorize accepts only the token issued to this chat id and job name, so a
+// container can report its own run and no other. It fails closed whatever the
+// API auth mode: the backend always has a key, so there is no configuration in
+// which an open webhook is the only way to work.
+func (h *AgentWebhookHandler) authorize(r *http.Request, chatID, jobName string) bool {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	const prefix = "Bearer "
 	if !strings.HasPrefix(auth, prefix) {
 		return false
 	}
 	token := strings.TrimSpace(strings.TrimPrefix(auth, prefix))
-	return subtle.ConstantTimeCompare([]byte(token), []byte(h.webhookToken)) == 1
+	return webhookauth.Verify(h.key, chatID, jobName, token)
 }
 
 // costOrZero feeds the Prometheus counter, which cannot express "unknown" and

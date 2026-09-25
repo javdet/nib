@@ -41,6 +41,7 @@ import (
 	"github.com/javdet/nib/internal/skills"
 	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/javdet/nib/internal/toolcatalog"
+	"github.com/javdet/nib/internal/webhookauth"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
 
@@ -196,15 +197,27 @@ func run() error {
 			"dir", resolvedToolsDir, "created", seeded.Created, "added", seeded.Added)
 	}
 	includedToolsSvc := includedtools.NewService(resolvedToolsDir)
+	// Every agent-runner container is handed a token derived from this key,
+	// never the key, so it is loaded or generated before anything can launch
+	// one. Fatal on failure: an executor that cannot sign would start
+	// containers whose results are refused.
+	webhookKey, webhookKeyCreated, err := webhookauth.LoadOrCreateKey(cfg.DataDir, cfg.Executor.WebhookToken)
+	if err != nil {
+		return fmt.Errorf("agent webhook key: %w", err)
+	}
+	if webhookKeyCreated {
+		slog.Info("agent webhook signing key generated",
+			"path", filepath.Join(cfg.DataDir, webhookauth.KeyFileName))
+	}
 	executorConfigStore := executor.NewConfigStore(
 		cfg.DataDir,
 		cfg.Executor.File,
 		fmt.Sprintf("http://localhost:%d", cfg.Server.Port),
 	)
 	executorSvc := executor.NewService(executorConfigStore, executor.Secrets{
-		LLMAPIKey:    cfg.Executor.LLMAPIKey,
-		LLMModel:     cfg.Executor.LLMModel,
-		WebhookToken: cfg.Executor.WebhookToken,
+		LLMAPIKey:  cfg.Executor.LLMAPIKey,
+		LLMModel:   cfg.Executor.LLMModel,
+		WebhookKey: webhookKey,
 	})
 	skillSvc := skills.NewService(cfg.DataDir, cfg.Skills.Dir)
 	// Built-in skills are seeded once per data volume, so a fresh install has a
@@ -485,7 +498,7 @@ func run() error {
 		MCPConfig:     mcpConfigSvc,
 		Executor:      executorSvc,
 
-		AgentWebhookToken: cfg.Executor.WebhookToken,
+		AgentWebhookKey: webhookKey,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -574,11 +587,6 @@ func logAuthPosture(cfg config.Config) {
 		if len(cfg.Auth.AllowedHosts) == 0 {
 			slog.Warn("NIB_ALLOWED_HOSTS is empty; without authentication a DNS-rebinding page can reach the API")
 		}
-	}
-	// A configured token wins over the opt-out, for the webhook as for the API.
-	insecure := cfg.Auth.InsecureNoAuth && cfg.Auth.APIToken == ""
-	if cfg.Executor.WebhookToken == "" && !insecure {
-		slog.Warn("AGENT_WEBHOOK_TOKEN not set; agent-runner webhook callbacks will be rejected")
 	}
 }
 

@@ -26,7 +26,7 @@ var apiCallParameters = json.RawMessage(`{
   "properties": {
     "flags": {
       "type": "string",
-      "description": "curl command flags and arguments only (do not include the word curl). Example: -s -X POST https://api.example.com -H \"Content-Type: application/json\" -d '{\"k\":1}'. Shell features like pipes, redirects, and && are not supported."
+      "description": "curl flags and exactly one http:// or https:// URL (do not include the word curl). Example: -s -X POST https://api.example.com -H \"Content-Type: application/json\" -d '{\"k\":1}'. Shell features like pipes, redirects, and && are not supported."
     }
   }
 }`)
@@ -36,10 +36,15 @@ var runCurl = defaultRunCurl
 
 // APICallToolDef returns the LLM tool definition for the local api_call handler.
 func APICallToolDef() llm.ToolDef {
+	flags, valued := curlOptionSummary()
 	return llm.ToolDef{
 		Name: APICallToolName,
-		Description: "Run curl locally on the backend host with the given flags. " +
-			"Provide only curl flags and arguments (do not include the word curl). " +
+		Description: "Make one HTTP(S) request with curl from the backend host. " +
+			"Provide curl flags and exactly one http:// or https:// URL (do not include the word curl). " +
+			"Accepted options: " + flags + "; with a value: " + valued + ". " +
+			"Anything else is refused: values cannot be read from files (@file), output cannot be written " +
+			"to a file other than /dev/null, and redirects are not followed, so read the Location header " +
+			"with -i and call that URL. Loopback, link-local and cloud metadata addresses are refused. " +
 			"Shell features like pipes, redirects, and && are not supported. " +
 			"Returns combined stdout and stderr from curl.",
 		Parameters: apiCallParameters,
@@ -60,6 +65,13 @@ func ExecuteAPICall(ctx context.Context, args map[string]any) (string, error) {
 	}
 	if len(argv) == 0 {
 		return "flags is empty", nil
+	}
+
+	vetCtx, cancel := context.WithTimeout(ctx, apiCallTimeout)
+	defer cancel()
+	argv, err = vetAPICall(vetCtx, argv)
+	if err != nil {
+		return fmt.Sprintf("rejected: %v", err), nil
 	}
 
 	return runCurl(ctx, argv)

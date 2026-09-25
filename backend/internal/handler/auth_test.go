@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/javdet/nib/internal/service"
+	"github.com/javdet/nib/internal/webhookauth"
 )
 
 const testToken = "0123456789abcdef0123456789abcdef"
@@ -91,11 +92,11 @@ func TestAPIAuthRequired(t *testing.T) {
 	}
 }
 
-func newTestRouter(opts AuthOptions, webhookToken string) http.Handler {
+func newTestRouter(opts AuthOptions, webhookKey string) http.Handler {
 	return NewRouter(Deps{
-		Auth:              opts,
-		Selection:         service.NewSelectionStore(),
-		AgentWebhookToken: webhookToken,
+		Auth:            opts,
+		Selection:       service.NewSelectionStore(),
+		AgentWebhookKey: []byte(webhookKey),
 	})
 }
 
@@ -288,49 +289,73 @@ func TestRouterHostCheck(t *testing.T) {
 func TestAgentWebhookAuthorize(t *testing.T) {
 	t.Parallel()
 
+	key := []byte("hook-key")
+	const chat, job = "0f2b9f5c-0f0e-4f7b-9d2e-2f2c7c9a1111", "nib-12345678"
+	own := webhookauth.Sign(key, chat, job)
+
 	tests := []struct {
-		name     string
-		token    string
-		insecure bool
-		header   string
-		want     bool
+		name   string
+		header string
+		want   bool
 	}{
-		{name: "matching token", token: "hook", header: "Bearer hook", want: true},
-		{name: "wrong token", token: "hook", header: "Bearer nope"},
-		{name: "empty token fails closed", header: "Bearer anything"},
-		{name: "empty token without header fails closed"},
-		{name: "empty token in insecure mode", insecure: true, want: true},
-		{name: "insecure mode does not bypass a configured token", token: "hook", insecure: true, header: "Bearer nope"},
+		{name: "token issued for this run", header: "Bearer " + own, want: true},
+		{name: "no header"},
+		{name: "raw key", header: "Bearer " + string(key)},
+		{name: "token for another chat", header: "Bearer " + webhookauth.Sign(key, "5d0c1c7e-7a7e-4b8e-8f3e-3c1d2e4f5a6b", job)},
+		{name: "token for another job", header: "Bearer " + webhookauth.Sign(key, chat, "nib-87654321")},
+		{name: "not a bearer", header: own},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			h := NewAgentWebhookHandler(nil, tt.token, tt.insecure)
+			h := NewAgentWebhookHandler(nil, key)
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/agent-runner/webhook", nil)
 			if tt.header != "" {
 				r.Header.Set("Authorization", tt.header)
 			}
-			if got := h.authorize(r); got != tt.want {
+			if got := h.authorize(r, chat, job); got != tt.want {
 				t.Fatalf("authorize = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestRouterWebhookOutsideAPIAuth(t *testing.T) {
+func TestRouterWebhookRejectsForgedCallbacks(t *testing.T) {
 	t.Parallel()
 
-	h := newTestRouter(AuthOptions{Token: testToken}, "hook")
-
-	// The webhook answers to its own token, not the API's.
-	w := serve(h, http.MethodPost, "/api/v1/agent-runner/webhook", `{}`,
-		map[string]string{"Authorization": "Bearer hook", "Content-Type": "application/json"})
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("webhook with its token = %d, want %d (past auth, missing chat_id)", w.Code, http.StatusBadRequest)
+	const key = "hook-key"
+	const chat, job = "0f2b9f5c-0f0e-4f7b-9d2e-2f2c7c9a1111", "nib-12345678"
+	own := webhookauth.Sign([]byte(key), chat, job)
+	body := func(chatID, jobName string) string {
+		return `{"status":"success","chat_id":"` + chatID + `","job":{"name":"` + jobName + `"}}`
 	}
-	w = serve(h, http.MethodPost, "/api/v1/agent-runner/webhook", `{}`,
-		map[string]string{"Authorization": "Bearer " + testToken, "Content-Type": "application/json"})
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("webhook with the API token = %d, want %d", w.Code, http.StatusUnauthorized)
+
+	tests := []struct {
+		name   string
+		opts   AuthOptions
+		body   string
+		bearer string
+		want   int
+	}{
+		{name: "API token", opts: AuthOptions{Token: testToken}, body: body(chat, job), bearer: testToken, want: http.StatusUnauthorized},
+		{name: "signing key", opts: AuthOptions{Token: testToken}, body: body(chat, job), bearer: key, want: http.StatusUnauthorized},
+		{name: "another run's chat", opts: AuthOptions{Token: testToken}, body: body("5d0c1c7e-7a7e-4b8e-8f3e-3c1d2e4f5a6b", job), bearer: own, want: http.StatusUnauthorized},
+		{name: "another run's job", opts: AuthOptions{Token: testToken}, body: body(chat, "nib-87654321"), bearer: own, want: http.StatusUnauthorized},
+		{name: "insecure mode still needs a token", opts: AuthOptions{Insecure: true}, body: body(chat, job), want: http.StatusUnauthorized},
+		{name: "missing job name", opts: AuthOptions{Token: testToken}, body: body(chat, ""), bearer: own, want: http.StatusBadRequest},
+		{name: "missing chat id", opts: AuthOptions{Token: testToken}, body: `{}`, bearer: own, want: http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			headers := map[string]string{"Content-Type": "application/json"}
+			if tt.bearer != "" {
+				headers["Authorization"] = "Bearer " + tt.bearer
+			}
+			w := serve(newTestRouter(tt.opts, key), http.MethodPost, "/api/v1/agent-runner/webhook", tt.body, headers)
+			if w.Code != tt.want {
+				t.Fatalf("webhook = %d, want %d", w.Code, tt.want)
+			}
+		})
 	}
 }

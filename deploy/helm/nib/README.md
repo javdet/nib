@@ -49,7 +49,7 @@ By default the chart creates a Secret (`<release>-app`) with these keys:
 | `SECRETS_ENCRYPTION_KEY` | `secrets.secretsEncryptionKey` | Encrypt prompt secrets   |
 | `EXECUTOR_*`             | `secrets.executor*`       | Agent-runner executor          |
 | `NIB_API_TOKEN`          | `secrets.apiToken`        | API / UI login token (required)|
-| `AGENT_WEBHOOK_TOKEN`    | `secrets.agentWebhookToken` | Agent-runner webhook auth    |
+| `AGENT_WEBHOOK_TOKEN`    | `secrets.agentWebhookToken` | Webhook signing key (optional) |
 | `mcp.json`               | auto-generated            | MCP server bootstrap           |
 
 To use an existing Secret instead:
@@ -69,10 +69,15 @@ asks for it once and keeps an HttpOnly session cookie; scripts send
 `Authorization: Bearer <token>`. Rendering fails when `secrets.apiToken` is empty
 and no `existingSecret` is set, and the backend refuses to start without a token.
 
+The agent-runner webhook takes neither token. Each Job the executor creates
+carries its own `WEBHOOK_AUTH_HEADER`, a token signed for that run alone.
+`secrets.agentWebhookToken` is the signing key and never reaches a Job. Leave it
+empty to have the backend generate one on its data volume. Remove any
+`WEBHOOK_AUTH_HEADER` from the agent Secret (`agentSecretName`).
+
 ```yaml
 secrets:
   apiToken: "<openssl rand -hex 32>"
-  agentWebhookToken: "<openssl rand -hex 32>"
 backend:
   auth:
     allowedHosts: ["nib.example.com"]   # blocks DNS rebinding
