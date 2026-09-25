@@ -176,7 +176,9 @@ carries.
 
 `execute_command` is not a shell: one binary through argv, no pipes, redirects, `&&`, globs or
 `$VAR` expansion, 60s timeout, 1 MiB of captured output. `api_call` is the same shape fixed to
-`curl`.
+`curl`. Both run with only `PATH`, `HOME` and `LANG` from the backend's environment, so neither
+sees the backend's keys and tokens. They also do not see `HTTP(S)_PROXY`, `KUBECONFIG` or other CLI
+configuration.
 
 ### API authentication
 
