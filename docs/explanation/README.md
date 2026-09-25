@@ -15,19 +15,23 @@ Start here. Between them, these two make the rest of nib legible.
 - [About the architecture](architecture.md) — what the moving parts are, why
   there are four containers, and what this shape cannot do
 - [About how a plan is produced](how-a-plan-is-produced.md) — why one sentence
-  becomes five chats, and how agents that cannot talk to each other still agree
+  becomes five chats, how agents that cannot talk to each other still agree,
+  and what runs when you press Execute all or Finish
 
 ## Deliberate limits
 
-Two places where nib refuses to do something it could, and the reasoning behind
+Places where nib refuses to do something it could, and the reasoning behind
 each refusal.
 
 - [About one execution at a time](one-execution-at-a-time.md) — why a second
-  action is refused rather than queued, and why scaling the deployment does not
-  help
+  action is refused rather than queued, why Execute all is not a queue, and why
+  scaling the deployment does not help
 - [About why secrets never come from the
   environment](secrets-never-come-from-the-environment.md) — what an
   environment fallback in `mcp.json` would let anyone do
+- [About how nib authenticates callers](how-nib-authenticates-callers.md) — why
+  one token and not users, why the browser cookie is not the token, and why each
+  agent container gets a token of its own
 
 ## Working with the agent
 

@@ -31,17 +31,22 @@ metrics](how-to/scrape-metrics-with-prometheus.md) and
 
 ## [Reference](reference/) — "what is…?"
 
-The machinery, described: every configuration key, environment variable, API
-route, built-in tool, mode, executor setting and metric, plus where state lives
-on disk and in the database.
+The machinery, described: every [configuration
+key](reference/configuration.md), [environment
+variable](reference/environment-variables.md), [API route](reference/http-api.md),
+[built-in tool](reference/agent-tools.md), [mode](reference/modes.md),
+[executor setting](reference/executor.md), [command-line
+flag](reference/cli.md) and [metric](reference/metrics.md), plus [where state
+lives](reference/state.md) on disk and in the database.
 
 ## [Explanation](explanation/) — "why…?"
 
 The reasoning. [The architecture](explanation/architecture.md) and [how a plan
 is produced](explanation/how-a-plan-is-produced.md) are the two that make the
 rest of the system legible; the others cover [one execution at a
-time](explanation/one-execution-at-a-time.md), [why secrets never come from the
-environment](explanation/secrets-never-come-from-the-environment.md), [modes,
+time](explanation/one-execution-at-a-time.md), [how nib authenticates
+callers](explanation/how-nib-authenticates-callers.md), [why secrets never come
+from the environment](explanation/secrets-never-come-from-the-environment.md), [modes,
 tools and the catalog](explanation/modes-tools-and-the-catalog.md), [knowledge,
 rules and skills](explanation/knowledge-rules-and-skills.md) and [LLM endpoints
 and reasoning replay](explanation/llm-endpoints.md).
@@ -58,9 +63,15 @@ drift from it:
 | [`CHANGELOG.md`](../CHANGELOG.md) | What changed in each release, including breaking changes. |
 | [`CLAUDE.md`](../CLAUDE.md) | Contributor guide. It is also served verbatim to the nib agent as its own documentation, so it is edited as a whole and never split. |
 
-And two notes predating this set: [`archdecision.md`](archdecision.md), an early
-component sketch that no longer matches what runs, and
-[`description.md`](description.md), the project's original scope note.
+And notes predating this set: [`archdecision.md`](archdecision.md), an early
+component sketch that no longer matches what runs,
+[`description.md`](description.md), the project's original scope note, and
+[`skiils.md`](skiils.md), a scratch list of task-tracker skill ideas.
+[`knowledgebase/example.md`](knowledgebase/example.md) describes knowledge-base
+collections and the built-in template. The pages
+[`llm-providers.md`](llm-providers.md), [`metrics.md`](metrics.md) and
+[`getting-started/`](getting-started/README.md) are kept only as redirects to
+where their content moved.
 
 ## Where to start
 
@@ -68,5 +79,6 @@ component sketch that no longer matches what runs, and
 |---|---|
 | have never run nib | [the tutorial](tutorials/getting-started.md) |
 | are setting up an install | [How to run nib with Docker Compose](how-to/run-with-docker-compose.md) |
+| are upgrading an existing install | [How to upgrade an install](how-to/upgrade.md) |
 | are wondering what nib is doing | [How a plan is produced](explanation/how-a-plan-is-produced.md) |
 | are looking for a setting | [Configuration file](reference/configuration.md) or [Environment variables](reference/environment-variables.md) |

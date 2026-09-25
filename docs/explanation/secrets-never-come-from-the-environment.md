@@ -10,9 +10,10 @@ It is deliberate. Read the reason before you try to work around it.
 ## What the fallback would let you do
 
 The backend runs with `LLM_API_KEY`, the database password, `EXECUTOR_*`
-credentials and `AGENT_WEBHOOK_TOKEN` in its environment. `mcp.json` is editable
-from the web interface by anyone who can reach it — and nib has no
-authentication of its own.
+credentials, `SECRETS_ENCRYPTION_KEY` and possibly `AGENT_WEBHOOK_TOKEN` in its
+environment. `mcp.json` is editable from the web interface by anyone who holds
+the API token — and that token is one shared credential, not a person with
+narrower permissions than the process.
 
 With an environment fallback, this would be a valid entry:
 
@@ -83,7 +84,7 @@ only for a server whose URL host is on that list. Three details make that hold:
 - **Credentials stay with their origin.** Headers and tokens are added only to
   requests for the server's own scheme, host and port, and a redirect to another
   origin is refused rather than followed. The same holds for token connections
-  added at **Tools → MCP Servers**: moving one to another origin takes a new
+  (added through `POST /api/v1/mcp/connections`): moving one to another origin takes a new
   token, rather than sending the old one to the new address.
 
 A secret nobody bound to a host cannot be reached from `mcp.json` at all. On
@@ -103,6 +104,21 @@ Any new code path that surfaces an MCP transport error has to go through that
 same stripping. It is the kind of invariant that is one helpful error message
 away from being broken.
 
+## The same rule, applied to child processes
+
+`mcp.json` is not the only place the model can ask the backend for a value.
+`execute_command` and `api_call` run processes on the backend's host, and their
+output goes to the LLM provider and into the transcript. A child that inherited
+the backend's environment would answer `env` with every key above.
+
+So both run with `PATH`, `HOME` and `LANG` and nothing else. It is the same
+decision from the other side: the environment bootstraps the process, and
+nothing the model can steer reads it back. The cost is also the same — a CLI
+that needs `KUBECONFIG`, a proxy variable or its own token does not get it from
+the deployment, and has to be given it some other way. The full account of what
+those two tools can and cannot do is in [Modes, tools and the
+catalog](modes-tools-and-the-catalog.md#the-backends-own-hands).
+
 ## Two consequences you will meet
 
 **Saving never resolves.** An entry naming a secret that does not exist still
@@ -119,15 +135,14 @@ stored values are gone, not merely inaccessible.
 
 ## What this is not
 
-It is not a claim that nib's secrets are safe against an attacker who reaches
-the API. They are not — anyone who can call the API can select a secret for the
+It is not a claim that nib's secrets are safe against someone who holds the API
+token. They are not — anyone who can call the API can select a secret for the
 executor and run it. The property is narrower: **editing `mcp.json` sends a
 secret only to a host the person who stored it named.** The backend's own
 operating credentials are outside that boundary, and stay there.
 
-For the broader question of who can reach the API at all, nib assumes a trusted
-network or your own authenticating proxy. See [About the
-architecture](architecture.md#what-this-architecture-cannot-do).
+For the broader question of who can reach the API at all, see [How nib
+authenticates callers](how-nib-authenticates-callers.md).
 
 ## See also
 

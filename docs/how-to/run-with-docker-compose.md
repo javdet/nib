@@ -29,14 +29,24 @@ The UI is on <http://localhost:8080>. It asks for the API token once, then keeps
 a session cookie for 30 days.
 
 Four containers come up. If one restarts in a loop, `docker compose logs
-backend` names the reason. Three things stop startup outright:
+backend` names the reason. These stop startup outright:
 
-- a bad `LLM_API_KEY`
+- a missing `LLM_API_KEY` (and `OPENAI_API_KEY`)
 - a missing or short `NIB_API_TOKEN`
 - a `metrics.port` colliding with the API port
+- a `SECRETS_ENCRYPTION_KEY` that is not base64 of 32 bytes
+- a `{DATA_DIR}/.webhook-key` that exists but is empty or unreadable — the
+  backend generates this key itself on first start and will not replace one it
+  cannot read
 
 `NIB_INSECURE_NO_AUTH=true` starts without a token and leaves the API open to
 anything that can reach it. Keep it for a machine only you can reach.
+
+The backend runs as the unprivileged user `nib` (uid/gid 10001). Its entrypoint
+starts as root only long enough to prepare `nibdata`, hand anything in it not
+owned by `nib` over to it, and join the group that owns the mounted Docker
+socket. On Docker Desktop that group is `root`, and the log says so with a
+warning; it grants no capabilities.
 
 ## Choose which ports reach the host
 
@@ -50,15 +60,38 @@ Defaults in `.env`:
 
 The metrics endpoint is unauthenticated and its metric names alone report plan
 counts, the model in use and cumulative LLM cost. If nothing on the host
-scrapes it, comment `NIB_METRICS_PORT` out so it stays inside the Compose
-network. `NIB_BACKEND_PORT` is guarded by `NIB_API_TOKEN` (scripts send
-`Authorization: Bearer <token>`), but if nothing uses it directly, comment it out
-too.
+scrapes it, delete its line from the backend's `ports` in `docker-compose.yml`
+so it stays inside the Compose network. Commenting `NIB_METRICS_PORT` out of
+`.env` is not enough: the mapping falls back to `9090`. `NIB_BACKEND_PORT` is
+guarded by `NIB_API_TOKEN` (scripts send `Authorization: Bearer <token>`), but
+if nothing uses it directly, remove that mapping the same way — it falls back
+to `8081`.
+
+## Reach it by a hostname
+
+Once the UI is reached by a name rather than `localhost`, set that name in
+`.env`:
+
+```bash
+NIB_ALLOWED_HOSTS=nib.example.com
+```
+
+The API then refuses any other `Host` header with `421`, which blocks DNS
+rebinding. Health probes and the agent-runner webhook are exempt. List bare
+names, comma-separated, and include `localhost` if you still open it that way:
+the SPA's nginx passes `Host` on without its port, and a bare name matches any
+port.
+
+Writes from another origin are refused with `403` whatever the auth mode. The
+SPA served on `NIB_HTTP_PORT` is same-origin and needs nothing. Only a
+browser front end on a different origin needs listing in
+`NIB_ALLOWED_ORIGINS`, as `scheme://host[:port]`, comma-separated.
 
 ## Enable encrypted secrets
 
-Without a key, nib runs read-only for secrets: you cannot store a token, which
-means you cannot reference one from `mcp.json` or select one for the executor.
+Without a key, secrets can be neither stored nor read back: you cannot keep a
+token, which means you cannot reference one from `mcp.json` or select one for
+the executor.
 
 ```bash
 openssl rand -base64 32
@@ -132,4 +165,5 @@ production stack on the same host.
 
 - [How to connect an MCP server](connect-an-mcp-server.md) — give the agent tools
 - [How to run planned actions in containers](run-actions-in-containers.md) — let it execute `code` steps
+- [How to upgrade an install](upgrade.md) — what an older install needs before it starts
 - [Environment variables](../reference/environment-variables.md) — everything `.env` accepts

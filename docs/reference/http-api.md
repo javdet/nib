@@ -121,6 +121,8 @@ file](configuration.md#projects); a write rewrites that file.
 | `GET` | `/knowledge/documents` | The stored source document for a collection. |
 | `POST` | `/knowledge/documents` | Upload a document. Replaces every chunk in the collection. |
 | `GET` | `/knowledge/status` | Ingestion status. |
+| `GET` | `/knowledge/settings` | The knowledge-base switches, `{"autoUpdate": bool}`. |
+| `PUT` | `/knowledge/settings` | Change them. An omitted field is left as it was. `503` when the settings file cannot be used. |
 
 ## Chat and dialogs
 
@@ -130,7 +132,7 @@ sub-agent dialogs parented to it.
 | Method | Path | Meaning |
 |---|---|---|
 | `POST` | `/chat` | Single-shot completion. 30-minute deadline. |
-| `GET` `POST` | `/dialogs` | List, create. |
+| `GET` `POST` | `/dialogs` | List, create. List query: `page`, `limit`, `scope` (`all`, `pinned`), `mode`, `search`. |
 | `GET` `DELETE` | `/dialogs/{id}` | Fetch, delete. |
 | `PUT` | `/dialogs/{id}/title` | Rename. |
 | `PUT` | `/dialogs/{id}/categories` | Set tool categories for the lineage. |
@@ -157,8 +159,21 @@ sub-agent dialogs parented to it.
 | `PUT` | `/dialogs/{id}/action-plan/reorder` | Reorder rows. |
 | `PUT` | `/dialogs/{id}/action-plan/checks` | Operator checkboxes. |
 | `PUT` | `/dialogs/{id}/action-plan/comments` | Operator comments. |
-| `POST` | `/dialogs/{id}/action-plan/execute` | Execute one action. |
+| `POST` | `/dialogs/{id}/action-plan/execute` | Launch one `code` action in an agent-runner container. Body `{"key": "s0.step1"}`. `400` for a non-code row or a disabled executor, `409` while the execution slot is held, `502` when the image cannot be pulled. Other action types are run by the orchestrator. |
 | `GET` | `/dialogs/{id}/action-plan/exec` | Per-row execution runs. |
+| `GET` | `/dialogs/{id}/action-plan/logs` | Container output so far of one running code action, `{"logs", "truncated"}`. Query `key` (required). A snapshot, polled by the UI. `409` once the run has finished, `400` for a row that is not a container run, `501` on a remote executor, `404` when the run or its container is gone. |
+
+### Stage run
+
+**Execute all** on a stage or on the rollback: the stage's unticked steps, then
+its checks, each started once the one before it has finished. One stage run at
+a time across every plan.
+
+| Method | Path | Meaning |
+|---|---|---|
+| `POST` | `/dialogs/{id}/action-plan/stage-run` | Start. Body `{"scope": "stage" \| "rollback", "stage": <0-based index>}` (`stage` is ignored for the rollback). Answers once the first item has started. 30-minute deadline. `409` when a stage run is already active, nothing is left to run, or the execution slot is held. |
+| `GET` | `/dialogs/{id}/action-plan/stage-run` | The plan's latest stage run, or `null`. |
+| `DELETE` | `/dialogs/{id}/action-plan/stage-run` | Stop it and the item it is on. `409` when none is running. |
 
 ### Plan fan-out
 

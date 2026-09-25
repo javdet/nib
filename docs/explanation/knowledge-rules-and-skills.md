@@ -53,6 +53,38 @@ task.
 The most common mistake is writing a rule as knowledge. It will be found
 sometimes, which is worse than never.
 
+## Knowledge that updates itself
+
+Knowledge is the one surface nib writes to on its own. Finishing a plan folds
+what it established — a new cluster, a changed endpoint, a version that moved —
+into the collection named after the plan's project. The reasoning is that a
+knowledge base only you maintain goes stale at exactly the rate you use nib to
+change things, and the plan's report is already a written account of those
+changes.
+
+The write is deliberately blunt: a collection is replaced **in full** — every
+chunk deleted, the whole document re-embedded, the file rewritten. There is no
+patch operation: a collection is ingested from one document, the same file an
+upload replaces, and keeping that document the source of truth is what lets a
+person read, diff and re-upload it. So whoever writes — the update agent, or you in `discuss` mode with
+`get_kb_document` and `update_kb` — reads the current document, merges, and
+sends the whole thing back. That is also why the agent holds a lock on the
+collection while it works: two merges started from the same text would each
+erase the other's addition.
+
+Three consequences follow from that bluntness:
+
+- **A plan with no project writes nothing.** Replacing the shared default
+  collection because a plan did not say which project it was about would be the
+  worst possible target for a full overwrite.
+- **The write tool is narrow.** `discuss` is the only mode whose list carries
+  `update_kb`; the update agent is handed it in a literal three-tool catalog of
+  its own, and the per-action executors — which run in `execute` mode, like the update agent —
+  have it withheld in code, since a mode list cannot tell the two apart.
+- **It can be switched off.** **Knowledge Base → Automatic updates** is on by
+  default. Turn it off if the documents in a collection are curated by hand and
+  you would rather nothing merged into them.
+
 ## Why rules are write-protected from planners
 
 `discuss` mode can create and replace rules. Every other mode has the tool

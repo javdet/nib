@@ -39,6 +39,12 @@ offers.
 Every sub-agent is parented directly to the root dialog, so listing the root's
 children returns everything a plan spawned.
 
+Two more `execute`-mode agents run without `run_subagent`, both started by
+**Finish**: the report agent (`execute_report` overlay, catalog `get_action_list`
+and `set_report`) and, when it ends and `autoUpdate` is on, the knowledge-base
+update agent (`execute_kb` overlay, catalog `get_action_list`,
+`get_kb_document` and `update_kb`). Neither takes the execution slot.
+
 `code` is the one launch that is not an agent of nib's own: the work happens in
 an agent-runner container, which reports through the webhook rather than by
 finishing a turn. It takes the single execution slot like a code action does, and
@@ -71,6 +77,7 @@ to start if a mode has no prompt.
 | `execute.md` | `execute` |
 | `execute_action.md` | one action executor |
 | `execute_report.md` | the finish-report agent |
+| `execute_kb.md` | the knowledge-base update agent chained after the report |
 | `discuss.md` | `discuss` |
 | `incident.md` | `incident` |
 

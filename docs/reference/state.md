@@ -28,8 +28,16 @@ immediately.
 | `tools/{mode}.json` | Built-in tool allow list for one mode. Overridable with `includedTools.dir`. |
 | `tools/mcp-included.json` | MCP tools included per mode. |
 | `tools/mcp-known.json` | Ledger of MCP tool names already reconciled. |
+| `tools/.seeded-tools` | Ledger of built-in tool names already offered to each allow list. |
+| `tools/schemas/{tool}.json` | Parameter schemas of `create_action_plan`, `update_action_plan` and `update_rollback_plan`. Copied from the image when absent; an edited one is kept. |
 | `knowledgebase/{collection}.md` | The last document uploaded to each collection. Overridable with `knowledge_base.dir`. |
 | `knowledge.json` | Knowledge-base switches; today just `autoUpdate`, on by default. Overridable with `knowledge_base.settingsFile`. |
+| `executor.json` | Executor settings, edited at **Tools → Executor**. Overridable with `executor.file`. |
+| `job.yaml.tmpl` | Optional override of the Kubernetes Job template. |
+
+The `categories`, `downtime` and `degraded` properties of every action are
+stamped onto the plan schemas when they are loaded, so an older copy under
+`tools/schemas/` still offers them.
 
 `mcp-known.json` is what separates a tool that was never offered from one an
 operator excluded. An install without it treats the entire catalog as new and
@@ -71,9 +79,36 @@ wrote them. Each is written atomically.
 | `action_plans/{id}.json` | The action plan. |
 | `plan_state/{id}.json` | Current status and schedule. |
 | `plan_selection/{id}.json` | The project/environment/cloud/location the plan was started under, recorded on its first turn. |
+| `plan_contracts/{id}.json` | The cross-stage contract written by `create_plan_contract`. |
 | `plan_fanout/{id}.json` | Progress of a detailed-planning run. |
 | `subagents/{id}.json` | A suspended sub-agent waiting on an answer. |
-| `kb_updates/{id}.json` | That the plan has been folded into its knowledge base collection, and whether anything changed. |
+| `code_fixes/{id}.json` | Chat-requested code fixes: each fix's own dialog id mapped to its run. The agent-runner webhook recognises a fix by it, and a restart sweeps one left `running`. |
+| `kb_updates/{id}.json` | That the plan has been folded into its knowledge base collection, and whether anything changed. A failed run writes none, so **Finish** can retry it. |
+
+### The action plan
+
+`action_plans/{id}.json` is `{"stages": [...], "rollback": [...]}`. A stage has
+`number`, `title`, `description`, `steps` and `checks`; a check has `check` and
+`expectation`. A step and a rollback entry share one shape:
+
+| Field | Holds |
+|---|---|
+| `number` | The label the operator sees (`1.2`, `R1`). Derived from position on every write, never taken from input. |
+| `type` | `code`, `web`, `curl`, `shell` or `other`. |
+| `action` | Markdown describing the change. |
+| `command` | Ready-to-run commands of a `shell` or `curl` step, one per line. |
+| `repository`, `pr_title` | A `code` step's repository and pull request title. |
+| `pr_url` | The pull request a code run opened. |
+| `comment` | A note for the operator. |
+| `categories` | Tool categories the executing sub-agent is given. Never shown to the operator. |
+| `downtime` | What becomes unavailable while the action runs. Rendered as a red label with this text as its tooltip. |
+| `degraded` | What gets slower or weaker while the action runs, without failing. An amber label. |
+
+`downtime` and `degraded` are optional and mutually exclusive; when both are
+set, the interface shows `downtime`.
+
+A check is executable like a step. It carries no categories of its own and runs
+with those of the steps in its stage.
 
 ### Action-plan side files
 
@@ -87,10 +122,15 @@ positional row key of an action — `s0.step1`, `rollback.2`.
 | `{id}.runs.json` | The execute dialog created for each row. |
 | `{id}.exec.json` | The last run's status per row. |
 | `{id}.notes.json` | What the last run reported. |
+| `{id}.stagerun.json` | The latest **Execute all** run: scope, stage, the row it is on, status and why it stopped. |
 
-Because the keys are positional, all five are remapped together whenever a
-stage is rewritten, reordered or replaced. `create_action_plan` clears them; a
+Because the keys are positional, the first five are remapped together whenever
+a stage is rewritten, reordered or replaced. `create_action_plan` clears them; a
 `PUT` on the action plan clears none.
+
+`{id}.stagerun.json` is never remapped: a reorder or a change in the stage's
+shape stops the run instead. `create_action_plan` clears it, and a restart stops
+one left `running`.
 
 `{id}.notes.json` is the executors' own memory, not an operator surface: a
 finished action's final message is recorded there and handed to later actions
@@ -103,7 +143,7 @@ through `get_action_list`. It is unreachable from the HTTP API.
 | `attachments/` | Uploaded chat attachments. |
 | `logs/` | The stderr mirror, when `log.enabled` is true. |
 | `.host-env.json` | Marker for the host-environment snapshot reconciled into prompt variables. |
-| `job.yaml.tmpl` | Optional override of the Kubernetes Job template. |
+| `.webhook-key` | The key that signs each agent-runner container's webhook token, generated once (mode `0600`) when `AGENT_WEBHOOK_TOKEN` is unset. Changing it orphans runs in flight. |
 
 A background sweeper deletes attachment files whose database rows are gone, and
 expires uploads never sent after 24 hours.
@@ -144,7 +184,7 @@ the API.
 |---|---|
 | `mcp_servers` | Registered servers. |
 | `mcp_tools` | Every discovered tool, with its embedding. |
-| `mcp_connections` | Token-authenticated MCP connections added at **Tools → MCP Servers**. |
+| `mcp_connections` | Token-authenticated MCP connections, added through `POST /api/v1/mcp/connections` (there is no UI for them). |
 | `tool_categories` | Category names. |
 | `tool_category_patterns` | Patterns that assign tools to a category. |
 | `mcp_tool_categories`, `mcp_server_categories` | The resulting assignments. |
@@ -181,7 +221,7 @@ release that added it.
 | Everything in Postgres | Kept. New migrations are applied. |
 | Skills | Kept, including your edits. A new built-in is seeded; one you edited, renamed or deleted stays that way. |
 | System prompt override | Kept. Built-in prompts come from the new image. |
-| Tool allow lists | Kept. A new mode's list is added; no name is ever removed. |
+| Tool allow lists | Kept. A new mode's list is added, and a built-in tool new to the release is added to existing lists once; no name is ever removed. |
 | `mcp.json`, rules, variables, secrets | Kept. |
 | Plan artifacts | Kept. |
 

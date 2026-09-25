@@ -87,6 +87,16 @@ orchestrator's tools are stripped in code for exactly this reason, and the
 discuss-only tools are guarded both at registration and by a pass over the allow
 set.
 
+The same holds where a distinction does not fall along mode lines at all. The
+per-action executors run in `execute` mode, and so do the agents launched when a
+plan is finished. A mode list cannot tell them apart, so the executors' set is
+narrowed in code: an agent carrying out one row of someone else's plan loses
+every tool that could rewrite that plan, suspend the turn, spawn another agent,
+close the plan with a report or overwrite a knowledge base collection — and
+`run_executor`, whose containers would have no chat to report into. The
+finishing agents go the other way: they are handed a literal list of two or
+three tools, so an edit to `execute.json` cannot widen them.
+
 The result is a rule: **the JSON files are the floor, not the ceiling.** Adding
 a name to a mode's list may do nothing. Removing one always works.
 
@@ -101,9 +111,55 @@ about Kubernetes gets the Kubernetes tools whether or not they were in the
 default set — the alternative being either a permanently wide catalog or an
 operator predicting each task's needs in advance.
 
+An action sub-agent is narrower still. It gets the categories the planner put
+on *its* action, not the ones chosen for the plan as a whole: an action that
+runs one `kubectl` command has no use for the task tracker a sibling needed, and
+a catalog cannot be narrowed once the turn has started.
+
 Categories are matched by patterns, which means they are only as good as the
 patterns. A tool nothing claims is uncategorized, invisible to this mechanism,
 and reachable only through search.
+
+## The backend's own hands
+
+Two built-in tools do not go through an MCP server at all: `execute_command`
+runs one binary on the backend's host, and `api_call` runs `curl`. They are
+what lets the agent check a version or hit an internal API without anyone
+writing a server for it, and they are also the two tools whose risk lands on
+nib itself rather than on the systems it manages. Their limits follow from that.
+
+**Not a shell.** One binary through argv, no pipes, redirects, `&&`, globs or
+variable expansion. A shell would turn every argument into a program, and the
+arguments are the model's.
+
+**No inherited environment.** Both run with `PATH`, `HOME` and `LANG` only. The
+backend's environment holds its own keys, and a child's output goes to the
+provider and the transcript, so an inherited environment would let `env` print
+them. The cost is that nothing else a CLI might read — proxy settings,
+`KUBECONFIG` — comes through either.
+
+**`api_call` is an allow list, not a blocklist.** curl can read any file
+(`-d @file`, `-K`), write any file, talk to the Docker socket, and reroute its
+own connection. So only listed options pass, every value curl would treat as a
+file name is refused, and an unknown option is refused rather than passed — a
+blocklist would open up silently with every curl release. It does not follow
+redirects, because a redirect is a second request to a host nobody vetted; the
+agent reads `Location` and calls that URL itself.
+
+**The host is vetted before curl runs.** The name is resolved, and if *any*
+answer is loopback, link-local or a cloud metadata address, the call is
+refused — any, not the first, since a name answering with both would otherwise
+be a coin toss. curl is then pinned to the address that was checked, so a
+second DNS answer cannot move it. Private ranges are allowed on purpose:
+reaching internal APIs is what the tool is for.
+
+None of this applies to `execute_command`, which can run `curl` itself. The
+guard on `api_call` is what lets it be offered freely; `execute_command` is the
+one to take out of a mode you do not trust. And because both run whatever the
+model asks with the backend's own identity, the backend does not run as root:
+the image holds root only long enough to hand over a root-owned volume and
+join the group that owns the Docker socket, then drops to an unprivileged user
+with no capabilities and no way to regain them.
 
 ## What this costs
 

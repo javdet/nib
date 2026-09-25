@@ -13,10 +13,14 @@ infrastructure task, answer the questions it asks back, and end with a staged
 plan: a summary, a diagram of the stages, a numbered action list with checks,
 and a rollback.
 
+On the way we lock the API behind a token, sign in to the web interface with it,
+and see — without pressing them — the buttons that would execute a step, run a
+whole stage, or finish the plan with a report.
+
 It takes about twenty minutes, most of that waiting for container images. It
-needs Docker and an API key for an OpenAI-compatible LLM endpoint — nothing
-else, and in particular no real infrastructure to point at. We stop before
-executing anything.
+needs Docker, `openssl` and an OpenAI platform API key — nothing else, and in
+particular no real infrastructure to point at. We stop before executing
+anything.
 
 ## After the tutorial
 

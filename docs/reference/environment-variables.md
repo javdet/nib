@@ -50,8 +50,8 @@ config file. When that key is set it supplies the DSN for everything.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NIB_API_TOKEN` | empty | Token guarding every `/api/v1` route except `/health`, `/version` and the agent-runner webhook. At least 32 characters. |
-| `NIB_INSECURE_NO_AUTH` | `false` | `true` runs with no authentication at all. Ignored while `NIB_API_TOKEN` is set. |
+| `NIB_API_TOKEN` | empty | Token guarding every `/api/v1` route except `/health`, `/version`, `/auth/session` and the agent-runner webhook. At least 32 characters. |
+| `NIB_INSECURE_NO_AUTH` | `false` | `true` runs with no authentication at all. Ignored while `NIB_API_TOKEN` is set. Does not open the agent-runner webhook. |
 | `NIB_ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated `scheme://host[:port]` origins allowed to make cross-origin writes, besides the API's own origin. Also the CORS allow-list. |
 | `NIB_ALLOWED_HOSTS` | empty | Comma-separated `host` or `host:port` values the API answers to. Empty serves any `Host`. |
 
@@ -84,8 +84,10 @@ there to stop a rebound page.
 - not base64 → `config: SECRETS_ENCRYPTION_KEY must be base64-encoded`
 - wrong length → `config: SECRETS_ENCRYPTION_KEY must decode to 32 bytes, got <n>`
 
-Left empty, the install runs without secret *write* support; existing secrets
-stay readable. Generate one with `openssl rand -base64 32`.
+Left empty, secrets can be neither written nor read: existing ones are still
+listed, but no value can be decrypted, so every `${NAME}` in `mcp.json` stays
+unresolved and the executor cannot fetch its tokens. Generate one with
+`openssl rand -base64 32`.
 
 ## Backend — metrics and logging
 
@@ -105,10 +107,28 @@ stay readable. Generate one with `openssl rand -base64 32`.
 | `EXECUTOR_LLM_API_KEY` | empty | API key handed to the agent container. |
 | `EXECUTOR_LLM_MODEL` | empty | Model the agent container runs. |
 | `AGENT_WEBHOOK_TOKEN` | empty | Key the backend signs each agent-runner container's webhook token with. It never reaches a container. Empty generates one into `{DATA_DIR}/.webhook-key`. Changing it rejects the callbacks of runs already in flight. |
+| `DOCKER_HOST` | Docker SDK default | Read by the Docker client (with the other standard `DOCKER_*` variables) for the local executor. The Compose stack sets it to the mounted socket. |
+| `KUBECONFIG` | `~/.kube/config` | Read by the remote Kubernetes executor under `local_config` auth, through client-go's default loading rules. |
+
+Each container gets a token signed for its own run, never the key, so there is
+no webhook secret to hand out. The backend refuses to start when it can neither
+read nor create `{DATA_DIR}/.webhook-key`; an existing but empty file is an
+error too, rather than a reason to generate a new key and orphan the runs in
+flight. `NIB_INSECURE_NO_AUTH` does not bypass this.
 
 The git API token is **not** an environment variable. It is selected by name in
-Settings → Executor and read from the encrypted secret store — see
+Tools → Executor and read from the encrypted secret store — see
 [Executor settings](executor.md).
+
+## What `execute_command` and `api_call` inherit
+
+The processes these two agent tools launch get exactly `PATH`, `HOME` and
+`LANG` from the backend's environment, and nothing else. So they never see
+`LLM_API_KEY`, `SECRETS_ENCRYPTION_KEY`, the database settings or
+`AGENT_WEBHOOK_TOKEN` — and they do not see `HTTP_PROXY`, `HTTPS_PROXY`,
+`KUBECONFIG` or any other CLI configuration either. A CLI that needs one of
+those cannot be configured through the backend's environment; the agent has to
+pass the setting as an argument.
 
 ## `kb` binary
 
@@ -118,6 +138,7 @@ flag is absent.
 | Variable | Used by | Meaning |
 |---|---|---|
 | `DATABASE_URL` | both sub-commands | Postgres DSN. Overridden by `-dsn`. |
+| `EMBEDDINGS_DIMENSIONS` | both sub-commands | Embedding width to request; default for `-dimensions`. `0` or unset omits the parameter. Must match the width the collection was ingested at. |
 | `EMBEDDINGS_BASE_URL` | `-provider openrouter` | Base URL of the OpenAI-compatible `/embeddings` endpoint. |
 | `OPENROUTER_BASE_URL` | `-provider openrouter` | Used when `EMBEDDINGS_BASE_URL` is empty. |
 | `OPENROUTER_API_KEY` | `-provider openrouter` | **Required** for that provider. |

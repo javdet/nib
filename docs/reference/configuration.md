@@ -31,8 +31,9 @@ The API key is never read from YAML.
 
 ## `llm`
 
-Settings for the single OpenAI-compatible endpoint used for both chat
-completions and embeddings.
+Settings for the OpenAI-compatible endpoint used for chat completions and, unless
+the [`llm.embeddings`](#llmembeddingsbaseurl) block points elsewhere, for
+embeddings too.
 
 ### `llm.baseURL`
 
@@ -241,6 +242,7 @@ Metric names: [Metrics](metrics.md).
 |---|---|---|---|
 | `knowledge_base.uri` | string | empty | Postgres DSN for the knowledge base. When set, it is also the DSN for everything else. |
 | `knowledge_base.dir` | string | `{DATA_DIR}/knowledgebase` | Where the last uploaded document per collection is kept, as `{collection}.md`. |
+| `knowledge_base.settingsFile` | string | `{DATA_DIR}/knowledge.json` | The knowledge-base switches — today `autoUpdate`, edited at **Knowledge Base → Automatic updates**. Relative to `DATA_DIR` unless absolute. |
 
 With `uri` empty the DSN is built from the `DB_*` environment variables
 instead. `GET /api/v1/knowledge/connection` reports which of the two is in use.
@@ -253,10 +255,10 @@ Each of these is resolved relative to `DATA_DIR` unless it is absolute.
 |---|---|---|
 | `skills.dir` | `{DATA_DIR}/skills` | One `{name}.md` per skill. |
 | `rules.dir` | `{DATA_DIR}/rules` | One file per rule. |
-| `prompts.dir` | `{DATA_DIR}/prompts` | System-prompt overrides, one per mode. |
-| `includedTools.dir` | `{DATA_DIR}/tools` | `{mode}.json` allow lists, `mcp-included.json`, `mcp-known.json`. |
+| `prompts.dir` | `{DATA_DIR}/prompts` | The system-prompt override. Only `discuss.md` is read. |
+| `includedTools.dir` | `{DATA_DIR}/tools` | `{mode}.json` allow lists, `mcp-included.json`, `mcp-known.json`, `.seeded-tools`, and the action-plan tool schemas under `schemas/`. |
 | `mcp.file` | `{DATA_DIR}/mcp.json` | MCP server registrations. |
-| `executor.file` | — | Executor settings file. |
+| `executor.file` | `{DATA_DIR}/executor.json` | Executor settings, written by the **Executor** page. |
 
 Contents of each: [State](state.md).
 
