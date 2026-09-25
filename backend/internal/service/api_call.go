@@ -81,6 +81,7 @@ func defaultRunCurl(ctx context.Context, argv []string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, "curl", argv...)
+	cmd.Env = toolChildEnv()
 	out, err := cmd.CombinedOutput()
 	result := capAPICallOutput(string(out))
 

@@ -241,3 +241,40 @@ func TestExecuteCommandPropagatesUnexpectedError(t *testing.T) {
 		t.Fatal("ExecuteCommand() expected error from runCommand")
 	}
 }
+
+func TestToolChildEnvKeepsOnlyAllowedKeys(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Setenv("HOME", "/home/nib")
+	t.Setenv("LANG", "C.UTF-8")
+	t.Setenv("SECRETS_ENCRYPTION_KEY", "leaked-key")
+	t.Setenv("LLM_API_KEY", "leaked-llm")
+
+	got := strings.Join(toolChildEnv(), "\n")
+	want := "PATH=/usr/bin:/bin\nHOME=/home/nib\nLANG=C.UTF-8"
+	if got != want {
+		t.Fatalf("toolChildEnv() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRunCommandDoesNotLeakEnvironment(t *testing.T) {
+	t.Setenv("SECRETS_ENCRYPTION_KEY", "leaked-key")
+	t.Setenv("AGENT_WEBHOOK_TOKEN", "leaked-webhook")
+
+	out, err := defaultRunCommand(context.Background(), []string{"env"})
+	if err != nil {
+		t.Fatalf("defaultRunCommand(env) error = %v", err)
+	}
+	var parsed executeCommandResult
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if parsed.ExitCode != 0 {
+		t.Fatalf("exit_code = %d, want 0 (output %q)", parsed.ExitCode, parsed.Output)
+	}
+	if strings.Contains(parsed.Output, "leaked") {
+		t.Fatalf("env output = %q, want no backend secrets", parsed.Output)
+	}
+	if !strings.Contains(parsed.Output, "PATH=") {
+		t.Fatalf("env output = %q, want PATH passed through", parsed.Output)
+	}
+}

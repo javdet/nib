@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,6 +32,23 @@ var executeCommandParameters = json.RawMessage(`{
     }
   }
 }`)
+
+// toolChildEnvKeys is everything execute_command and api_call hand down from the backend's
+// environment. The backend runs with SECRETS_ENCRYPTION_KEY, LLM_API_KEY, the database DSN and
+// AGENT_WEBHOOK_TOKEN, and a child's output goes to the LLM provider and the transcript, so an
+// inherited environment would let `env` read them all out.
+var toolChildEnvKeys = []string{"PATH", "HOME", "LANG"}
+
+// toolChildEnv returns the environment for a process launched by a local tool.
+func toolChildEnv() []string {
+	env := make([]string, 0, len(toolChildEnvKeys))
+	for _, key := range toolChildEnvKeys {
+		if v, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+v)
+		}
+	}
+	return env
+}
 
 // runCommand executes a command with the given argv. Overridden in tests.
 var runCommand = defaultRunCommand
@@ -82,6 +100,7 @@ func defaultRunCommand(ctx context.Context, argv []string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
+	cmd.Env = toolChildEnv()
 	out, err := cmd.CombinedOutput()
 	result := executeCommandResult{
 		Output:          capExecuteCommandOutput(string(out)),
