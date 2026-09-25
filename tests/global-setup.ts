@@ -30,7 +30,9 @@ export default async function globalSetup(config: FullConfig) {
 		'http://localhost:5173'
 
 	const browser = await chromium.launch()
-	const page = await browser.newPage()
+	const page = await browser.newPage({
+		extraHTTPHeaders: config.projects[0]?.use?.extraHTTPHeaders,
+	})
 
 	// Block every write, exactly as the per-test guard does: warming must not
 	// touch the backend.

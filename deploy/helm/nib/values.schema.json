@@ -37,7 +37,15 @@
         "openaiApiKey": { "type": "string" },
         "secretsEncryptionKey": { "type": "string" },
         "executorLlmApiKey": { "type": "string" },
-        "executorLlmModel": { "type": "string" }
+        "executorLlmModel": { "type": "string" },
+        "apiToken": {
+          "type": "string",
+          "description": "NIB_API_TOKEN, at least 32 characters. Required unless backend.auth.insecureNoAuth."
+        },
+        "agentWebhookToken": {
+          "type": "string",
+          "description": "AGENT_WEBHOOK_TOKEN for the agent-runner completion webhook."
+        }
       }
     },
     "backend": {
@@ -45,6 +53,14 @@
       "properties": {
         "enabled": { "type": "boolean", "default": true },
         "replicaCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "insecureNoAuth": { "type": "boolean", "default": false },
+            "allowedOrigins": { "type": "array", "items": { "type": "string" } },
+            "allowedHosts": { "type": "array", "items": { "type": "string" } }
+          }
+        },
         "image": {
           "type": "object",
           "properties": {

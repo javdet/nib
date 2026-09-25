@@ -12,9 +12,11 @@ here.
 - **Content type:** `application/json` for request and response bodies, except
   attachment upload (`multipart/form-data`) and the SSE stream
   (`text/event-stream`).
-- **Authentication:** none. Every route except the agent-runner webhook is
-  open to anything that can reach the port.
-- **CORS:** driven by the allowed-origins list; preflight accepts the
+- **Authentication:** required on every route except `/health`, `/version`,
+  `/auth/session` and the agent-runner webhook. See [Authentication](#authentication).
+- **Content type:** a route that reads a JSON body refuses any other declared
+  type with `415`, including a missing `Content-Type`.
+- **CORS:** driven by `NIB_ALLOWED_ORIGINS`; preflight accepts the
   `Content-Type` and `Authorization` headers.
 - **Errors:** a JSON body with a message. Service-level sentinel errors are
   mapped to status codes centrally; an unmapped one surfaces as `500`.
@@ -22,12 +24,52 @@ here.
   write deadline. Routes marked *no deadline* below deliberately carry none,
   because they must answer while an agent run is in progress.
 
+## Authentication
+
+`NIB_API_TOKEN` is accepted in two forms:
+
+- `Authorization: Bearer <token>`, for scripts.
+- The `nib_session` cookie, for the browser. It is obtained by posting the token to
+  `/auth/session`, and is needed because `EventSource` and `<img>` cannot send a header.
+
+The cookie has these properties:
+
+- It is `HttpOnly`, `SameSite=Strict` and `Path=/api/`, and lasts 30 days.
+- It is `Secure` behind `X-Forwarded-Proto: https`.
+- It holds a signed expiry, never the token. Rotating the token therefore signs
+  every browser out.
+
+A request carrying an `Authorization` header is judged by that header alone.
+
+| Method | Path | Meaning |
+|---|---|---|
+| `GET` | `/auth/session` | `{"required": bool, "authenticated": bool}`. `required` is `false` only under `NIB_INSECURE_NO_AUTH`. |
+| `POST` | `/auth/session` | Body `{"token": "..."}`. `204` with the cookie, or `401`. |
+| `DELETE` | `/auth/session` | Expires the cookie. `204`. |
+
+Every route except `/health`, `/version` and the webhook also passes two browser
+guards:
+
+- **Cross-origin writes.** A `POST`, `PUT` or `DELETE` whose `Sec-Fetch-Site` says
+  `cross-site`, or whose `Origin` matches neither `Host` nor `NIB_ALLOWED_ORIGINS`,
+  is refused with `403`. A request with neither header is not a browser's and
+  passes.
+- **Host allow-list.** With `NIB_ALLOWED_HOSTS` set, any other `Host` is refused
+  with `421`.
+
+| Status | Body `error` | Cause |
+|---|---|---|
+| `401` | `unauthorized` | No valid bearer token or session cookie. |
+| `403` | `cross-origin request refused` | A cross-site browser write. |
+| `415` | `Content-Type must be application/json` | A JSON route received another declared type. |
+| `421` | `host not allowed` | `Host` not in `NIB_ALLOWED_HOSTS`. |
+
 ## System
 
 | Method | Path | Meaning |
 |---|---|---|
-| `GET` | `/health` | Liveness probe. |
-| `GET` | `/version` | Version string, from `APP_VERSION` or the build. |
+| `GET` | `/health` | Liveness probe. Unauthenticated. |
+| `GET` | `/version` | Version string, from `APP_VERSION` or the build. Unauthenticated. |
 | `GET` | `/modes` | The six mode names. |
 | `GET` | `/system/tools` | Developer catalog of built-in tools. |
 | `GET` | `/stats` | Statistics dashboard. Query: `from`, `to`, `bucket` (`hour`, `day`, `week`, `month`). A range is capped at 400 buckets. |
@@ -41,7 +83,7 @@ work while the agent loop holding the lease is wedged.
 |---|---|---|
 | `GET` | `/execution` | What currently holds the single execution slot. |
 | `DELETE` | `/execution` | Force-stop the holder. |
-| `POST` | `/agent-runner/webhook` | Result callback from a finished agent container. Requires `Authorization: Bearer $AGENT_WEBHOOK_TOKEN`. |
+| `POST` | `/agent-runner/webhook` | Result callback from a finished agent container. Requires `Authorization: Bearer $AGENT_WEBHOOK_TOKEN`, not the API token. Rejected outright while that variable is empty, unless `NIB_INSECURE_NO_AUTH=true`. |
 
 ## Selection
 

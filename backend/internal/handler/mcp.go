@@ -155,11 +155,8 @@ func (h *MCPHandler) CallTool() http.HandlerFunc {
 		}
 
 		var req callToolRequest
-		if r.Body != nil && r.ContentLength > 0 {
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid request body")
-				return
-			}
+		if r.Body != nil && r.ContentLength > 0 && !decodeJSON(w, r, &req) {
+			return
 		}
 		if req.Arguments == nil {
 			req.Arguments = make(map[string]any)

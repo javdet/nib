@@ -19,9 +19,18 @@ import { defineConfig, devices } from '@playwright/test'
 // repo (the frontend only builds inside `oven/bun:1`), so Playwright must not try to
 // own the frontend's lifecycle -- it attaches to the already-running dev server on 5173.
 //
+// The backend requires NIB_API_TOKEN. Export the same value as NIB_E2E_API_TOKEN
+// and every browser request carries it as a bearer token -- fetch and
+// EventSource alike -- so the suite never sees the login screen and never has to
+// let the login POST past the write guard.
+//
 // Beware: this suite drives the real backend. Any test that reaches Execute starts an
 // actual sub-agent run with real LLM calls. Mock /api/ writes with `page.route` (or
 // `browser_route` from the MCP side) rather than letting them through.
+const e2eAuthHeaders: Record<string, string> = process.env.NIB_E2E_API_TOKEN
+	? { Authorization: `Bearer ${process.env.NIB_E2E_API_TOKEN}` }
+	: {}
+
 export default defineConfig({
 	testDir: './tests',
 	// Transforms every lazy route once before the workers start; see the file.
@@ -47,6 +56,7 @@ export default defineConfig({
 	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
 	use: {
 		baseURL: process.env.NIB_E2E_BASE_URL ?? 'http://localhost:5173',
+		extraHTTPHeaders: e2eAuthHeaders,
 		trace: 'on-first-retry',
 		screenshot: 'only-on-failure',
 	},

@@ -33,7 +33,9 @@ func TestExecutorConfigRoundTrip(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	h.UpdateConfig()(rec, httptest.NewRequest(http.MethodPut, "/api/v1/executor/config", bytes.NewReader(body)))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/executor/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.UpdateConfig()(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("UpdateConfig() status = %d, body = %s", rec.Code, rec.Body.String())
 	}

@@ -23,6 +23,12 @@ secrets:
   secretsEncryptionKey: ""
   executorLlmApiKey: ""
   executorLlmModel: ""
+  ## Required unless backend.auth.insecureNoAuth: guards every /api/v1 route
+  ## (the UI asks for it once). At least 32 characters: openssl rand -hex 32
+  apiToken: ""
+  ## Authenticates the agent-runner's completion webhook. Empty rejects every
+  ## callback unless backend.auth.insecureNoAuth.
+  agentWebhookToken: ""
 
 ## Backend — Go API server (javdet/nib-backend)
 backend:
@@ -46,6 +52,18 @@ backend:
   ## reachable from the public host. It is unauthenticated, like the rest of the
   ## API, and its metric names alone reveal plan counts, the configured model and
   ## cumulative LLM cost -- so anything that can reach the pod can read those.
+  ## API authentication. The token itself is secrets.apiToken.
+  auth:
+    ## Run with no authentication at all. Only for a cluster nothing untrusted
+    ## can reach; the backend refuses to start without a token otherwise.
+    insecureNoAuth: false
+    ## Origins (scheme://host[:port]) allowed to make cross-origin writes
+    ## besides the API's own. Empty keeps the backend default (Vite dev server).
+    allowedOrigins: []
+    ## Host headers the API answers to (host or host:port). Empty serves any
+    ## host; set it to your ingress host to block DNS rebinding.
+    allowedHosts: []
+
   metrics:
     enabled: true
     port: 9090

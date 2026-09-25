@@ -113,6 +113,10 @@ services:
       EXECUTOR_LLM_API_KEY: ${EXECUTOR_LLM_API_KEY:-}
       EXECUTOR_LLM_MODEL: ${EXECUTOR_LLM_MODEL:-}
       AGENT_WEBHOOK_TOKEN: ${AGENT_WEBHOOK_TOKEN:-}
+      NIB_API_TOKEN: ${NIB_API_TOKEN:-}
+      NIB_INSECURE_NO_AUTH: ${NIB_INSECURE_NO_AUTH:-}
+      NIB_ALLOWED_ORIGINS: ${NIB_ALLOWED_ORIGINS:-}
+      NIB_ALLOWED_HOSTS: ${NIB_ALLOWED_HOSTS:-}
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
       APP_VERSION: ${APP_VERSION:-${NIB_VERSION:-dev}}
       # The local executor launches agent-runner via the host Docker daemon.
@@ -147,62 +151,6 @@ services:
       - "${NIB_HTTP_PORT:-8080}:80"
     environment:
       API_UPSTREAM: http://backend:8080
-    networks:
-      - nib
-
-  github-mcp:
-    image: ghcr.io/github/github-mcp-server:latest
-    restart: unless-stopped
-    command:
-      - http
-      - --port=9082
-    networks:
-      - nib
-
-  aws-mcp:
-    image: public.ecr.aws/awslabs-mcp/awslabs/aws-api-mcp-server:latest
-    restart: unless-stopped
-    environment:
-      AWS_API_MCP_TRANSPORT: "streamable-http"
-      AWS_API_MCP_HOST: "0.0.0.0"
-      AWS_API_MCP_PORT: "9081"
-      AUTH_TYPE: "no-auth"
-      AWS_REGION: "${AWS_REGION:-us-east-2}"
-      AWS_API_MCP_ALLOWED_HOSTS: "aws-mcp,localhost,127.0.0.1"
-      AWS_API_MCP_ALLOWED_ORIGINS: "aws-mcp,localhost,127.0.0.1"
-      READ_OPERATIONS_ONLY: "false"
-      REQUIRE_MUTATION_CONSENT: "false"
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
-    networks:
-      - nib
-
-  searxng:
-    image: docker.io/searxng/searxng:latest
-    restart: unless-stopped
-    environment:
-      SEARXNG_PORT: "9083"
-      SEARXNG_BASE_URL: "http://searxng:9083/"
-      SEARXNG_SECRET: "${SEARXNG_SECRET}"
-    volumes:
-      - ./searxng:/etc/searxng:rw
-    networks:
-      - nib
-
-
-  searxng-mcp:
-    image: docker.io/isokoliuk/mcp-searxng:latest
-    container_name: searxng-mcp
-    restart: unless-stopped
-    environment:
-      SEARXNG_URL: "http://searxng:9083"
-      SEARXNG_DEFAULT_RESPONSE_FORMAT: "json"
-      SEARXNG_MAX_RESULT_CHARS: "500"
-      SEARXNG_TIMEOUT_MS: "15000"
-      MCP_HTTP_PORT: "9084"
-      MCP_HTTP_HOST: "0.0.0.0"
-      MCP_HTTP_STATELESS: "true"
     networks:
       - nib
 

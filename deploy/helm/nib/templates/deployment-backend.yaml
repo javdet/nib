@@ -146,6 +146,30 @@ spec:
                 secretKeyRef:
                   name: {{ include "nib.secretName" . }}
                   key: SECRETS_ENCRYPTION_KEY
+            # optional so an existingSecret without these keys still starts the
+            # pod, and the backend's own error names what is missing.
+            - name: NIB_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: NIB_API_TOKEN
+                  optional: true
+            - name: AGENT_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: AGENT_WEBHOOK_TOKEN
+                  optional: true
+            - name: NIB_INSECURE_NO_AUTH
+              value: {{ .Values.backend.auth.insecureNoAuth | quote }}
+            {{- with .Values.backend.auth.allowedOrigins }}
+            - name: NIB_ALLOWED_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.backend.auth.allowedHosts }}
+            - name: NIB_ALLOWED_HOSTS
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: APP_VERSION
               value: {{ .Chart.AppVersion | quote }}
             - name: METRICS_ENABLED

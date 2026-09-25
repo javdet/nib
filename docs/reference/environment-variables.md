@@ -46,6 +46,30 @@ OPENAI_API_KEY)` when neither key is set.
 The `DB_*` variables are used only when `knowledge_base.uri` is absent from the
 config file. When that key is set it supplies the DSN for everything.
 
+## Backend — API authentication
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NIB_API_TOKEN` | empty | Token guarding every `/api/v1` route except `/health`, `/version` and the agent-runner webhook. At least 32 characters. |
+| `NIB_INSECURE_NO_AUTH` | `false` | `true` runs with no authentication at all. Ignored while `NIB_API_TOKEN` is set. |
+| `NIB_ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated `scheme://host[:port]` origins allowed to make cross-origin writes, besides the API's own origin. Also the CORS allow-list. |
+| `NIB_ALLOWED_HOSTS` | empty | Comma-separated `host` or `host:port` values the API answers to. Empty serves any `Host`. |
+
+The server refuses to start with `config: NIB_API_TOKEN is required` when the
+token is empty and `NIB_INSECURE_NO_AUTH` is not `true`. Other startup checks:
+
+- token shorter than 32 characters → `config: NIB_API_TOKEN must be at least 32 characters`
+- `NIB_INSECURE_NO_AUTH` not a boolean → `config: NIB_INSECURE_NO_AUTH must be true or false`. A typo
+  is an error rather than a silent fallback.
+- an origin with a path or no scheme → `config: NIB_ALLOWED_ORIGINS entry ... must be scheme://host[:port]`
+
+Generate a token with `openssl rand -hex 32`. The web UI asks for it once and
+exchanges it for an HttpOnly session cookie. See [HTTP API](http-api.md#authentication).
+
+Set `NIB_ALLOWED_HOSTS` to the names the UI is reached by, to block DNS
+rebinding. It matters most with `NIB_INSECURE_NO_AUTH`, where the cookie is not
+there to stop a rebound page.
+
 ## Backend — secrets and storage
 
 | Variable | Default | Meaning |
@@ -80,7 +104,7 @@ stay readable. Generate one with `openssl rand -base64 32`.
 |---|---|---|
 | `EXECUTOR_LLM_API_KEY` | empty | API key handed to the agent container. |
 | `EXECUTOR_LLM_MODEL` | empty | Model the agent container runs. |
-| `AGENT_WEBHOOK_TOKEN` | empty | Bearer token authenticating `POST /api/v1/agent-runner/webhook`. |
+| `AGENT_WEBHOOK_TOKEN` | empty | Bearer token authenticating `POST /api/v1/agent-runner/webhook`. Empty rejects every callback unless `NIB_INSECURE_NO_AUTH=true`. |
 
 The git API token is **not** an environment variable. It is selected by name in
 Settings → Executor and read from the encrypted secret store — see
@@ -143,6 +167,7 @@ Read by tests, never by a running install.
 
 | Variable | Meaning |
 |---|---|
+| `NIB_E2E_API_TOKEN` | The backend's `NIB_API_TOKEN`. The Playwright suite sends it as a bearer token on every request. |
 | `NIB_LIVE_OPENAI` | Set to `1` to run the opt-in live provider test. |
 | `NIB_MIGRATIONS_TEST_DSN` | DSN for the migration tests. |
 | `NIB_TOOLCATALOG_TEST_DSN` | DSN for the tool-catalog tests. |

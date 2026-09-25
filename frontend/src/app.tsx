@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppLayout } from '@/components/layout/app-layout'
+import { AuthGate } from '@/features/auth/components/auth-gate'
 
 const KnowledgePage = lazy(() =>
 	import('@/features/knowledge/pages/knowledge-page').then((m) => ({
@@ -81,31 +82,33 @@ export function App() {
 	return (
 		<TooltipProvider delayDuration={400} skipDelayDuration={300}>
 			<BrowserRouter>
-				<Suspense fallback={<PageFallback />}>
-					<Routes>
-						<Route element={<AppLayout />}>
-							<Route path="/" element={<Navigate to="/workplace" replace />} />
-							<Route path="/workplace" element={<WorkplacePage />} />
-							<Route path="/workplace/:id" element={<WorkplaceDetail />} />
-							<Route path="/incidents" element={<IncidentsPage />} />
-							<Route path="/incidents/:id" element={<IncidentDetail />} />
-							<Route path="/projects" element={<Navigate to="/workplace" replace />} />
-							<Route path="/projects/:id" element={<Navigate to="/workplace" replace />} />
-							<Route path="/dialogs" element={<Navigate to="/workplace" replace />} />
-							<Route path="/knowledge" element={<KnowledgePage />} />
-							<Route path="/plans" element={<PlansPage />} />
-							<Route path="/rules" element={<RulesPage />} />
-							<Route path="/tools" element={<ToolsPage />} />
-							<Route path="/skills" element={<SkillsPage />} />
-							<Route path="/variables" element={<VariablesPage />} />
-							<Route path="/statistics" element={<StatisticsPage />} />
-							<Route path="/system-tools" element={<SystemToolsPage />} />
-							<Route path="/task-tracker" element={<RedirectToTools />} />
-							<Route path="/mcp-connections" element={<RedirectToTools />} />
-							<Route path="/base" element={<RedirectToTools />} />
-						</Route>
-					</Routes>
-				</Suspense>
+				<AuthGate>
+					<Suspense fallback={<PageFallback />}>
+						<Routes>
+							<Route element={<AppLayout />}>
+								<Route path="/" element={<Navigate to="/workplace" replace />} />
+								<Route path="/workplace" element={<WorkplacePage />} />
+								<Route path="/workplace/:id" element={<WorkplaceDetail />} />
+								<Route path="/incidents" element={<IncidentsPage />} />
+								<Route path="/incidents/:id" element={<IncidentDetail />} />
+								<Route path="/projects" element={<Navigate to="/workplace" replace />} />
+								<Route path="/projects/:id" element={<Navigate to="/workplace" replace />} />
+								<Route path="/dialogs" element={<Navigate to="/workplace" replace />} />
+								<Route path="/knowledge" element={<KnowledgePage />} />
+								<Route path="/plans" element={<PlansPage />} />
+								<Route path="/rules" element={<RulesPage />} />
+								<Route path="/tools" element={<ToolsPage />} />
+								<Route path="/skills" element={<SkillsPage />} />
+								<Route path="/variables" element={<VariablesPage />} />
+								<Route path="/statistics" element={<StatisticsPage />} />
+								<Route path="/system-tools" element={<SystemToolsPage />} />
+								<Route path="/task-tracker" element={<RedirectToTools />} />
+								<Route path="/mcp-connections" element={<RedirectToTools />} />
+								<Route path="/base" element={<RedirectToTools />} />
+							</Route>
+						</Routes>
+					</Suspense>
+				</AuthGate>
 			</BrowserRouter>
 		</TooltipProvider>
 	)

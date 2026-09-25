@@ -14,6 +14,23 @@ export class ApiError extends Error {
 	}
 }
 
+let unauthorizedHandler: (() => void) | null = null
+
+/**
+ * Registers what happens when the backend answers 401: the session cookie has
+ * expired or the API token was rotated, so the app returns to the login screen.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+	unauthorizedHandler = handler
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+	if (res.status === 401) {
+		unauthorizedHandler?.()
+	}
+	return new ApiError(res.status, await parseErrorBody(res))
+}
+
 async function parseErrorBody(res: Response): Promise<string> {
 	try {
 		const body = await res.json()
@@ -29,19 +46,20 @@ async function parseErrorBody(res: Response): Promise<string> {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	const hasBody = options?.body != null
 	const url = `${BASE_URL}${path}`
+	// Headers are merged after the spread so a caller's own headers cannot
+	// drop Content-Type: the backend refuses a JSON body not declared as one.
 	const res = await fetch(url, {
+		...options,
 		headers: hasBody
 			? {
 					'Content-Type': 'application/json',
 					...options?.headers,
 				}
 			: options?.headers,
-		...options,
 	})
 
 	if (!res.ok) {
-		const message = await parseErrorBody(res)
-		throw new ApiError(res.status, message)
+		throw await toApiError(res)
 	}
 
 	if (res.status === 204) {
@@ -64,8 +82,7 @@ async function requestWithHeaders<T>(
 	const res = await fetch(url, options)
 
 	if (!res.ok) {
-		const message = await parseErrorBody(res)
-		throw new ApiError(res.status, message)
+		throw await toApiError(res)
 	}
 
 	if (res.status === 204) {
@@ -111,8 +128,7 @@ export const api = {
 			signal,
 		})
 		if (!res.ok) {
-			const message = await parseErrorBody(res)
-			throw new ApiError(res.status, message)
+			throw await toApiError(res)
 		}
 		if (res.status === 204) {
 			return undefined as T
