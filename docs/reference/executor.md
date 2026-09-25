@@ -125,8 +125,9 @@ carry the agent's credentials:
 - `GITHUB_TOKEN`, or equivalently `GITLAB_TOKEN` or `GIT_TOKEN` — supply any
   one; the container derives the others from it
 - `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
-- optionally `WEBHOOK_AUTH_HEADER`, for example
-  `Authorization: Bearer <AGENT_WEBHOOK_TOKEN>`
+
+Do not put `WEBHOOK_AUTH_HEADER` in it. The backend sets that header on each Job
+itself, with a token valid for that run only, and it overrides a value here.
 
 ### `webhookBaseURL`
 

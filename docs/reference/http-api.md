@@ -83,7 +83,7 @@ work while the agent loop holding the lease is wedged.
 |---|---|---|
 | `GET` | `/execution` | What currently holds the single execution slot. |
 | `DELETE` | `/execution` | Force-stop the holder. |
-| `POST` | `/agent-runner/webhook` | Result callback from a finished agent container. Requires `Authorization: Bearer $AGENT_WEBHOOK_TOKEN`, not the API token. Rejected outright while that variable is empty, unless `NIB_INSECURE_NO_AUTH=true`. |
+| `POST` | `/agent-runner/webhook` | Result callback from a finished agent container. Requires the per-run token the backend handed that container (`WEBHOOK_AUTH_HEADER`), bound to the body's `chat_id` and `job.name`. The API token and `AGENT_WEBHOOK_TOKEN` itself are refused with 401, even under `NIB_INSECURE_NO_AUTH`. A missing `chat_id` or `job.name` is 400. |
 
 ## Selection
 

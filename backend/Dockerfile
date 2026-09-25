@@ -70,6 +70,14 @@ COPY --from=build /src/seed /app/seed
 COPY --from=build /src/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# nib runs as this user, never root: the entrypoint drops to it once DATA_DIR is prepared.
+# /app and config.yaml are handed over so an unmounted config.yaml stays editable, since
+# config.Manager rewrites it through a temp file beside it.
+RUN groupadd --system --gid 10001 nib \
+	&& useradd --system --uid 10001 --gid nib --home-dir /home/nib --create-home \
+		--shell /usr/sbin/nologin nib \
+	&& chown nib:nib /app /app/config.yaml
+
 ENV SERVER_HOST=0.0.0.0 \
 	SERVER_PORT=8080 \
 	METRICS_HOST=0.0.0.0 \
@@ -90,6 +98,6 @@ EXPOSE 8080 9090
 HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=10 \
 	CMD curl -sf http://localhost:8080/api/v1/health || exit 1
 
-# The entrypoint creates the DATA_DIR layout, then execs nib with CMD.
+# The entrypoint creates the DATA_DIR layout as root, then execs nib with CMD as the nib user.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["-config", "/app/config.yaml"]

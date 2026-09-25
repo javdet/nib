@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/javdet/nib/internal/webhookauth"
 )
 
 func envMap(t *testing.T, env []string) map[string]string {
@@ -234,15 +236,22 @@ func TestBuildActionRunEnvWebhook(t *testing.T) {
 		AuthType:       AuthTypeAPIKey,
 		WebhookBaseURL: "http://localhost:8080",
 	}
-	secrets := Secrets{WebhookToken: "secret-token"}
+	secrets := Secrets{WebhookKey: []byte("backend-only-key")}
+	req := validActionRunRequest()
 
-	env := envMap(t, buildActionRunEnv(cfg, secrets, validActionRunRequest(), "nib-12345678"))
+	env := envMap(t, buildActionRunEnv(cfg, secrets, req, "nib-12345678"))
 
 	if env["WEBHOOK_URL"] != "http://localhost:8080/api/v1/agent-runner/webhook" {
 		t.Fatalf("WEBHOOK_URL = %q", env["WEBHOOK_URL"])
 	}
-	if env["WEBHOOK_AUTH_HEADER"] != "Authorization: Bearer secret-token" {
-		t.Fatalf("WEBHOOK_AUTH_HEADER = %q", env["WEBHOOK_AUTH_HEADER"])
+	want := "Authorization: Bearer " + webhookauth.Sign(secrets.WebhookKey, req.ChatID, "nib-12345678")
+	if env["WEBHOOK_AUTH_HEADER"] != want {
+		t.Fatalf("WEBHOOK_AUTH_HEADER = %q, want %q", env["WEBHOOK_AUTH_HEADER"], want)
+	}
+	for name, value := range env {
+		if strings.Contains(value, string(secrets.WebhookKey)) {
+			t.Fatalf("%s carries the signing key", name)
+		}
 	}
 }
 

@@ -72,7 +72,7 @@ func TestRenderJobManifestQuotesPrompt(t *testing.T) {
 		AgentRequestMemory: "256Mi",
 		AgentMCPConfig:     "nib-mcp-config",
 		TaskTypeLabel:      "code",
-		ThreadRootLabel:      "do-236",
+		ThreadRootLabel:    "do-236",
 		AllowedTools:       actionRunAllowedTools,
 		JobTTLSeconds:      3600,
 		AgentType:          "claude-code",
@@ -144,6 +144,60 @@ func TestValidateActionRunRequestSkipsTokensForKubernetes(t *testing.T) {
 	cfg.Type = TypeLocal
 	if err := validateActionRunRequest(req, cfg); err == nil {
 		t.Fatal("validateActionRunRequest() expected error for local executor without tokens")
+	}
+}
+
+func TestSetAgentEnvWebhookHeader(t *testing.T) {
+	t.Parallel()
+
+	// An override template that never mentions the header, a stale value on a
+	// sidecar-first pod, and a stale value on the agent itself.
+	job := &batchv1.Job{}
+	job.Spec.Template.Spec.Containers = []corev1.Container{
+		{Name: "sidecar", Env: []corev1.EnvVar{{Name: "KEEP", Value: "1"}}},
+		{Name: "agent", Env: []corev1.EnvVar{
+			{Name: "PROMPT", Value: "p"},
+			{Name: webhookAuthHeaderEnv, Value: "Authorization: Bearer shared"},
+		}},
+	}
+
+	setAgentEnv(job, webhookAuthHeaderEnv, "Authorization: Bearer per-run")
+
+	agent := job.Spec.Template.Spec.Containers[1]
+	count := 0
+	for _, e := range agent.Env {
+		if e.Name == webhookAuthHeaderEnv {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("%s appears %d times on the agent, want 1", webhookAuthHeaderEnv, count)
+	}
+	if got := envValue(agent.Env, webhookAuthHeaderEnv); got != "Authorization: Bearer per-run" {
+		t.Fatalf("%s = %q, want the per-run header", webhookAuthHeaderEnv, got)
+	}
+	if got := envValue(agent.Env, "PROMPT"); got != "p" {
+		t.Fatalf("PROMPT = %q, want it kept", got)
+	}
+	if got := envValue(job.Spec.Template.Spec.Containers[0].Env, webhookAuthHeaderEnv); got != "" {
+		t.Fatalf("sidecar got %s = %q", webhookAuthHeaderEnv, got)
+	}
+}
+
+func TestSetAgentEnvOnRenderedJob(t *testing.T) {
+	t.Parallel()
+
+	job, err := renderJobManifest("", actionRunValues{
+		JobName: "nib-12345678", Namespace: "default", ChatID: "c", AgentSecret: "s",
+		WebhookURL:    "http://nib.example.com/api/v1/agent-runner/webhook",
+		AgentLimitCPU: "1", AgentLimitMemory: "1Gi", AgentRequestCPU: "1", AgentRequestMemory: "256Mi",
+	})
+	if err != nil {
+		t.Fatalf("renderJobManifest() error = %v", err)
+	}
+	setAgentEnv(job, webhookAuthHeaderEnv, "Authorization: Bearer per-run")
+	if got := envValue(job.Spec.Template.Spec.Containers[0].Env, webhookAuthHeaderEnv); got != "Authorization: Bearer per-run" {
+		t.Fatalf("%s = %q, want the per-run header", webhookAuthHeaderEnv, got)
 	}
 }
 

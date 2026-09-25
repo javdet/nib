@@ -44,7 +44,7 @@
         },
         "agentWebhookToken": {
           "type": "string",
-          "description": "AGENT_WEBHOOK_TOKEN for the agent-runner completion webhook."
+          "description": "AGENT_WEBHOOK_TOKEN: key the backend signs each agent-runner Job's webhook token with. Empty generates one on the data volume."
         }
       }
     },

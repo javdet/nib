@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/javdet/nib/internal/metrics"
+	"github.com/javdet/nib/internal/webhookauth"
 )
 
 // Fixed agent-runner settings for action runs. They are not exposed in the
@@ -81,6 +82,11 @@ func (s *Service) runAction(ctx context.Context, req ActionRunRequest) (ActionRu
 	}
 	if cfg.Type == TypeDisabled {
 		return ActionRunResult{}, ErrExecutorDisabled
+	}
+	// Without a key the container's callback is refused, and the run would hold
+	// the one execution slot until its lease expired.
+	if len(s.secrets.WebhookKey) == 0 {
+		return ActionRunResult{}, ErrWebhookKeyMissing
 	}
 	if err := validateActionRunRequest(req, cfg); err != nil {
 		return ActionRunResult{}, err
@@ -239,14 +245,26 @@ func buildActionRunEnv(cfg Config, secrets Secrets, req ActionRunRequest, jobNam
 	if values.WebhookURL != "" {
 		env = append(env, "WEBHOOK_URL="+values.WebhookURL)
 	}
-	if v := strings.TrimSpace(secrets.WebhookToken); v != "" {
-		env = append(env, "WEBHOOK_AUTH_HEADER=Authorization: Bearer "+v)
+	if v := webhookAuthHeader(secrets, values.ChatID, jobName); v != "" {
+		env = append(env, webhookAuthHeaderEnv+"="+v)
 	}
 
 	return env
 }
 
-const agentWebhookPath = "/api/v1/agent-runner/webhook"
+const (
+	agentWebhookPath     = "/api/v1/agent-runner/webhook"
+	webhookAuthHeaderEnv = "WEBHOOK_AUTH_HEADER"
+)
+
+// webhookAuthHeader is the header the container sends its webhook with, or ""
+// without a key -- which runAction refuses before any launch.
+func webhookAuthHeader(secrets Secrets, chatID, jobName string) string {
+	if len(secrets.WebhookKey) == 0 {
+		return ""
+	}
+	return "Authorization: Bearer " + webhookauth.Sign(secrets.WebhookKey, chatID, jobName)
+}
 
 // resolveAgentWebhookURL builds the full callback URL from webhookBaseURL.
 // The setting is the backend origin (scheme + host + port, no path), but a

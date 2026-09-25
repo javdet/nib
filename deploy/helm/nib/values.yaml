@@ -26,8 +26,8 @@ secrets:
   ## Required unless backend.auth.insecureNoAuth: guards every /api/v1 route
   ## (the UI asks for it once). At least 32 characters: openssl rand -hex 32
   apiToken: ""
-  ## Authenticates the agent-runner's completion webhook. Empty rejects every
-  ## callback unless backend.auth.insecureNoAuth.
+  ## Key each agent-runner Job's webhook token is signed with; a Job only ever
+  ## sees its own token. Empty generates one on the backend data volume.
   agentWebhookToken: ""
 
 ## Backend — Go API server (javdet/nib-backend)

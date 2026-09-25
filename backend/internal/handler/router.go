@@ -42,7 +42,8 @@ type Deps struct {
 	MCPConfig     *mcpconfig.Service
 	Executor      *executor.Service
 
-	AgentWebhookToken string
+	// AgentWebhookKey verifies each agent-runner container's per-run token.
+	AgentWebhookKey []byte
 }
 
 // NewRouter builds the chi router with all middleware and routes.
@@ -81,7 +82,7 @@ func NewRouter(d Deps) chi.Router {
 	toolCategories := NewToolCategoriesHandler(d.ToolCategories)
 	apiAuth := newAPIAuth(d.Auth)
 	authHandler := NewAuthHandler(apiAuth)
-	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookToken, !apiAuth.required())
+	agentWebhook := NewAgentWebhookHandler(d.Chat, d.AgentWebhookKey)
 	execution := NewExecutionHandler(d.Chat)
 
 	r.Route("/api/v1", func(r chi.Router) {

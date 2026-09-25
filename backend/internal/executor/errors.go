@@ -26,6 +26,7 @@ var (
 	ErrKubernetesJobCreate           = errors.New("failed to create kubernetes job")
 	ErrKubernetesJobDelete           = errors.New("failed to delete kubernetes job")
 	ErrAgentSecretRequired           = errors.New("agent secret name is required for kubernetes jobs")
+	ErrWebhookKeyMissing             = errors.New("executor has no webhook signing key; its containers could not report back")
 
 	ErrPromptRequired       = errors.New("prompt is required")
 	ErrTargetBranchRequired = errors.New("target branch is required")

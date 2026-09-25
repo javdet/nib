@@ -77,6 +77,9 @@ spec:
               value: {{ quote .AgentType }}
             - name: GIT_PROVIDER
               value: {{ quote .GitProvider }}
+            # WEBHOOK_AUTH_HEADER is added by the backend after rendering: it
+            # carries a token bound to this run and is set even when this
+            # template is overridden.
             {{- if .WebhookURL }}
             - name: WEBHOOK_URL
               value: {{ quote .WebhookURL }}

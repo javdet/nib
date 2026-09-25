@@ -104,7 +104,7 @@ stay readable. Generate one with `openssl rand -base64 32`.
 |---|---|---|
 | `EXECUTOR_LLM_API_KEY` | empty | API key handed to the agent container. |
 | `EXECUTOR_LLM_MODEL` | empty | Model the agent container runs. |
-| `AGENT_WEBHOOK_TOKEN` | empty | Bearer token authenticating `POST /api/v1/agent-runner/webhook`. Empty rejects every callback unless `NIB_INSECURE_NO_AUTH=true`. |
+| `AGENT_WEBHOOK_TOKEN` | empty | Key the backend signs each agent-runner container's webhook token with. It never reaches a container. Empty generates one into `{DATA_DIR}/.webhook-key`. Changing it rejects the callbacks of runs already in flight. |
 
 The git API token is **not** an environment variable. It is selected by name in
 Settings → Executor and read from the encrypted secret store — see
