@@ -13,9 +13,9 @@ exhaustively. Where a guide needs a full list of options, it links to
 Everything needed to go from nothing to a working nib, and to keep it current.
 
 - [How to run nib with Docker Compose](run-with-docker-compose.md) — a working
-  install on one host, from the published images
-- [How to upgrade an install](upgrade.md) — moving to a new version, and what
-  your data volume keeps
+  install on one host, from the published images, behind an API token
+- [How to upgrade an install](upgrade.md) — moving to a new version, what your
+  data volume keeps, and what an upgrade from v0.8.0 needs from you
 
 For Kubernetes, the chart's own documentation is the guide:
 [`deploy/helm/nib/README.md`](../../deploy/helm/nib/README.md).
@@ -38,7 +38,8 @@ By default nib plans and hands you the plan. This is how you change that, and
 how you watch what happens once you do.
 
 - [How to run planned actions in containers](run-actions-in-containers.md) —
-  configure the executor so `code` steps actually run
+  configure the executor so `code` steps actually run, watch their logs, run a
+  whole stage with **Execute all**, and ask for a fix from the chat
 - [How to scrape nib's metrics with Prometheus](scrape-metrics-with-prometheus.md)
   — get the metrics listener into your monitoring stack
 

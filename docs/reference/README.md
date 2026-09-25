@@ -16,7 +16,7 @@ Two files and one environment, with different precedence rules between them.
   default and its validation errors
 - [Environment variables](environment-variables.md) — every variable the three
   binaries and the Compose stack read, and which ones beat the YAML
-- [Executor settings](executor.md) — the fields under Settings → Executor,
+- [Executor settings](executor.md) — the fields under Tools → Executor,
   which live neither in the file nor in the environment
 
 ## What the agent can do
@@ -32,7 +32,8 @@ Three pages that together answer "why did it do that, or not do that".
 
 ## Interfaces and state
 
-- [HTTP API](http-api.md) — every `/api/v1` route
+- [HTTP API](http-api.md) — every `/api/v1` route, and how a caller
+  authenticates to it
 - [State: the data directory and the database](state.md) — where everything is
   kept, and what an upgrade keeps
 - [Metrics](metrics.md) — every exported metric, and the usage tables behind

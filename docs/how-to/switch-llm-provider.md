@@ -156,10 +156,15 @@ matches on, so changing it means the
 
 ## Rename the embedding model in the database
 
-Do this whenever `llm.embeddingModel` changes its **name**, even if the
-underlying model is the same. Knowledge search compares
-`llm.embeddingModel` against `kb_collections.embedding_model` as an exact
-string: a mismatch returns no results, with no error anywhere.
+Do this whenever the embedding model changes its **name**, even if the
+underlying model is the same. Knowledge search compares it against
+`kb_collections.embedding_model` as an exact string: a mismatch returns no
+results, with no error anywhere.
+
+The name compared is `llm.embeddings.model` when that is set (or
+`LLM_EMBEDDINGS_MODEL`), and `llm.embeddingModel` otherwise — the backend writes
+the first over the second at startup. So a preset that moves the model into the
+`embeddings` block, like the Gemini and Qwen ones above, is a rename too.
 
 Moving to OpenRouter:
 
@@ -201,7 +206,7 @@ storing something that would never match.
 `KB_EMBEDDINGS_DIMENSIONS` in `.env` becomes `EMBEDDINGS_DIMENSIONS` in the
 container (`kbMcp.embeddings.dimensions` in Helm). The backend ingests the
 chunks and `kb-mcp` embeds the queries that search them: at different widths the
-comparison matches nothing, and, like the model-name mismatch below, it reports
+comparison matches nothing, and, like the model-name mismatch above, it reports
 no error anywhere.
 
 Its `-provider openrouter` flag is only the CLI's name for a generic

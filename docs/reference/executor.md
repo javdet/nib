@@ -1,7 +1,8 @@
 # Executor settings
 
 The executor launches single-use agent containers, one per `code` action. It is
-configured in the web interface under **Settings → Executor**, stored as a JSON
+configured in the web interface under **Tools → Executor**
+(`/tools?tab=executor`), stored as a JSON
 file on the data volume, and served by `GET`/`PUT /api/v1/executor/config`.
 
 It is not part of [the configuration file](configuration.md). Three of its
@@ -14,7 +15,7 @@ inputs come from the environment, and two from the encrypted secret store.
 
 | Value | Meaning |
 |---|---|
-| `disabled` | No container is ever launched. No other executor field is shown, and **Execute action** is greyed out on `code` steps. |
+| `disabled` | No container is ever launched. No other executor field is shown. **Execute action** on a `code` step is not refused: it opens Tools → Executor, since enabling the executor is the only thing that makes the row runnable. |
 | `local` | Containers run on the backend host's Docker daemon, through the mounted Docker socket. |
 | `remote` | Containers run on a remote platform. |
 
@@ -43,6 +44,16 @@ Which agent runtime the container runs.
 - **Default:** `javdet/nib-agent:latest`
 - **Required** once the executor is enabled
 - **Error:** `executor image is required`
+
+On `local`, the image is pulled when the host's Docker daemon does not already
+have it, and reused as-is when it does. A moving tag such as `latest` therefore
+keeps whatever was pulled first; `docker pull` on the host is how to refresh
+it. A registry that refuses the pull fails the launch with `failed to pull
+executor image: <image>: <the registry's reason>` (HTTP `502`), rather than a
+bare "No such image".
+
+On remote Kubernetes the pull is the kubelet's, under the Job's
+`imagePullPolicy`.
 
 ## `llmModel`, `authType`, `tokenSecretName`, `baseURL`
 
@@ -128,6 +139,8 @@ carry the agent's credentials:
 
 Do not put `WEBHOOK_AUTH_HEADER` in it. The backend sets that header on each Job
 itself, with a token valid for that run only, and it overrides a value here.
+It is added after the template is rendered, so a `job.yaml.tmpl` override
+cannot drop it — and the Job spec carries that one run's token in plain text.
 
 ### `webhookBaseURL`
 
@@ -174,6 +187,25 @@ Validated when an action is launched, not when the config is saved.
 
 `run_executor` aside, all of them take the single execution slot. See [One execution at a
 time](../explanation/one-execution-at-a-time.md).
+
+**Execute all** on a stage header is not a fourth entry point: it presses
+**Execute action** on each unticked item in turn, so its `code` items launch
+exactly as a single press would.
+
+## Container logs
+
+On `local`, the row of a `code` action that is running offers **View container
+logs**: a snapshot of the container's stdout and stderr, polled every 10 seconds
+while the dialog is open and never stored. It is served by `GET
+/api/v1/dialogs/{id}/action-plan/logs?key={row key}` and returns the newest 2000 lines, capped
+at 256 KiB, with `truncated` set when older output was dropped.
+
+| Error | Meaning |
+|---|---|
+| `container logs are only available for the local docker executor` | The executor is remote (`501`). A finished run's account is in its execute chat instead. |
+| `this action is not running; container logs are only available while it runs` | The run has finished (`409`). |
+| `this action ran as a sub-agent; there is no container to show logs for` | Not a `code` action (`400`). |
+| `the action container is no longer available; its logs were removed with it` | The container is gone — a force stop removes it (`404`). |
 
 ## The container's own contract
 

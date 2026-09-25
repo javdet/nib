@@ -64,8 +64,10 @@ Shipped with the image and seeded onto the data volume at first start.
 | `create_table` | | | | | ● | ● |
 
 `chat_name` is not in any allow list: it is offered on every turn that has a
-dialog. `set_report` and `execute_action` are in no allow list either — see
-[Never in an allow list](#never-in-an-allow-list).
+dialog. `report_blocker` is added in code to every fan-out stage planner's set.
+`set_report` and `execute_action` are in no shipped allow list either — see
+[Never in an allow list](#never-in-an-allow-list) and
+[`execute_action`](#execute_action).
 
 Seeding never removes a name from a list already on disk. A capability
 withdrawn from a mode in a later release is enforced in code as well.
@@ -138,8 +140,13 @@ contract.
 
 ### `create_action_plan`
 
-Saves a complete action plan. Clears the operator's checkboxes, comments and
-per-row run records, because the rows they were keyed to are gone.
+Saves a complete action plan. Clears the operator's checkboxes, comments,
+per-row run records, run statuses and notes, because the rows they were keyed
+to are gone, and stops and clears the plan's **Execute all** run.
+
+Every step and rollback entry takes optional `downtime` and `degraded` strings,
+shown to the operator as a red or amber label on the action; the two are never
+set together. Field list: [The action plan](state.md#the-action-plan).
 
 ### `update_action_plan`
 
@@ -156,7 +163,8 @@ Saves the rollback list, leaving every stage untouched.
 
 Returns the action plan bound to the conversation, including what previous
 actions reported — which is how an identifier created by one action reaches the
-action that needs it.
+action that needs it. Every action and check carries the number the operator
+sees, and both are executable.
 
 ### `set_category`
 
@@ -167,7 +175,13 @@ decomposition, inherited by every sub-agent of the plan.
 
 ### `execute_command`
 
-Runs a simple command locally on the backend host.
+Runs a simple command locally on the backend host. Not a shell: one binary with
+its arguments, no pipes, redirects, `&&`, globs or `$VAR` expansion. 60-second
+timeout, 1 MiB of combined output. Returns `exit_code`, `output` and
+`command_not_found`.
+
+The process gets only `PATH`, `HOME` and `LANG` from the backend's environment:
+none of its keys and tokens, and no `HTTP(S)_PROXY` or `KUBECONFIG` either.
 
 ### `api_call`
 
@@ -176,7 +190,11 @@ options listed in the tool description are accepted, with exactly one
 `http://` or `https://` URL. Values cannot be read from files, output cannot
 be written anywhere but `/dev/null`, and redirects are not followed.
 Loopback, link-local and cloud metadata addresses are refused, including
-names that resolve to them.
+names that resolve to them; private (RFC 1918) addresses are allowed. curl is
+pinned to the vetted address, so a second DNS answer cannot redirect it.
+
+Same limits as `execute_command` otherwise: 60-second timeout, 1 MiB of output,
+and only `PATH`, `HOME` and `LANG` in its environment.
 
 ### `run_executor`
 
@@ -191,7 +209,9 @@ settings](executor.md).
 Carries out one action of the plan, named by the number the operator sees
 beside it.
 
-**Root-only.** Deleted from the allow set of any sub-agent.
+**Root-only.** Deleted from the allow set of any sub-agent. It is in no shipped
+allow list: the orchestrator carries actions out through `run_subagent` with
+`name: "execute"`.
 
 ### `stop_execution`
 
@@ -251,7 +271,9 @@ Offered on every turn that has a dialog; not in any allow list.
 
 ## Changing nib's own configuration
 
-All four are **discuss-mode-owned**.
+All four are in the `discuss` allow list only. `write_rule`,
+`update_tool_category` and `update_included_tools` are **discuss-mode-owned**:
+every other mode has them withdrawn whatever its allow list says.
 
 ### `write_rule`
 

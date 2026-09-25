@@ -46,9 +46,23 @@ will not start.
 
 ## What the lease covers
 
-Both action sub-agents and code-action containers. An agent reasoning its way
-through a step and a container pushing a branch are the same kind of risk, so
-they share the slot.
+Action sub-agents, code-action containers, and code fixes asked for in the
+chat. An agent reasoning its way through a step and a container pushing a
+branch are the same kind of risk, so they share the slot — and a fix is a
+container pushing a branch like any other, even though no plan row stands
+behind it.
+
+That last case is marked on the lease as a fix and carries no row key. The mark
+is what keeps the force-stop and expiry paths from writing an outcome against a
+plan row that does not exist; they close the fix's own record instead, and
+report into the chat that asked for it.
+
+Two agents deliberately stay outside it: the one that writes the report when
+you press **Finish**, and the one that then updates the knowledge base. Neither
+changes a managed system — one writes prose, the other rewrites nib's own
+knowledge base — and holding them to the rule would mean a plan finished while
+its last action was still running silently loses its report. What stops them
+running twice is a per-plan claim, not the lease.
 
 The force-stop route deliberately carries **no write deadline**. Every other
 agent route does, because a request that runs forever is a bug. This one is
@@ -58,6 +72,20 @@ lease is wedged, which is when a deadline would be most likely to fire.
 Cancelling means cancelling a sub-agent's context, or stopping a container
 through the runtime. Both leave a record.
 
+## Execute all is not a queue
+
+**Execute all** on a stage looks like the queue this page argues against: press
+once, and several actions run. The difference is what each one is started
+against. A queued request waits behind *someone else's* work, for a slot, with
+a plan that may have gone stale. A stage run starts its next item only when the
+previous one of *the same stage* has finished, and only if it finished *done*.
+
+It takes the lease one item at a time, like any other request, and moves on
+only after the finished item has released it. It is refused a busy slot like
+anyone else, and it stops — rather than waits — when that happens, when an
+item fails, or when the stage is restructured under it. And, for the same
+reason as the lease, there is one stage run at a time across every plan.
+
 ## The failure mode it introduces
 
 A lease held by a process that dies is a lease nobody can release. Without a
@@ -65,16 +93,25 @@ sweep, one crash mid-execution would block every execution on the install,
 permanently, until someone found the record.
 
 So a reconciliation pass runs at startup over the runs a previous process left
-marked running. The metric `nib_stuck_runs_reconciled_total` above zero after a
+marked running — actions, chat-requested fixes and stage runs alike. The metric `nib_stuck_runs_reconciled_total` above zero after a
 restart is that pass doing its job — which also makes it a useful signal that
 the process died mid-run rather than shutting down cleanly.
+
+The restart is not the only way a holder vanishes. A container reports back
+through a webhook, and a crashed image, a failed pull or a node that went away
+means nothing ever will — with no goroutine left in the backend to notice. So a
+container's lease is treated as expired once the action deadline has passed —
+a little longer than the container's own timeout — the next time anything asks
+for the slot. That is the one case where
+the lease is released without anyone saying how the run ended.
 
 This is the general shape of the trade: a global lock is simple to reason about
 and needs a recovery path for every way the holder can vanish.
 
 ## Why it cannot simply be lifted
 
-The lease is process-local. So is the SSE broker, so is every other lock, and so
+The lease is process-local. So is the SSE broker, so is the stage-run slot,
+so is every other lock, and so
 is the background refresh that counts plans by status. The Helm chart pins the
 backend to one replica, and that pin is what makes all four correct.
 

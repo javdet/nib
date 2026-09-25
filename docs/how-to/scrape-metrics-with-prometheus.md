@@ -6,7 +6,8 @@ API, so both the Helm ingress and the frontend nginx (which proxy only `/api`)
 leave it unreachable from the public host while an in-cluster scraper still
 gets it.
 
-The endpoint is **unauthenticated**. The metric names alone report how many
+The endpoint is **unauthenticated** — `NIB_API_TOKEN` guards the API, not
+this listener. The metric names alone report how many
 plans exist, which model is configured and cumulative LLM cost. Treat reaching
 it as reaching your topology.
 
@@ -65,11 +66,14 @@ backend:
 
 ## Scrape a Compose install
 
-Uncomment `NIB_METRICS_PORT` in `.env` to publish the port to the host, and
-point your scraper at `http://<host>:9090/metrics`.
+The shipped `docker-compose.yml` publishes the listener on the host port in
+`NIB_METRICS_PORT`, `9090` by default. Point your scraper at
+`http://<host>:9090/metrics`.
 
 If the scraper runs in the same Compose network, do not publish the port at
-all — scrape `backend:9090` directly and leave it off the host.
+all — scrape `backend:9090` directly. Leaving `NIB_METRICS_PORT` unset is not
+enough for that, because the port mapping falls back to `9090`; delete the
+`"${NIB_METRICS_PORT:-9090}:9090"` line from the backend's `ports` instead.
 
 ## Alerts to set up
 
@@ -86,6 +90,7 @@ all — scrape `backend:9090` directly and leave it off the host.
 | The lease is blocking operators | `increase(nib_execution_lease_rejections_total[15m]) > 3` |
 | The UI has diverged from the server | `increase(nib_sse_events_dropped_total[10m]) > 0` |
 | The process died mid-run | `increase(nib_stuck_runs_reconciled_total[1h]) > 0` |
+| Agent containers cannot report back | `increase(nib_agent_runner_webhooks_total{outcome="unauthorized"}[1h]) > 0` |
 | The plan gauges are stale | `time() - nib_plans_refresh_timestamp_seconds > 300` |
 | Container-agent cost over a day | `increase(nib_agent_runner_cost_usd_total[24h])` |
 | The backend is down | `up{job="nib-backend"} == 0` |

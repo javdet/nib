@@ -68,9 +68,10 @@ Whatever `llm.api` says, embeddings always go to `/v1/embeddings`. The setting
 governs completions only.
 
 They also go to their own host. `llm.embeddings` has its own `baseURL`,
-`apiKey`, `model` and `dimensions`, each falling back to the matching `llm.*`
-value, so an install that never sets the block behaves exactly as it did when
-one base URL served both.
+`model` and `dimensions`, and its own key in `LLM_EMBEDDINGS_API_KEY` — the
+key comes from the environment like every other one, never from the file. Each
+falls back to the matching completion setting, so an install that never sets
+the block behaves exactly as it did when one base URL served both.
 
 The block exists because "an OpenAI-compatible provider" turned out not to mean
 one thing. DeepSeek, xAI and Moonshot serve chat completions and no
@@ -118,6 +119,14 @@ forgiving than the OpenAI schema:
   put a plaintext chain of thought. It is captured for the operator but never
   replayed — DeepSeek rejects a request that sends it back. Only the responses
   endpoint replays reasoning, and only the encrypted form it issued itself.
+
+One thing is stripped whatever the endpoint: a `<thinking>` (or `<think>`)
+block in the reply's content. The plan and decompose prompts ask the model to
+open a turn with one, and DeepSeek and Qwen emit one unprompted. A provider with
+a reasoning channel keeps it out of the content; one without leaves it in, where
+it would land in the transcript and in the note a finished action hands to the
+next. A final answer wrapped entirely in the block is unwrapped rather than
+dropped, because an empty answer costs more than a stray tag.
 
 Tool *schemas* and tool *names* are rewritten for the same reason, before they
 are sent. A published JSON Schema may carry `$ref`, `$defs`, `anyOf` or

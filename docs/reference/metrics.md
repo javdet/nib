@@ -4,8 +4,9 @@ The backend exports Prometheus metrics on a listener of its own — by default
 port `9090`, path `/metrics`. It is a second HTTP server, never a route on the
 API router.
 
-The endpoint is **unauthenticated**, like the rest of the API. The metric names
-alone report the number of plans, the model in use and cumulative LLM cost.
+The endpoint is **unauthenticated**: `NIB_API_TOKEN` guards the API listener,
+not this one. The metric names alone report the number of plans, the model in
+use and cumulative LLM cost.
 
 Settings: [Configuration file](configuration.md#metrics) and [Environment
 variables](environment-variables.md#backend--metrics-and-logging).
@@ -34,8 +35,8 @@ request path. A request matching no route is labelled `unmatched`; a CORS
 preflight is labelled `preflight`.
 
 Duration buckets run to 1800 seconds, because the agent routes (`/chat`,
-`/messages`, `/messages/retry`, `/tool-results`) run under a 30-minute write
-deadline.
+`/messages`, `/messages/retry`, `/tool-results`, `POST
+/action-plan/stage-run`) run under a 30-minute write deadline.
 
 `/api/v1/dialogs/{id}/events` is an SSE stream: its duration is the lifetime of
 the subscription and its response size is every event delivered.
@@ -135,6 +136,14 @@ time policy refused an operator: a second request is rejected, not queued.
 `nib_stuck_runs_reconciled_total` above zero after a start means the previous
 process died mid-execution. Its `kind` is `action`, `fanout` or `code_fix`.
 
+The lease `kind` is `subagent` (an action run by nib's own execute sub-agent) or
+`container` (an agent-runner container: a `code` action or a chat-requested code
+fix). `nib_action_exec_runs_started_total` uses the same two values, and counts
+code fixes under `container`.
+
+A stage run (**Execute all**) has no metrics of its own. Each item it starts is
+counted as the single action it is.
+
 ## Agent containers
 
 | Metric | Type | Labels |
@@ -148,10 +157,19 @@ process died mid-execution. Its `kind` is `action`, `fanout` or `code_fix`.
 | `nib_agent_runner_turns` | histogram | — |
 | `nib_agent_runner_cost_usd_total` | counter | — |
 
+`entrypoint` is `run` for the `run_executor` tool and `run_action` for
+everything else — **Execute action**, a stage run's `code` items and code
+fixes.
+
 `nib_executor_run_duration_seconds` measures **launching** the container, not
 running it: the call returns as soon as the job is created, and the container
 reports its result by webhook. The working duration is
 `nib_agent_runner_run_duration_seconds`.
+
+`nib_agent_runner_webhooks_total{outcome}` is `accepted`, `unauthorized`,
+`bad_request` or `error`. `unauthorized` means the per-run token did not match
+the run the body names — typically a run launched before the webhook signing key
+changed.
 
 The webhook `status` is normalised to `success`, `failed`, `timeout`, `error`
 or `other`, because it arrives from a container over the network and any other

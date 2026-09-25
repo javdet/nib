@@ -18,9 +18,9 @@ The tool is meant to
 
 ```bash
 cp .env.example .env
-# set LLM_API_KEY in .env
+# in .env set LLM_API_KEY, and NIB_API_TOKEN to the output of: openssl rand -hex 32
 docker compose up -d
-# UI: http://localhost:8080
+# UI: http://localhost:8080 — sign in with the NIB_API_TOKEN value
 ```
 
 New to nib? [Getting started: your first plan](docs/tutorials/getting-started.md)
@@ -39,7 +39,8 @@ Full documentation is in [docs/](docs/README.md), in four parts:
   variable, API route, built-in tool, mode, executor setting and metric, and
   where state lives.
 - **[Explanation](docs/explanation/)** — the architecture, how a plan is
-  produced, and the reasoning behind nib's deliberate limits.
+  produced, how callers are authenticated, and the reasoning behind nib's
+  deliberate limits.
 
 Deployment on Kubernetes is documented with the chart, in
 [deploy/helm/nib/README.md](deploy/helm/nib/README.md). The agent container's
@@ -59,8 +60,19 @@ Work happens in several modes (the current mode is shown in the top right of the
 
 Details: [Modes](docs/reference/modes.md) · [How a plan is produced](docs/explanation/how-a-plan-is-produced.md)
 
+### Plans, execution and reports
+A plan's steps can be run one at a time, or a whole stage at once with **Execute all** on its
+header, each item starting after the one before it finishes. From the plan chat you can also ask
+for a code fix — a correction to what a code action produced — which runs in the same agent
+container as a planned `code` step. Pressing **Finish** has an agent write a report of the plan,
+shown on the plan page, and fold what the plan established into the knowledge-base collection named
+after its project (switchable on the Knowledgebase page, under Automatic updates).
+See [How a plan is produced](docs/explanation/how-a-plan-is-produced.md).
+
 ### LLM providers
-The backend talks to a single OpenAI-compatible endpoint — for both chat and embeddings.
+The backend talks to OpenAI-compatible endpoints. Chat completions and embeddings are configured
+separately, so a provider with no `/embeddings` route (DeepSeek, xAI Grok, Moonshot Kimi) can be
+paired with another for embeddings.
 Choosing a provider and moving between them: [How to switch the LLM provider](docs/how-to/switch-llm-provider.md).
 
 ### Knowledge base, rules and skills
@@ -74,6 +86,15 @@ switched on for every mode as soon as it is indexed; the set can then be narrowe
 anything taken out stays reachable through search.
 See [How to connect an MCP server](docs/how-to/connect-an-mcp-server.md) and
 [Modes, tools and the catalog](docs/explanation/modes-tools-and-the-catalog.md).
+
+### Access and secrets
+Every API route except health, version, sign-in and the agent-runner webhook requires
+`NIB_API_TOKEN` (at least 32 characters); the backend refuses to start without it unless
+`NIB_INSECURE_NO_AUTH=true`. The web UI asks for the token once and keeps a session cookie. Secrets are stored encrypted with `SECRETS_ENCRYPTION_KEY`,
+and each one is bound to the hosts it may be sent to, so an edit to `mcp.json` cannot send it
+anywhere else. The backend container runs as an unprivileged `nib` user, not root.
+See [Environment variables](docs/reference/environment-variables.md) and
+[How to keep tokens out of `mcp.json`](docs/how-to/keep-tokens-out-of-mcp-json.md).
 
 ### Executor
 Planned `code` steps can run in single-use agent containers, on a local Docker daemon or as
@@ -100,7 +121,7 @@ To release a new version:
    - `latest`
    - `<git-sha>`
 
-The backend exposes `GET /api/v1/version` and the UI shows the version at the bottom of the sidebar.
+The backend exposes `GET /api/v1/version` and the UI shows the version under Help → About Nib.
 
 ## Contributing
 

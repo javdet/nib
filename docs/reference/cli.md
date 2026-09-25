@@ -25,11 +25,18 @@ relative to the working directory.
 
 **Behaviour at startup**
 
-1. Loads and validates the configuration; any validation error is fatal.
-2. Applies `*.up.sql` migrations from `MIGRATIONS_PATH`, under a Postgres
-   advisory lock, recording each in `schema_migrations`.
-3. Seeds built-in skills and per-mode tool allow lists onto the data volume.
-4. Serves the API on `SERVER_HOST:SERVER_PORT` and, unless disabled, metrics on
+1. Loads and validates the configuration; any validation error is fatal. Refuses
+   to start without `NIB_API_TOKEN` unless `NIB_INSECURE_NO_AUTH=true`.
+2. Applies `*.up.sql` migrations from `MIGRATIONS_PATH` (default `migrations`),
+   under a Postgres advisory lock, recording each in `schema_migrations`.
+3. Reconciles the per-mode tool allow lists onto the data volume, and loads or
+   generates the webhook signing key (`{DATA_DIR}/.webhook-key`) — fatal when it
+   can be neither read nor created.
+4. Seeds built-in skills, and reconciles the detected host environment into the
+   `host*` prompt variables.
+5. Closes executions, fan-outs, code fixes and stage runs a previous process
+   left `running`.
+6. Serves the API on `SERVER_HOST:SERVER_PORT` and, unless disabled, metrics on
    a second listener.
 
 **Exit codes:** `0` on clean shutdown, `1` on any startup error.
@@ -64,6 +71,7 @@ arguments it reads standard input.
 | `-replace` | `false` | Delete existing chunks for the same `source_uri` before inserting. |
 | `-timeout` | `120s` | HTTP timeout for embedding requests. |
 | `-embeddings-base-url` | `$EMBEDDINGS_BASE_URL` | OpenAI-compatible API base URL. |
+| `-dimensions` | `$EMBEDDINGS_DIMENSIONS`, else `0` | Embedding width to request; `0` omits the parameter. Must match what the collection was ingested with. |
 | `-openrouter-base-url` | — | Deprecated alias for `-embeddings-base-url`. |
 | `-google-base-url` | `$GOOGLE_API_BASE_URL` | Generative Language API base. |
 | `-http-referer` | `$HTTP_REFERER` | OpenRouter attribution header. |
@@ -90,6 +98,8 @@ pgvector cosine search.
 | `-http-path` | `/mcp` | Endpoint path when `-transport=http`. |
 | `-http-stateless` | `false` | Run the streamable HTTP server without session tracking. |
 | `-embeddings-base-url` | `$EMBEDDINGS_BASE_URL` | OpenAI-compatible API base URL. |
+| `-dimensions` | `$EMBEDDINGS_DIMENSIONS`, else `0` | Embedding width to request; `0` omits the parameter. Must match what the collection was ingested with. |
+| `-openrouter-base-url` | — | Deprecated alias for `-embeddings-base-url`. |
 | `-google-base-url` | `$GOOGLE_API_BASE_URL` | Generative Language API base. |
 | `-http-referer` | `$HTTP_REFERER` | OpenRouter attribution header. |
 | `-app-title` | `$OPENROUTER_APP_TITLE` | OpenRouter attribution header. |

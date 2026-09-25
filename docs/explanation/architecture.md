@@ -32,18 +32,24 @@ C4Context
 
 Two things about this picture:
 
-**There is one LLM endpoint, not two.** The same base URL serves chat
-completions and embeddings. That is a real constraint rather than an
-implementation detail: it is why Anthropic cannot be used directly, since it
-serves no `/embeddings`, and why a provider switch can silently break knowledge
-search. Separating the two endpoints would be the prerequisite for supporting
-providers that serve only one — a change nobody has needed badly enough yet.
+**Completions and embeddings are two endpoints, not one.** By default the same
+base URL serves both, and most installs never separate them. They can be
+separated because several providers that serve chat completions — DeepSeek,
+xAI, Moonshot — serve no `/embeddings` at all, and knowledge search and the tool
+catalog both depend on embeddings. Under a single base URL a provider switch
+could silently break two subsystems that have nothing to do with the model doing
+the reasoning. See [LLM endpoints](llm-endpoints.md#why-embeddings-have-a-block-of-their-own).
 
 **The agent container is not nib.** It talks to the git provider itself, with
 its own credentials, on its own toolchain, and reports back over a webhook. It
 is the only part of the system that changes anything outside nib, and it is
 deliberately the part that is easiest to turn off — the executor defaults to
 disabled, and until it is configured nib plans work and hands the plan to you.
+
+It is also the one caller of nib's API that is not the operator. It cannot be
+given the operator's token — the agent inside can read its own environment — so
+each container is handed a token that vouches for its own run and nothing else.
+See [How nib authenticates callers](how-nib-authenticates-callers.md).
 
 ## What nib is made of
 
@@ -70,7 +76,7 @@ C4Container
   Rel(kb, db, "Queries chunk vectors", "SQL")
   Rel(backend, runtime, "Creates", "Docker socket / Kubernetes API")
   Rel(runtime, agent, "Runs")
-  Rel(agent, backend, "Reports its result", "Webhook, bearer token")
+  Rel(agent, backend, "Reports its result", "Webhook, per-run token")
 ```
 
 ### The backend is the whole application
@@ -122,8 +128,9 @@ join back to `chat_dialogs` has to tolerate a missing row.
 ### What state is *not* in Postgres
 
 A surprising amount: `mcp.json`, skills, rules, the prompt override, the tool
-allow lists, and every plan artifact — DAG, summary, action plan, report,
-fan-out progress — are files on a volume.
+allow lists, the executor and knowledge-base settings, and every plan
+artifact — DAG, summary, action plan and its side files, report, fan-out
+progress, the record of a chat-requested code fix — are files on a volume.
 
 The reason is editability. These are things an operator reads, diffs and edits
 by hand, sometimes with the application running. A file is a better format for
@@ -138,18 +145,24 @@ artifacts pointing at dialogs that are gone. Full inventory:
 ## What this architecture cannot do
 
 **It cannot scale horizontally.** The execution lease, the SSE broker, every
-lock and the plan-status refresh are all process-local, and the Helm chart pins
+lock (the stage-run slot and the per-collection knowledge-base lock among
+them) and the plan-status refresh are all process-local, and the Helm chart pins
 one backend replica. Adding a second would break all four at once — silently,
 in the case of the lease. This is the price of the single-process design above,
 and it is a real limit rather than a missing feature: making it multi-replica
 means moving the lease into Postgres and the broker onto something shared. See
 [One execution at a time](one-execution-at-a-time.md).
 
-**It has no authentication of its own.** Every API route except the agent-runner
-webhook is open to whatever can reach the port. The design assumes nib sits on a
-trusted network or behind your own authenticating proxy. The metrics listener is
-separate and equally open — which is why it is on its own port, unreachable
-through the ingress and the frontend nginx, both of which route only `/api`.
+**It has one credential, not users.** Every API route except health, version,
+login and the agent-runner webhook requires `NIB_API_TOKEN`, and the backend
+refuses to start without one unless told explicitly to run open. But it is a
+single shared secret: whoever holds it can do everything, and nib cannot tell
+two operators apart or give one of them less. Anything finer — per-user
+identity, roles, an audit trail of who pressed what — belongs in an
+authenticating proxy in front of it. See [How nib authenticates
+callers](how-nib-authenticates-callers.md). The metrics listener is separate
+and open — which is why it is on its own port, unreachable through the ingress
+and the frontend nginx, both of which route only `/api`.
 
 **It has no queue.** A second execution request is refused, not queued. That is
 a policy choice as much as an architectural one, and it is argued in its own
@@ -159,7 +172,8 @@ page.
 
 [`docs/archdecision.md`](../archdecision.md) is an early note listing NATS, S3
 and a multi-provider LLM abstraction. None of the three exists: there is no
-message queue, no object storage, and exactly one OpenAI-compatible client.
+message queue, no object storage, and exactly one OpenAI-compatible client —
+pointed, at most, at two hosts.
 Read it as a record of what was considered, not as a description of what runs.
 
 ## See also

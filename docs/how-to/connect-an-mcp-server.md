@@ -36,6 +36,32 @@ Never write a token into this file literally — see [How to keep tokens out of
 `mcp.json`](keep-tokens-out-of-mcp-json.md). A referenced secret must list the
 server's host, `grafana-mcp` here, among its allowed hosts.
 
+## Register a server with a static token instead
+
+The second source of servers is a *token connection*: a URL and an API token
+stored in Postgres rather than in `mcp.json`. There is no page for these; they
+are managed through the API:
+
+```bash
+curl -X POST http://localhost:8081/api/v1/mcp/connections \
+  -H "Authorization: Bearer $NIB_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"type": "custom", "name": "grafana", "serverUrl": "https://grafana-mcp.internal/mcp", "apiToken": "…"}'
+```
+
+The token is sent as `Authorization: Bearer`, or as Basic auth for `"type":
+"jira"`. Both sources feed the same tool catalog.
+
+There is **no OAuth flow**. A server that needs OAuth has to be reached with a
+static token. A connection left over from the OAuth flow an older release had
+keeps working with the access token it holds until that expires — nothing
+refreshes it — and then has to be re-added as a token connection.
+
+Moving a connection's `serverUrl` to another origin (scheme, host or port)
+requires sending a new `apiToken` with it. A blank token keeps the stored one
+only while the origin stays the same, so a stored token is never sent to a
+server it was not issued for.
+
 ## Use a stdio-only server
 
 Put an HTTP bridge in front of it and register the bridge's URL. A `command`/
@@ -77,3 +103,4 @@ removes. Putting a tool back is a move you make on the page.
 - [How to keep tokens out of `mcp.json`](keep-tokens-out-of-mcp-json.md)
 - [Modes, tools and the catalog](../explanation/modes-tools-and-the-catalog.md) — why a tool may not be offered
 - [HTTP API](../reference/http-api.md#mcp-servers)
+- [HTTP API: MCP connections](../reference/http-api.md#mcp-connections)

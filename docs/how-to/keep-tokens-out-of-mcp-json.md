@@ -17,6 +17,16 @@ A secret with no allowed hosts cannot be used from `mcp.json` at all. That is
 the right state for a secret meant for something else, such as the executor's
 git token.
 
+Entries are bare hostnames or IP addresses, compared exactly with the host of
+the server's URL — no wildcards, so `*.internal` is refused and
+`grafana-mcp.internal` does not cover `api.internal`.
+
+On an install that upgraded from a release before allowed hosts existed, each
+secret the `mcp.json` of the time referenced was bound once, at the first start,
+to the hosts of the servers referencing it. Nothing binds a host automatically
+after that: a server added later, or a secret the file did not reference then,
+needs its host added here by hand.
+
 This needs `SECRETS_ENCRYPTION_KEY` set. Without it, secrets can be neither
 written nor read, and every `${NAME}` stays unresolved. If you have not set one
 yet:
@@ -82,9 +92,10 @@ environment](../explanation/secrets-never-come-from-the-environment.md).
 
 **Tools → MCP Servers → the server → Tools.**
 
-A list of tools means the token resolved and the server accepted it. `may not
-be sent to host` means the server's host is missing from the secret's allowed
-hosts. A transport error means the token resolved but the server did not accept
+A list of tools means the token resolved and the server accepted it. `secret
+is not allowed for this host: ${NAME} may not be sent to host …` means the
+server's host is missing from the secret's allowed hosts. `variable reference
+in server URL host` means a `${NAME}` sits in the URL's scheme, host or port. A transport error means the token resolved but the server did not accept
 it, or could not be reached — and the error will not show the value, because
 resolved secret values are stripped from every MCP transport error before it
 reaches you. Confirm the secret exists under Variables → Secrets, with exactly

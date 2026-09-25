@@ -1,14 +1,14 @@
 # How to run planned actions in containers
 
-Until the executor is configured, **Execute action** is greyed out on every
-`code` step: nib will plan the work and then hand it to you. Configuring the
-executor is what lets it clone the repository, make the change and open a pull
-request itself.
+Until the executor is configured, nib plans `code` steps and hands them to
+you: pressing **Execute action** on one opens the executor settings instead of
+running it. Configuring the executor is what lets it clone the repository,
+make the change and open a pull request itself.
 
 The executor is operator-configured and never detected. Nothing turns itself on
 because Docker happens to be reachable.
 
-Every field is in **Settings → Executor**, and full field meanings are in
+Every field is in **Tools → Executor**, and full field meanings are in
 [Executor settings](../reference/executor.md).
 
 ## Decide where containers run
@@ -30,9 +30,11 @@ run, and the reverse.
 
 1. Make sure the backend can reach a Docker daemon. In the shipped Compose
    stack, the socket is already mounted.
-2. **Settings → Executor → Type → Local**.
+2. **Tools → Executor → Type → Local**.
 3. **Image** — leave the default `javdet/nib-agent:latest` unless you publish
-   your own.
+   your own. It is pulled on the first action if the host does not have it
+   yet, and reused from then on — see [Refresh the agent
+   image](#refresh-the-agent-image).
 4. **Agent** — `claude-code` or `codex`.
 5. Set `EXECUTOR_LLM_API_KEY` and `EXECUTOR_LLM_MODEL` in `.env`, and restart
    the backend. These are the agent's own credentials, not the backend's: the
@@ -48,7 +50,7 @@ and opens the pull request with is **selected by name** from Variables →
 Secrets. There is no environment-variable fallback.
 
 1. **Variables → Secrets → Add** — store the token.
-2. **Settings → Executor → Git API token** — select it.
+2. **Tools → Executor → Git API token** — select it.
 
 A blank selection is accepted at save time and refused when an action is
 launched, with `executor git API token secret is not configured; select it in
@@ -76,7 +78,7 @@ authenticated with a token.
 
 Each `code` action becomes a Kubernetes Job.
 
-1. **Settings → Executor → Type → Remote**, **Platform → Kubernetes**.
+1. **Tools → Executor → Type → Remote**, **Platform → Kubernetes**.
 2. **Cluster access:**
    - *Local Config* — uses `~/.kube/config` or `KUBECONFIG`, optionally a named
      context, and falls back to the in-cluster service account mount when no
@@ -112,16 +114,72 @@ see [One execution at a
 time](../explanation/one-execution-at-a-time.md).
 
 When the Job finishes, the agent posts its result to the webhook and the plan
-chat updates. No further backend configuration is needed for that callback.
+chat updates. No further backend configuration is needed for that callback:
+each container is handed a token that authenticates its own run and no other,
+signed with `AGENT_WEBHOOK_TOKEN` or, when that is empty, a key the backend
+generates into `{DATA_DIR}/.webhook-key`. Changing or deleting that key
+orphans any run still in flight.
+
+### Watch it run
+
+On a **local** executor, the row of a running `code` action has a **View
+container logs** button: what the agent has written so far, refreshed every 10
+seconds while the dialog is open. The logs exist only while the run is running —
+afterwards, what the agent reported is in the action's execute chat. A force
+stop removes the container and its logs with it. A remote Kubernetes executor
+has no logs button; read the Job's pod with `kubectl logs` instead.
+
+## Run a whole stage
+
+**Execute all** on a stage header, or on the rollback's, runs the stage's
+unticked steps and then its checks, one at a time, each started only after the
+one before it has finished. Items you have already ticked are skipped.
+
+It stops at the first item that does not end `done` — a failure, a question the
+action needs answered, a cancellation — and says why in the plan chat. It also
+stops if you press **Stop run**, force-stop the execution, reorder the stage,
+change its shape (its title or how many steps and checks it has; rewording an
+item does not count), replace the plan, or restart the backend. Fix what
+stopped it and press **Execute all** again: the ticked items are skipped, so it
+picks up where it left off.
+
+Only one stage run goes at a time, across every plan, and it is refused while
+anything else holds the execution slot.
+
+## Fix what a code action produced
+
+A `code` action that pushed the wrong change needs no new plan row. Say what is
+wrong in the plan chat: the orchestrator launches a fix in the same agent image,
+through `run_subagent` with `name: "code"`. Name the branch the action pushed to
+and the fix continues it — the container checks out the existing branch and
+reuses the pull request already open on it. Without a branch it starts
+`nib/fix-{dialog}`. A fix takes the execution slot like an action does.
+
+## Refresh the agent image
+
+On a local executor the image is pulled only when the host's Docker daemon does
+not have it. A moving tag such as `latest` stays on whatever was pulled first,
+so to take a newer build:
+
+```bash
+docker pull javdet/nib-agent:latest
+```
+
+A registry that refuses the pull fails the action with `failed to pull executor
+image: …` followed by the registry's own reason — usually a missing `docker
+login` for a private image. On Kubernetes, the kubelet pulls under the Job's
+`imagePullPolicy`.
 
 ## When an action will not start
 
 | Message | Fix |
 |---|---|
 | `executor is disabled; choose an executor type in executor settings` | Type is still Disabled. |
-| `executor git API token secret is not configured…` | Select the secret under Settings → Executor. |
+| `executor git API token secret is not configured…` | Select the secret under Tools → Executor. |
 | `executor secrets are not fully configured…` | One of `EXECUTOR_LLM_API_KEY`, the git token selection, or the model is missing. |
 | `executor image is required` | Set an image. |
+| `failed to pull executor image: …` | The host's Docker daemon could not pull it; the rest of the message is the registry's reason. |
+| `… is already running (…, started … ago). Only one execution runs at a time…` | Something else holds the execution slot, and the message names it. Wait, or force-stop it. |
 | `kubernetes host is required` / `kubernetes token secret is required` | Token auth needs both. |
 | `repository URL is required` / `base branch is required` | The action itself is incomplete; fix it in the plan. |
 
