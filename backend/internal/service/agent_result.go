@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/textutil"
-	"github.com/google/uuid"
 )
 
 const agentRunMessageNamePrefix = "agent-run:"

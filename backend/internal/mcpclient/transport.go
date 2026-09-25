@@ -10,22 +10,31 @@ const (
 	AuthSchemeBasic  AuthScheme = "basic"
 )
 
-// authRoundTripper injects an Authorization header into every outgoing request.
+// authRoundTripper injects an Authorization header into every outgoing request
+// addressed to the connection's own origin.
 type authRoundTripper struct {
 	scheme   AuthScheme
 	token    string
+	origin   origin
+	originOK bool
 	delegate http.RoundTripper
 }
 
-func newAuthRoundTripper(scheme AuthScheme, token string) *authRoundTripper {
+func newAuthRoundTripper(endpoint string, scheme AuthScheme, token string) *authRoundTripper {
+	o, ok := parseOrigin(endpoint)
 	return &authRoundTripper{
 		scheme:   scheme,
 		token:    token,
+		origin:   o,
+		originOK: ok,
 		delegate: http.DefaultTransport,
 	}
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !forOrigin(req, rt.origin, rt.originOK) {
+		return rt.delegate.RoundTrip(req)
+	}
 	r := req.Clone(req.Context())
 	switch rt.scheme {
 	case AuthSchemeBasic:

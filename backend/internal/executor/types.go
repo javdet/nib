@@ -24,7 +24,7 @@ type KubernetesAuthMode string
 
 const (
 	KubernetesAuthModeLocalConfig KubernetesAuthMode = "local_config"
-	KubernetesAuthModeToken     KubernetesAuthMode = "token"
+	KubernetesAuthModeToken       KubernetesAuthMode = "token"
 )
 
 // Agent identifies which agent runtime image/entrypoint to use.
@@ -228,18 +228,18 @@ type Config struct {
 	// AgentMCPConfig is the ConfigMap name for MCP configuration.
 	AgentMCPConfig string `json:"agentMCPConfig"`
 	// JobTTLSeconds is how long finished jobs remain before garbage collection.
-	JobTTLSeconds int `json:"jobTTLSeconds"`
-	Agent            Agent    `json:"agent"`
-	AuthType         AuthType `json:"authType"`
-	TokenSecretName  string   `json:"tokenSecretName"`
+	JobTTLSeconds   int      `json:"jobTTLSeconds"`
+	Agent           Agent    `json:"agent"`
+	AuthType        AuthType `json:"authType"`
+	TokenSecretName string   `json:"tokenSecretName"`
 	// GitTokenSecretName references a prompt_secrets entry holding the git API
 	// token the agent container clones, pushes and opens the pull/merge request
 	// with. Optional only on remote Kubernetes, where the agent Job takes its
 	// credentials from AgentSecretName instead.
 	GitTokenSecretName string `json:"gitTokenSecretName"`
-	BaseURL          string   `json:"baseURL"`
-	Image            string   `json:"image"`
-	LLMModel         string   `json:"llmModel"`
+	BaseURL            string `json:"baseURL"`
+	Image              string `json:"image"`
+	LLMModel           string `json:"llmModel"`
 	// WebhookBaseURL is the backend origin the agent container calls back on
 	// (scheme + host + port, no path). WEBHOOK_URL is derived from it at launch.
 	WebhookBaseURL string `json:"webhookBaseURL"`

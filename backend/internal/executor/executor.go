@@ -12,10 +12,10 @@ import (
 
 // Service orchestrates agent-runner container launches.
 type Service struct {
-	config         *ConfigStore
-	secrets        Secrets
-	secretMu       sync.RWMutex
-	secretsLookup  SecretLookup
+	config        *ConfigStore
+	secrets       Secrets
+	secretMu      sync.RWMutex
+	secretsLookup SecretLookup
 }
 
 // NewService creates an executor Service.

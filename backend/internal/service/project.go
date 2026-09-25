@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 // ProjectService implements business logic for projects.

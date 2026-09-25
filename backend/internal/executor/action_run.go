@@ -44,7 +44,7 @@ type ActionRunRequest struct {
 	GitToken string
 	// LLMToken is passed as CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY,
 	// depending on the configured auth type.
-	LLMToken string
+	LLMToken    string
 	GitUsername string
 	GitEmail    string
 }

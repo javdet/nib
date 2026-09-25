@@ -13,13 +13,13 @@ import (
 const jsonIndent = "  "
 
 const (
-	defaultServiceAccount    = "default"
-	defaultNamespace         = "default"
-	defaultAgentLimitCPU     = "1"
-	defaultAgentLimitMemory  = "1Gi"
-	defaultAgentRequestCPU   = "1"
+	defaultServiceAccount     = "default"
+	defaultNamespace          = "default"
+	defaultAgentLimitCPU      = "1"
+	defaultAgentLimitMemory   = "1Gi"
+	defaultAgentRequestCPU    = "1"
 	defaultAgentRequestMemory = "256Mi"
-	defaultJobTTLSeconds     = 3600
+	defaultJobTTLSeconds      = 3600
 )
 
 // DefaultAgentImage is the agent-runner image used when the executor is
@@ -300,32 +300,32 @@ func (s *ConfigStore) readConfigLocked() (Config, error) {
 
 // rawConfig unmarshals executor.json, accepting the legacy "system" field.
 type rawConfig struct {
-	Type                      Type               `json:"type"`
-	Platform                  Platform           `json:"platform"`
-	System                    Platform           `json:"system"`
-	KubernetesAuthMode        KubernetesAuthMode `json:"kubernetesAuthMode"`
-	KubernetesContext         string             `json:"kubernetesContext"`
-	KubernetesHost            string             `json:"kubernetesHost"`
-	KubernetesTokenSecretName string             `json:"kubernetesTokenSecretName"`
-	KubernetesCACert          string             `json:"kubernetesCACert"`
-	KubernetesInsecureSkipTLSVerify bool         `json:"kubernetesInsecureSkipTLSVerify"`
-	Namespace                 string             `json:"namespace"`
-	ServiceAccount            string             `json:"serviceAccount"`
-	AgentSecretName           string             `json:"agentSecretName"`
-	AgentLimitCPU             string             `json:"agentLimitCPU"`
-	AgentLimitMemory          string             `json:"agentLimitMemory"`
-	AgentRequestCPU           string             `json:"agentRequestCPU"`
-	AgentRequestMemory        string             `json:"agentRequestMemory"`
-	AgentMCPConfig            string             `json:"agentMCPConfig"`
-	JobTTLSeconds             int                `json:"jobTTLSeconds"`
-	Agent                     Agent              `json:"agent"`
-	AuthType                  AuthType           `json:"authType"`
-	TokenSecretName           string             `json:"tokenSecretName"`
-	GitTokenSecretName        string             `json:"gitTokenSecretName"`
-	BaseURL                   string             `json:"baseURL"`
-	Image                     string             `json:"image"`
-	LLMModel                  string             `json:"llmModel"`
-	WebhookBaseURL            string             `json:"webhookBaseURL"`
+	Type                            Type               `json:"type"`
+	Platform                        Platform           `json:"platform"`
+	System                          Platform           `json:"system"`
+	KubernetesAuthMode              KubernetesAuthMode `json:"kubernetesAuthMode"`
+	KubernetesContext               string             `json:"kubernetesContext"`
+	KubernetesHost                  string             `json:"kubernetesHost"`
+	KubernetesTokenSecretName       string             `json:"kubernetesTokenSecretName"`
+	KubernetesCACert                string             `json:"kubernetesCACert"`
+	KubernetesInsecureSkipTLSVerify bool               `json:"kubernetesInsecureSkipTLSVerify"`
+	Namespace                       string             `json:"namespace"`
+	ServiceAccount                  string             `json:"serviceAccount"`
+	AgentSecretName                 string             `json:"agentSecretName"`
+	AgentLimitCPU                   string             `json:"agentLimitCPU"`
+	AgentLimitMemory                string             `json:"agentLimitMemory"`
+	AgentRequestCPU                 string             `json:"agentRequestCPU"`
+	AgentRequestMemory              string             `json:"agentRequestMemory"`
+	AgentMCPConfig                  string             `json:"agentMCPConfig"`
+	JobTTLSeconds                   int                `json:"jobTTLSeconds"`
+	Agent                           Agent              `json:"agent"`
+	AuthType                        AuthType           `json:"authType"`
+	TokenSecretName                 string             `json:"tokenSecretName"`
+	GitTokenSecretName              string             `json:"gitTokenSecretName"`
+	BaseURL                         string             `json:"baseURL"`
+	Image                           string             `json:"image"`
+	LLMModel                        string             `json:"llmModel"`
+	WebhookBaseURL                  string             `json:"webhookBaseURL"`
 }
 
 func parseConfig(content string) (Config, error) {
@@ -334,31 +334,31 @@ func parseConfig(content string) (Config, error) {
 		return Config{}, fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 	}
 	cfg := Config{
-		Type:                      raw.Type,
-		Platform:                  raw.Platform,
-		KubernetesAuthMode:        raw.KubernetesAuthMode,
-		KubernetesContext:         raw.KubernetesContext,
-		KubernetesHost:            raw.KubernetesHost,
-		KubernetesTokenSecretName: raw.KubernetesTokenSecretName,
-		KubernetesCACert:          raw.KubernetesCACert,
+		Type:                            raw.Type,
+		Platform:                        raw.Platform,
+		KubernetesAuthMode:              raw.KubernetesAuthMode,
+		KubernetesContext:               raw.KubernetesContext,
+		KubernetesHost:                  raw.KubernetesHost,
+		KubernetesTokenSecretName:       raw.KubernetesTokenSecretName,
+		KubernetesCACert:                raw.KubernetesCACert,
 		KubernetesInsecureSkipTLSVerify: raw.KubernetesInsecureSkipTLSVerify,
-		Namespace:                 raw.Namespace,
-		ServiceAccount:            raw.ServiceAccount,
-		AgentSecretName:           raw.AgentSecretName,
-		AgentLimitCPU:             raw.AgentLimitCPU,
-		AgentLimitMemory:          raw.AgentLimitMemory,
-		AgentRequestCPU:           raw.AgentRequestCPU,
-		AgentRequestMemory:        raw.AgentRequestMemory,
-		AgentMCPConfig:            raw.AgentMCPConfig,
-		JobTTLSeconds:             raw.JobTTLSeconds,
-		Agent:                     raw.Agent,
-		AuthType:                  raw.AuthType,
-		TokenSecretName:           raw.TokenSecretName,
-		GitTokenSecretName:        raw.GitTokenSecretName,
-		BaseURL:                   raw.BaseURL,
-		Image:                     raw.Image,
-		LLMModel:                  raw.LLMModel,
-		WebhookBaseURL:            raw.WebhookBaseURL,
+		Namespace:                       raw.Namespace,
+		ServiceAccount:                  raw.ServiceAccount,
+		AgentSecretName:                 raw.AgentSecretName,
+		AgentLimitCPU:                   raw.AgentLimitCPU,
+		AgentLimitMemory:                raw.AgentLimitMemory,
+		AgentRequestCPU:                 raw.AgentRequestCPU,
+		AgentRequestMemory:              raw.AgentRequestMemory,
+		AgentMCPConfig:                  raw.AgentMCPConfig,
+		JobTTLSeconds:                   raw.JobTTLSeconds,
+		Agent:                           raw.Agent,
+		AuthType:                        raw.AuthType,
+		TokenSecretName:                 raw.TokenSecretName,
+		GitTokenSecretName:              raw.GitTokenSecretName,
+		BaseURL:                         raw.BaseURL,
+		Image:                           raw.Image,
+		LLMModel:                        raw.LLMModel,
+		WebhookBaseURL:                  raw.WebhookBaseURL,
 	}
 	if cfg.Platform == "" && raw.System != "" {
 		cfg.Platform = raw.System

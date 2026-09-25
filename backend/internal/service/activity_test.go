@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 func TestActivityBrokerFanOut(t *testing.T) {

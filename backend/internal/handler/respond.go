@@ -66,7 +66,10 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, mcpconfig.ErrInvalidJSON):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, mcpconfig.ErrUnresolvedVariable):
+	case errors.Is(err, mcpconfig.ErrUnresolvedVariable),
+		errors.Is(err, mcpconfig.ErrSecretHostNotAllowed),
+		errors.Is(err, mcpconfig.ErrSecretInURLHost),
+		errors.Is(err, mcpconfig.ErrInvalidAllowedHost):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, mcpconfig.ErrStdioNotSupported):
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
@@ -135,6 +138,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrInvalidVariableScope),
 		errors.Is(err, service.ErrInvalidVariableValue),
 		errors.Is(err, service.ErrSecretsEncryptionNotConfigured),
+		errors.Is(err, service.ErrSecretHostsNeedValue),
+		errors.Is(err, service.ErrMCPTokenRequired),
 		errors.Is(err, service.ErrInvalidActionPlanScope),
 		errors.Is(err, service.ErrActionPlanIndexOutOfRange),
 		errors.Is(err, service.ErrActionNotFound),

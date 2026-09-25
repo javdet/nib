@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/shlex"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/textutil"
-	"github.com/google/shlex"
 )
 
 const (
@@ -67,9 +67,9 @@ func ExecuteCommandToolDef() llm.ToolDef {
 
 // executeCommandResult is the JSON payload returned to the LLM.
 type executeCommandResult struct {
-	ExitCode          int    `json:"exit_code"`
-	Output            string `json:"output"`
-	CommandNotFound   bool   `json:"command_not_found"`
+	ExitCode        int    `json:"exit_code"`
+	Output          string `json:"output"`
+	CommandNotFound bool   `json:"command_not_found"`
 }
 
 // ExecuteCommand splits command into argv, runs it without a shell, and returns JSON result.

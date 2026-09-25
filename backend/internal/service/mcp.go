@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 // ErrMCPConnectionUnavailable marks a live MCP session that could not be
@@ -23,6 +24,11 @@ var ErrMCPConnectionUnavailable = errors.New("mcp connection unavailable")
 // ErrInvalidMCPMetadata marks a metadata field that is present but is not a JSON
 // object, so it cannot be stored in a column every reader treats as one.
 var ErrInvalidMCPMetadata = errors.New("mcp connection metadata must be a JSON object")
+
+// ErrMCPTokenRequired is returned when a connection is moved to another origin
+// without a new token. The stored token was issued for the old server; sending
+// it to whatever URL an update names would hand it to that host.
+var ErrMCPTokenRequired = errors.New("a new API token is required when the server URL moves to another origin")
 
 // normalizeMCPMetadata reduces the shapes a metadata field arrives in to the two
 // the column allows.
@@ -116,10 +122,30 @@ func (s *MCPService) CreateConnectionWithToken(ctx context.Context, connType, na
 
 // UpdateConnection updates an existing MCP connection's name, server URL, API token, and metadata.
 // If the API token changed, it reconnects the MCP session with the new credentials.
+//
+// A blank token keeps the stored one only while the URL stays on the same
+// origin (scheme, host and port); moving elsewhere takes a new token.
 func (s *MCPService) UpdateConnection(ctx context.Context, id uuid.UUID, name, serverURL, apiToken string, metadata json.RawMessage) (domain.MCPConnection, error) {
 	metadata, err := normalizeMCPMetadata(metadata)
 	if err != nil {
 		return domain.MCPConnection{}, err
+	}
+
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return domain.MCPConnection{}, fmt.Errorf("get connection: %w", err)
+	}
+	if !mcpclient.SameOrigin(existing.ServerURL, serverURL) {
+		switch {
+		case existing.AuthMethod == "oauth2":
+			// The session of an OAuth row authenticates with its access token,
+			// which an update cannot replace, so a new token would not help.
+			return domain.MCPConnection{}, fmt.Errorf(
+				"%w: a connection left over from OAuth cannot move to another server — add a new token connection instead",
+				ErrMCPTokenRequired)
+		case strings.TrimSpace(apiToken) == "":
+			return domain.MCPConnection{}, ErrMCPTokenRequired
+		}
 	}
 
 	conn := domain.MCPConnection{

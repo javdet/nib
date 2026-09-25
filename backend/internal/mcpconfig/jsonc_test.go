@@ -36,19 +36,19 @@ func TestStripJSONComments(t *testing.T) {
 }`,
 		},
 		{
-			name: "url with slashes preserved",
+			name:  "url with slashes preserved",
 			input: `{"url": "https://mcp.atlassian.com/v1/mcp"}`,
-			want: `{"url": "https://mcp.atlassian.com/v1/mcp"}`,
+			want:  `{"url": "https://mcp.atlassian.com/v1/mcp"}`,
 		},
 		{
-			name: "slashes inside string preserved",
+			name:  "slashes inside string preserved",
 			input: `{"note": "see // not a comment /* also not */"}`,
-			want: `{"note": "see // not a comment /* also not */"}`,
+			want:  `{"note": "see // not a comment /* also not */"}`,
 		},
 		{
-			name: "escaped quote inside string",
+			name:  "escaped quote inside string",
 			input: `{"note": "value with \" quote"}`,
-			want: `{"note": "value with \" quote"}`,
+			want:  `{"note": "value with \" quote"}`,
 		},
 	}
 

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 type mapDialogRepo struct {
@@ -278,11 +278,11 @@ func TestAppendAgentResultAttachesPRAndIsIdempotent(t *testing.T) {
 	}
 
 	res := AgentRunResult{
-		Status:   "success",
-		Result:   "done",
-		ChatID:   execID.String(),
-		JobName:  jobName,
-		PRURL:    prURL,
+		Status:  "success",
+		Result:  "done",
+		ChatID:  execID.String(),
+		JobName: jobName,
+		PRURL:   prURL,
 	}
 
 	_, err := svc.AppendAgentResult(context.Background(), execID, res)

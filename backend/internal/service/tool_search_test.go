@@ -10,17 +10,17 @@ import (
 )
 
 type fakeCatalogSearcher struct {
-	gotQuery           string
-	gotQueryEmbedding  []float32
-	gotCategories      []string
-	gotLimit           int
-	gotScope           toolcatalog.SearchScope
-	result             toolcatalog.SearchResult
-	err                error
-	gotLookupName      string
-	lookupTool         toolcatalog.Tool
-	lookupFound        bool
-	lookupErr          error
+	gotQuery          string
+	gotQueryEmbedding []float32
+	gotCategories     []string
+	gotLimit          int
+	gotScope          toolcatalog.SearchScope
+	result            toolcatalog.SearchResult
+	err               error
+	gotLookupName     string
+	lookupTool        toolcatalog.Tool
+	lookupFound       bool
+	lookupErr         error
 }
 
 func (f *fakeCatalogSearcher) Search(_ context.Context, query string, queryEmbedding []float32, categories []string, limit int, scope toolcatalog.SearchScope) (toolcatalog.SearchResult, error) {

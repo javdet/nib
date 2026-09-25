@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/llm"
-	"github.com/google/uuid"
 )
 
 const CreateActionPlanToolName = "create_action_plan"
@@ -460,4 +460,3 @@ func (s *ChatService) WriteActionPlanRuns(dialogID uuid.UUID, runs map[string]st
 	path := actionPlanRunsPath(s.actionPlansDir, dialogID)
 	return writeActionPlanFile(path, data)
 }
-

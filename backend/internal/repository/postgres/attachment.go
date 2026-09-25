@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 var _ repository.AttachmentRepository = (*AttachmentRepo)(nil)

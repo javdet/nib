@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/javdet/nib/internal/llm"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/llm"
 )
 
 const CreateTableToolName = "create_table"
@@ -40,7 +40,7 @@ var createTableParameters = json.RawMessage(`{
 // CreateTableToolDef returns the LLM tool definition for rendering a table in chat.
 func CreateTableToolDef() llm.ToolDef {
 	return llm.ToolDef{
-		Name: CreateTableToolName,
+		Name:        CreateTableToolName,
 		Description: "Display a formatted table to the user in the chat. Use for tabular data, comparisons, or board layouts (e.g. Jira columns like To Do, In Progress, Test, Done with task names in the matching column). Do not repeat the table as plain text in your reply.",
 		Parameters:  createTableParameters,
 	}

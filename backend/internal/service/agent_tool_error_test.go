@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
-	"github.com/google/uuid"
 )
 
 func TestRepairOrphanToolCalls(t *testing.T) {

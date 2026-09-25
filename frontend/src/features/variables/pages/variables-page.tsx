@@ -342,6 +342,13 @@ export function VariablesPage() {
 														secret.scopeName,
 													)}
 												</p>
+												{secret.scope === 'global' && (
+													<p className="mt-0.5 break-all pl-6 text-xs text-muted-foreground">
+														{secret.allowedHosts?.length
+															? `Hosts: ${secret.allowedHosts.join(', ')}`
+															: 'Not usable from mcp.json'}
+													</p>
+												)}
 											</div>
 											<div className="ml-2 flex shrink-0 gap-1">
 												<IconButton

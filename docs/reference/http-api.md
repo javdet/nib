@@ -203,8 +203,8 @@ the HTTP API never lists or returns them.
 |---|---|---|
 | `GET` `POST` | `/variables` | Prompt variables. |
 | `GET` `PUT` `DELETE` | `/variables/{id}` | |
-| `GET` `POST` | `/secrets` | Encrypted secrets. `GET` returns names, never values. |
-| `PUT` `DELETE` | `/secrets/{id}` | |
+| `GET` `POST` | `/secrets` | Encrypted secrets. `GET` returns names and `allowedHosts`, never values. |
+| `PUT` `DELETE` | `/secrets/{id}` | A blank `value` keeps the stored one; adding to `allowedHosts` then fails with 400. An absent `allowedHosts` keeps the list. |
 | `GET` `PUT` | `/company` | Company profile used in prompts. |
 
 ## Tools
@@ -237,7 +237,7 @@ Remote servers registered by URL and API token, stored in Postgres rather than `
 | Method | Path | Meaning |
 |---|---|---|
 | `GET` `POST` | `/mcp/connections` | |
-| `PUT` `DELETE` | `/mcp/connections/{id}` | |
+| `PUT` `DELETE` | `/mcp/connections/{id}` | A blank `apiToken` keeps the stored one only while `serverUrl` stays on the same origin; otherwise 400. |
 | `GET` | `/mcp/connections/{id}/tools` | |
 | `POST` | `/mcp/connections/{id}/tools/{toolName}` | Call one tool directly. |
 

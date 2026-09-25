@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/systemprompts"
 )
 
 // SystemPromptsHandler exposes HTTP endpoints for reading system prompts and for

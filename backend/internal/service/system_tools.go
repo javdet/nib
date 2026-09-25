@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/javdet/nib/internal/mode"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/mode"
 )
 
 // systemToolsDialogID is a non-nil placeholder so dialog-scoped tool definitions

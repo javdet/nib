@@ -11,6 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import {
+	addsAllowedHost,
+	parseAllowedHosts,
+} from '@/features/secrets/lib/allowed-hosts'
 import type { VariableKind } from '../api/variables'
 
 export interface KeyValueInput {
@@ -20,6 +24,7 @@ export interface KeyValueInput {
 	description: string
 	value: string
 	kind?: VariableKind
+	allowedHosts?: string[]
 }
 
 interface KeyValueDialogProps {
@@ -70,6 +75,7 @@ export function KeyValueDialog({
 	initial,
 }: KeyValueDialogProps) {
 	const [draft, setDraft] = useState<KeyValueInput>(emptyInput)
+	const [hostsText, setHostsText] = useState('')
 	const isEditing = !!initial
 	const label = kind === 'secret' ? 'secret' : 'variable'
 	const isList = kind === 'variable' && draft.kind === 'list'
@@ -88,13 +94,25 @@ export function KeyValueDialog({
 						}
 					: emptyInput,
 			)
+			setHostsText((initial?.allowedHosts ?? []).join('\n'))
 		}
 	}, [open, initial, kind, isEditing])
+
+	const isSecret = kind === 'secret'
+	const allowedHosts = parseAllowedHosts(hostsText)
+	// Adding a host widens where mcp.json may send the value, so the backend
+	// takes it only together with the value; removing one needs nothing.
+	const hostsNeedValue =
+		isSecret &&
+		isEditing &&
+		(draft.value?.trim() ?? '') === '' &&
+		addsAllowedHost(initial?.allowedHosts ?? [], allowedHosts)
 
 	function handleSave() {
 		const trimmedScope = draft.scope?.trim() || 'global'
 		onSave({
 			...draft,
+			...(isSecret ? { allowedHosts } : {}),
 			scope: trimmedScope,
 			scopeName:
 				trimmedScope === 'global'
@@ -105,11 +123,14 @@ export function KeyValueDialog({
 
 	const scope = draft.scope?.trim() || 'global'
 	const needsScopeName = scope !== 'global'
+	// ${NAME} in mcp.json reads the global scope only.
+	const showHosts = isSecret && scope === 'global'
 
 	const canSave =
 		draft.name.trim() !== '' &&
 		(!needsScopeName || (draft.scopeName?.trim() ?? '') !== '') &&
-		(isEditing || kind === 'secret' || isList || (draft.value?.trim() ?? '') !== '')
+		(isEditing || kind === 'secret' || isList || (draft.value?.trim() ?? '') !== '') &&
+		!hostsNeedValue
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -221,6 +242,29 @@ export function KeyValueDialog({
 							}
 						/>
 					</div>
+					{showHosts && (
+						<div className="space-y-2">
+							<Label htmlFor="secret-allowed-hosts">Allowed hosts</Label>
+							<Textarea
+								id="secret-allowed-hosts"
+								rows={3}
+								value={hostsText}
+								placeholder="api.example.com"
+								onChange={(e) => setHostsText(e.target.value)}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Hosts an mcp.json server may send this secret to through{' '}
+								<code>{'${' + (draft.name.trim() || 'NAME') + '}'}</code>, one per
+								line, without scheme or port. Leave empty to keep the secret out of
+								mcp.json.
+							</p>
+							{hostsNeedValue && (
+								<p className="text-xs text-destructive">
+									Enter the value again to add a host.
+								</p>
+							)}
+						</div>
+					)}
 				</div>
 
 				<DialogFooter>

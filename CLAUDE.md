@@ -95,11 +95,21 @@ Two independent sources feed the tool catalog, merged in `buildToolCatalog`:
    preserved on edit. Editable at **MCP → Config** or by hand; a change invalidates the 60s
    discovery cache.
 2. Token connections in Postgres (URL plus API token), added at **MCP → Servers**. There is
-   no OAuth flow; a server that needs OAuth has to be reached through a static token.
+   no OAuth flow; a server that needs OAuth has to be reached through a static token. Moving a
+   connection's URL to another origin (scheme, host or port) requires a new token
+   (`ErrMCPTokenRequired`); a blank token keeps the stored one only on the same origin.
 
-Any value in `mcp.json` may reference `${NAME}`, expanded from the encrypted secret store at call
-time only — never from process environment. Without `SECRETS_ENCRYPTION_KEY` every `${NAME}` stays
-unresolved.
+A header, or the URL's path, query or userinfo, in `mcp.json` may reference `${NAME}`, expanded
+from the encrypted secret store at call time only — never from process environment. Without
+`SECRETS_ENCRYPTION_KEY` every `${NAME}` stays unresolved.
+
+**A secret is sent only to a host on its own allowed-hosts list** (`prompt_secrets.allowed_hosts`,
+set per secret at **Variables → Secrets**). A reference for a server whose URL host is not on the
+list fails with `secret is not allowed for this host`. A secret with an empty list cannot be used
+from `mcp.json` at all. The host must be written literally: `${NAME}` in the URL's scheme, host or
+port is refused. Adding a host requires entering the secret's value again; removing one does not.
+MCP clients add headers and tokens only to requests for the server's own origin, and refuse a
+redirect to another one.
 
 ### Modes, prompts and how to change them
 
@@ -236,7 +246,8 @@ neither read nor create the key. Changing the key orphans any run still in fligh
 
 `prompt_secrets` in Postgres, AES-encrypted with `SECRETS_ENCRYPTION_KEY`, managed at
 **Variables → Secrets** and read by the agent with `get_secrets`. Without the key secrets can be
-neither written nor read. Values are redacted from every MCP transport error.
+neither written nor read. Values are redacted from every MCP transport error. Each secret carries
+the hosts `mcp.json` may send it to (see *MCP servers* above).
 
 ### Executor — where planned actions actually run
 
@@ -568,6 +579,19 @@ credentials, and expanding them here would let an mcp.json edit read them back o
 header the agent then calls. Do not add an env fallback to `resolver.lookup`.
 Expanded values travel with the route as `route.secrets` and are stripped from errors by
 `redactRouteError` — any new path that surfaces MCP transport errors must keep going through it.
+
+The store alone is not a boundary: secret values are write-only everywhere else, and whoever can
+edit mcp.json could point a server at their own host and read any secret back out. So each secret
+is bound to hosts (`allowed_hosts`), and `resolver.lookup` checks the server URL's literal host
+against them *before* decrypting (`mcpconfig/hosts.go`; `serverHost` refuses a reference in the
+scheme/host/port). The list is guarded like the value: `SecretService.Update` refuses a new host
+without the value (`ErrSecretHostsNeedValue`), because the API that edits mcp.json also edits
+secret metadata. The same rule applies to token connections, which need a new token to change
+origin. And the round trippers in `mcpclient` add credentials only for the endpoint's origin, with
+`CheckRedirect` refusing cross-origin hops — a `RoundTripper` runs again on every redirect, so it
+would otherwise re-add the `Authorization` that net/http strips. Existing secrets were bound once at
+upgrade to the hosts already referencing them (`cmd/nib/secret_hosts.go`, recorded in
+`schema_migrations`); nothing binds a host automatically after that.
 
 Saving never resolves a reference, so a `${NAME}` whose secret does not exist yet still saves and the
 failure surfaces when the server is contacted. `SetRaw` stores the editor's bytes as given — comments,

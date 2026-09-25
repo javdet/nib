@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/shlex"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/textutil"
-	"github.com/google/shlex"
 )
 
 const (

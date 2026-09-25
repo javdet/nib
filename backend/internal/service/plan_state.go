@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/metrics"
-	"github.com/google/uuid"
 )
 
 // PlanState holds lifecycle status and schedule for a plan (decompose dialog).

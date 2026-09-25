@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/atomicfile"
+	"github.com/javdet/nib/internal/metrics"
 )
 
 type FanoutStageStatus string

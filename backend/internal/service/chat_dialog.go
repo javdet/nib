@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mode"
-	"github.com/google/uuid"
 )
 
 // SendInDialog appends the user turn to a persisted dialog, replays the full

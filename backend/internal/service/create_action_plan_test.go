@@ -255,8 +255,8 @@ func TestReadWriteActionPlanComments(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"s0.step0":    "Use staging first",
-		"rollback.0":  "Revert carefully",
+		"s0.step0":   "Use staging first",
+		"rollback.0": "Revert carefully",
 	}
 	if err := svc.WriteActionPlanComments(dialogID, want); err != nil {
 		t.Fatalf("write comments: %v", err)

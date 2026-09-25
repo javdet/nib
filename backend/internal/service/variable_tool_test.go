@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 func TestListVariablesToolDef(t *testing.T) {

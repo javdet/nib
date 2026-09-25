@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/service"
 	"github.com/javdet/nib/internal/webhookauth"
-	"github.com/google/uuid"
 )
 
 // AgentWebhookHandler receives completion callbacks from agent-runner containers.
@@ -29,15 +29,15 @@ func NewAgentWebhookHandler(chatSvc *service.ChatService, key []byte) *AgentWebh
 const agentWebhookMaxBytes = 1 << 20
 
 type agentWebhookPayload struct {
-	Status       string  `json:"status"`
-	ExitCode     int     `json:"exit_code"`
-	Result       string  `json:"result"`
-	LogTail      string  `json:"log_tail"`
-	TaskID       string  `json:"task_id"`
-	ThreadRootID string  `json:"thread_root_id"`
-	ChatID       string  `json:"chat_id"`
-	Job          jobInfo `json:"job"`
-	Repo         repoInfo `json:"repo"`
+	Status       string    `json:"status"`
+	ExitCode     int       `json:"exit_code"`
+	Result       string    `json:"result"`
+	LogTail      string    `json:"log_tail"`
+	TaskID       string    `json:"task_id"`
+	ThreadRootID string    `json:"thread_root_id"`
+	ChatID       string    `json:"chat_id"`
+	Job          jobInfo   `json:"job"`
+	Repo         repoInfo  `json:"repo"`
 	Usage        usageInfo `json:"usage"`
 }
 

@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/metrics"
-	"github.com/google/uuid"
 )
 
 const activityChannelBuffer = 32

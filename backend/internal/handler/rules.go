@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/rules"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/rules"
 )
 
 // RulesHandler exposes HTTP endpoints for managing rule files.

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 func TestUpdateActionPlanToolDef(t *testing.T) {

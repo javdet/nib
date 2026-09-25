@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/toolcatalog"
-	"github.com/google/uuid"
 )
 
 type setCategoryDialogRepo struct {
@@ -25,7 +25,9 @@ func (r *setCategoryDialogRepo) CountDialogs(context.Context) (int, error) { ret
 func (r *setCategoryDialogRepo) ListDialogsByMode(context.Context, string, int, int) ([]domain.Dialog, error) {
 	return nil, nil
 }
-func (r *setCategoryDialogRepo) CountDialogsByMode(context.Context, string) (int, error) { return 0, nil }
+func (r *setCategoryDialogRepo) CountDialogsByMode(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (r *setCategoryDialogRepo) ListAllRecentDialogs(context.Context, int, int) ([]domain.Dialog, error) {
 	return nil, nil
 }
@@ -123,8 +125,8 @@ func TestSetCategoryHandler_SavesNormalizedCategories(t *testing.T) {
 		},
 	}
 	svc := &ChatService{
-		dialogRepo:              repo,
-		toolCategorySvc:         lister,
+		dialogRepo:      repo,
+		toolCategorySvc: lister,
 	}
 	dialogID := uuid.New()
 	handler := svc.setCategoryHandler(dialogID)
@@ -151,8 +153,8 @@ func TestSetCategoryHandler_RejectsUnknownCategories(t *testing.T) {
 		},
 	}
 	svc := &ChatService{
-		dialogRepo:              repo,
-		toolCategorySvc:         lister,
+		dialogRepo:      repo,
+		toolCategorySvc: lister,
 	}
 	handler := svc.setCategoryHandler(uuid.New())
 

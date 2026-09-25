@@ -33,7 +33,8 @@ Saving invalidates the 60-second discovery cache, so the server's tools appear
 without a restart.
 
 Never write a token into this file literally — see [How to keep tokens out of
-`mcp.json`](keep-tokens-out-of-mcp-json.md).
+`mcp.json`](keep-tokens-out-of-mcp-json.md). A referenced secret must list the
+server's host, `grafana-mcp` here, among its allowed hosts.
 
 ## Use a stdio-only server
 
