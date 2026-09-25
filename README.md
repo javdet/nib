@@ -17,6 +17,15 @@ The tool is meant to
 ## Quick start
 
 ```bash
+make setup
+```
+
+It asks for the LLM provider, its API key and your first project (name, and
+optionally environments, cloud and region), generates the tokens, writes `.env`
+and `deploy/compose/config.local.yaml`, starts the stack and prints the URL and
+the token to sign in with. By hand instead:
+
+```bash
 cp .env.example .env
 # in .env set LLM_API_KEY, and NIB_API_TOKEN to the output of: openssl rand -hex 32
 docker compose up -d

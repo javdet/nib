@@ -1,5 +1,9 @@
 # Production stack — published images from Docker Hub.
 #
+#   make setup        # interactive: writes .env and config, starts the stack
+#
+# or by hand:
+#
 #   cp .env.example .env
 #   # set LLM_API_KEY (required)
 #   docker compose up -d
@@ -61,7 +65,9 @@ services:
       - openrouter
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-nib}:${POSTGRES_PASSWORD:-nib}@postgres:5432/${POSTGRES_DB:-nib}?sslmode=disable
-      OPENROUTER_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
+      # The embeddings key, not the completions one: for DeepSeek, xAI and Kimi
+      # they are different providers.
+      OPENROUTER_API_KEY: ${LLM_EMBEDDINGS_API_KEY:-${LLM_API_KEY:-${OPENAI_API_KEY:-}}}
       EMBEDDINGS_BASE_URL: ${KB_EMBEDDINGS_BASE_URL:-https://api.openai.com/v1}
       # Must match LLM_EMBEDDINGS_DIMENSIONS: this container embeds the queries
       # that search the chunks the backend ingested.
@@ -127,8 +133,9 @@ services:
       # mcp.json. Survives `docker compose down` — remove with `down -v`.
       - nibdata:/app/data
       # Overrides the config.yaml baked into the image (which points at
-      # localhost and ships example projects).
-      - ./deploy/compose/config.yaml:/app/config.yaml:ro
+      # localhost and ships example projects). `make setup` writes its own copy
+      # to deploy/compose/config.local.yaml and points NIB_CONFIG_FILE at it.
+      - ${NIB_CONFIG_FILE:-./deploy/compose/config.yaml}:/app/config.yaml:ro
       # Remove this if you do not use the local Docker executor.
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:

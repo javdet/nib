@@ -1,8 +1,11 @@
-.PHONY: up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev buildx-setup images-local images-push sync-docs check-docs-sync
+.PHONY: setup up down restart logs psql dev-up dev-down dev-restart dev-logs migrate-up migrate-down migrate-create run-backend run-frontend dev buildx-setup images-local images-push sync-docs check-docs-sync
 
 COMPOSE_DEV = docker compose -f docker-compose.dev.yml
 
 # --- Docker (production images) ---
+
+setup: ## Interactive first run: ask for the LLM provider and project, write .env + config, start Nib
+	@./scripts/setup.sh
 
 up: ## Start Nib with published images (see .env.example)
 	docker compose up -d
