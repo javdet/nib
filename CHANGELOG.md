@@ -4,6 +4,33 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.8.1] - 2026-09-25
+
+### Added
+- `make setup`: an interactive first-run command that asks for the LLM provider, model and API key, the first project's name/environments/cloud/region, checks the published ports for conflicts, generates `NIB_API_TOKEN`/`SECRETS_ENCRYPTION_KEY`/the Postgres password, writes `.env` and `deploy/compose/config.local.yaml`, and starts the stack. Running it again keeps existing tokens and passwords and backs up the previous `.env` to `.env.bak.*`.
+- API authentication: every `/api/v1` route (except `/health`, `/version`, `/auth/session` and the agent-runner webhook) now requires a bearer `NIB_API_TOKEN`; `NIB_INSECURE_NO_AUTH` opens access, and `NIB_ALLOWED_ORIGINS`/`NIB_ALLOWED_HOSTS` guard against cross-origin and DNS-rebinding requests.
+- Agent-runner webhook callbacks are now authenticated with a per-run signing key (`AGENT_WEBHOOK_TOKEN`), so a container can only report its own run.
+- Secrets can be restricted to specific hosts via `prompt_secrets.allowed_hosts`; a secret referenced in `mcp.json` is only sent to a server on its allow list.
+- New "execute all" stage run: a stage's (or rollback's) unticked steps and checks now run sequentially from a single button.
+- Ad-hoc code fixes can be requested directly from a plan chat, without an existing action row behind them.
+- Knowledge base auto-update: finishing a plan can fold its outcome into the project's knowledge base collection (`knowledge_base.settingsFile`, on by default).
+- Skills gained an `access` level (`enabled`/`explicit`/`disabled`) controlling whether a skill appears in the catalog, needs an explicit `/name` mention, or is hidden entirely.
+- Stage planners can block on an operator question mid-plan via `report_blocker` instead of failing the fan-out.
+- Action steps can be flagged with `downtime`/`degraded` impact fields, shown as labels/tooltips in the plan view.
+- The local executor now pulls a configured agent image automatically when the Docker daemon doesn't already have it.
+- The Variables page gained a search box to filter by name, description, scope or scope name.
+- A full documentation set was added under `docs/` (tutorials, how-to guides, reference and explanation).
+
+### Changed
+- LLM embeddings can now be configured separately from chat completions (`llm.embeddings` block / `LLM_EMBEDDINGS_API_KEY`), needed for providers such as DeepSeek, xAI and Kimi that serve no `/embeddings` route; the `kb-mcp` container's query embeddings now prefer `LLM_EMBEDDINGS_API_KEY` over `LLM_API_KEY` for the same reason.
+- `execute_command` and `api_call` subprocesses now see only `PATH`, `HOME` and `LANG` from the backend's environment, keeping LLM/database/executor credentials out of reach.
+- Assistant messages no longer show raw `<thinking>` blocks; they are stripped before display.
+- Checks in an action plan now report their own findings/expectations distinctly from actions.
+- Attempting to execute a code action with the executor disabled now redirects to the Executor settings tab with an explanatory tooltip instead of silently failing.
+
+### Removed
+- The "restart action" button and its handling were removed from the action plan view.
+
 ## [v0.8.0] - 2026-09-13
 
 ### Added
