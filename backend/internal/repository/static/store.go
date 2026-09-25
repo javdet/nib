@@ -4,9 +4,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/domain"
-	"github.com/google/uuid"
 )
 
 // Deterministic namespace for generating stable UUIDs from config names.

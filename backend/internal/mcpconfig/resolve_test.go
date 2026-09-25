@@ -11,11 +11,28 @@ import (
 )
 
 // fakeSecrets is a SecretLookup backed by a map. Names absent from values
-// return the error in err, defaulting to repository.ErrNotFound.
+// return the error in err, defaulting to repository.ErrNotFound. A secret with
+// no entry in hosts is bound to fakeDefaultHosts, the hosts the older tests use.
 type fakeSecrets struct {
 	values map[string]string
+	hosts  map[string][]string
 	err    error
 	calls  int
+}
+
+var fakeDefaultHosts = []string{"example.com", "gw.example.com"}
+
+func (f *fakeSecrets) AllowedHostsByName(_ context.Context, _, _, name string) ([]string, error) {
+	if h, ok := f.hosts[name]; ok {
+		return h, nil
+	}
+	if _, ok := f.values[name]; ok {
+		return fakeDefaultHosts, nil
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	return nil, repository.ErrNotFound
 }
 
 func (f *fakeSecrets) GetValueByName(_ context.Context, _, _, name string) (string, error) {

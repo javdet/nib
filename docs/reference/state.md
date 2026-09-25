@@ -133,7 +133,7 @@ stay in step with the plan-mode whitelist in the backend.
 | Table | Holds |
 |---|---|
 | `prompt_variables` | Prompt template variables, including which are predefined and undeletable. |
-| `prompt_secrets` | Encrypted secret values, keyed by name and scope. |
+| `prompt_secrets` | Encrypted secret values, keyed by name and scope, each with the hosts `mcp.json` may send it to. |
 
 Secret values are encrypted with `SECRETS_ENCRYPTION_KEY` and never returned by
 the API.

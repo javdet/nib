@@ -28,6 +28,7 @@ export function SecretDialog({
 							name: initialSecret.name,
 							description: initialSecret.description,
 							value: '',
+							allowedHosts: initialSecret.allowedHosts ?? [],
 						}
 					: null
 			}

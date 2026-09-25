@@ -12,13 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/javdet/nib/internal/config"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpclient"
 	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/toolcatalog"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
 

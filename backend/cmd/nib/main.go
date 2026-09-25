@@ -185,6 +185,9 @@ func run() error {
 	rulesSvc := rules.NewService(cfg.DataDir, cfg.Rules.Dir)
 	kbDocSvc := kbdoc.NewService(cfg.DataDir, cfg.KnowledgeBaseDir)
 	mcpConfigSvc := mcpconfig.NewService(cfg.DataDir, cfg.MCP.File)
+	if err := bindExistingSecretHosts(ctx, pool, mcpConfigSvc); err != nil {
+		return fmt.Errorf("migrate secret hosts: %w", err)
+	}
 	resolvedToolsDir := mode.ResolveDir(cfg.DataDir, cfg.IncludedTools.Dir)
 	// The per-mode allow lists ship in the binary and are reconciled onto the
 	// data volume here. A failure is not fatal: a mode whose list is missing runs

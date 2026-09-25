@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 // DialogRepository defines the data-access contract for persisted chat dialogs.

@@ -6,10 +6,10 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/kbdoc"
 	"github.com/javdet/nib/internal/mode"
-	"github.com/google/uuid"
 )
 
 func TestAddLocalTools_includesGetKBDocument(t *testing.T) {

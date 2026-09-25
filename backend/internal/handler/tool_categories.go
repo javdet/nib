@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/service"
 )
 
 // ToolCategoriesHandler exposes HTTP endpoints for tool category patterns.

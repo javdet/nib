@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/go-chi/chi/v5"
+	"github.com/javdet/nib/internal/systemprompts"
 )
 
 func newPromptRouter(t *testing.T) chi.Router {

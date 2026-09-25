@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mcpclient"
-	"github.com/google/uuid"
 )
 
 func TestAppendMCPTools_respectsAllowList(t *testing.T) {
@@ -75,7 +75,7 @@ func TestLogMissingAllowTools(t *testing.T) {
 	t.Parallel()
 
 	allow := map[string]struct{}{
-		"jira_search":    {},
+		"jira_search":      {},
 		"knowledge_search": {},
 	}
 	catalog := toolCatalog{

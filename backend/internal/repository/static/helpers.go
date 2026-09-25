@@ -3,9 +3,9 @@ package static
 import (
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/repository"
-	"github.com/google/uuid"
 )
 
 func lookupProjectName(store *Store, id uuid.UUID) (string, error) {

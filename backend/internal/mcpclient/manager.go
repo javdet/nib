@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 
 	"github.com/google/uuid"
@@ -48,10 +47,8 @@ func (m *Manager) Connect(ctx context.Context, connID uuid.UUID, serverURL, toke
 	}
 
 	transport := &mcp.StreamableClientTransport{
-		Endpoint: serverURL,
-		HTTPClient: &http.Client{
-			Transport: newAuthRoundTripper(scheme, token),
-		},
+		Endpoint:   serverURL,
+		HTTPClient: newHTTPClient(0, newAuthRoundTripper(serverURL, scheme, token)),
 	}
 
 	session, err := m.client.Connect(ctx, transport, nil)

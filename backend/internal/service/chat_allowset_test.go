@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/toolcatalog"
-	"github.com/google/uuid"
 )
 
 type allowSetDialogRepo struct {
@@ -108,16 +108,16 @@ func TestResolveDialogAllowSet(t *testing.T) {
 	}
 
 	svc := &ChatService{
-		dialogRepo:    repo,
+		dialogRepo:      repo,
 		toolCategorySvc: lister,
-		allowToolsDir: allowDir,
+		allowToolsDir:   allowDir,
 	}
 
 	tests := []struct {
-		name     string
-		dialog   domain.Dialog
-		want     []string
-		notWant  []string
+		name    string
+		dialog  domain.Dialog
+		want    []string
+		notWant []string
 	}{
 		{
 			name:   "plan inherits parent categories",
@@ -125,9 +125,9 @@ func TestResolveDialogAllowSet(t *testing.T) {
 			want:   []string{"ask_question", "grafana_query_loki_logs"},
 		},
 		{
-			name:   "decompose unchanged",
-			dialog: repo.dialogs[parentID],
-			want:   []string{"set_category"},
+			name:    "decompose unchanged",
+			dialog:  repo.dialogs[parentID],
+			want:    []string{"set_category"},
 			notWant: []string{"grafana_query_loki_logs"},
 		},
 	}

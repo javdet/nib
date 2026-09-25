@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 type actionListDialogRepo struct {

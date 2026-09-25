@@ -314,10 +314,10 @@ func TestBuildActionRunEnvCodexAuth(t *testing.T) {
 	env := envMap(t, buildActionRunEnv(cfg, Secrets{}, validActionRunRequest(), "nib-12345678"))
 
 	wantSet := map[string]string{
-		"AGENT_TYPE":       "codex",
-		"OPENAI_API_KEY":   "llm-token",
-		"OPENAI_BASE_URL":  "https://openrouter.ai/api/v1",
-		"OPENAI_MODEL":     "openai/gpt-5.3-codex",
+		"AGENT_TYPE":      "codex",
+		"OPENAI_API_KEY":  "llm-token",
+		"OPENAI_BASE_URL": "https://openrouter.ai/api/v1",
+		"OPENAI_MODEL":    "openai/gpt-5.3-codex",
 	}
 	for name, value := range wantSet {
 		if env[name] != value {

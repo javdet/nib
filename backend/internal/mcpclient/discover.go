@@ -69,11 +69,8 @@ func ListToolsFromURLWithHTTPClient(
 	}
 
 	transport := &mcp.StreamableClientTransport{
-		Endpoint: serverURL,
-		HTTPClient: &http.Client{
-			Timeout:   timeout,
-			Transport: newHeadersRoundTripper(headers, base),
-		},
+		Endpoint:   serverURL,
+		HTTPClient: newHTTPClient(timeout, newHeadersRoundTripper(serverURL, headers, base)),
 	}
 
 	client := mcp.NewClient(&mcp.Implementation{
@@ -140,11 +137,8 @@ func CallToolFromURLWithHTTPClient(
 	}
 
 	transport := &mcp.StreamableClientTransport{
-		Endpoint: serverURL,
-		HTTPClient: &http.Client{
-			Timeout:   timeout,
-			Transport: newHeadersRoundTripper(headers, base),
-		},
+		Endpoint:   serverURL,
+		HTTPClient: newHTTPClient(timeout, newHeadersRoundTripper(serverURL, headers, base)),
 	}
 
 	client := mcp.NewClient(&mcp.Implementation{
@@ -168,12 +162,16 @@ func CallToolFromURLWithHTTPClient(
 	return result, nil
 }
 
+// headersRoundTripper adds the configured headers to requests addressed to the
+// server's own origin, and to nothing else.
 type headersRoundTripper struct {
 	headers  map[string]string
+	origin   origin
+	originOK bool
 	delegate http.RoundTripper
 }
 
-func newHeadersRoundTripper(headers map[string]string, delegate http.RoundTripper) http.RoundTripper {
+func newHeadersRoundTripper(endpoint string, headers map[string]string, delegate http.RoundTripper) http.RoundTripper {
 	if len(headers) == 0 {
 		if delegate == nil {
 			return http.DefaultTransport
@@ -191,10 +189,14 @@ func newHeadersRoundTripper(headers map[string]string, delegate http.RoundTrippe
 		}
 		cp[k] = v
 	}
-	return &headersRoundTripper{headers: cp, delegate: delegate}
+	o, ok := parseOrigin(endpoint)
+	return &headersRoundTripper{headers: cp, origin: o, originOK: ok, delegate: delegate}
 }
 
 func (rt *headersRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !forOrigin(req, rt.origin, rt.originOK) {
+		return rt.delegate.RoundTrip(req)
+	}
 	r := req.Clone(req.Context())
 	for k, v := range rt.headers {
 		r.Header.Set(k, v)

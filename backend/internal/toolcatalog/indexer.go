@@ -243,4 +243,3 @@ func ToolEmbedText(name, description string) string {
 	}
 	return name + "\n" + description
 }
-

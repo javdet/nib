@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 // AttachmentRepository defines data access for chat message attachments.

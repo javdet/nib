@@ -13,7 +13,7 @@ import (
 type ActionPlanScope string
 
 const (
-	ActionPlanScopeSteps ActionPlanScope = "steps"
+	ActionPlanScopeSteps  ActionPlanScope = "steps"
 	ActionPlanScopeChecks ActionPlanScope = "checks"
 )
 

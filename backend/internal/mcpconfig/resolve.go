@@ -17,11 +17,12 @@ const (
 	secretScopeName = ""
 )
 
-// SecretLookup resolves a secret value by its full identity. It is satisfied by
-// *service.SecretService; declaring it here keeps mcpconfig free of a
-// dependency on the service package.
+// SecretLookup resolves a secret value, and the hosts it may be sent to, by its
+// full identity. It is satisfied by *service.SecretService; declaring it here
+// keeps mcpconfig free of a dependency on the service package.
 type SecretLookup interface {
 	GetValueByName(ctx context.Context, scope, scopeName, name string) (string, error)
+	AllowedHostsByName(ctx context.Context, scope, scopeName, name string) ([]string, error)
 }
 
 // Resolved is a server entry whose ${NAME} references have been expanded,
@@ -92,8 +93,16 @@ func (s *Service) GetServerResolved(ctx context.Context, name string) (Resolved,
 
 // ResolveServer expands the ${NAME} references in a server entry. The source
 // server is left untouched; maps and slices are copied.
+//
+// Every secret it substitutes must list the server URL's host among its allowed
+// hosts, and that host must be written literally: a secret goes where the
+// operator who stored it said it may, not wherever mcp.json points.
 func (s *Service) ResolveServer(ctx context.Context, server Server) (Resolved, error) {
-	r := &resolver{secrets: s.secretLookup(), cache: map[string]string{}}
+	host, err := serverHost(server.URL)
+	if err != nil {
+		return Resolved{}, fmt.Errorf("mcp server %q: %w", server.Name, err)
+	}
+	r := &resolver{secrets: s.secretLookup(), host: host, cache: map[string]string{}}
 
 	entry, err := r.resolveEntry(ctx, server.ServerEntry)
 	if err != nil {
@@ -109,6 +118,7 @@ func (s *Service) ResolveServer(ctx context.Context, server Server) (Resolved, e
 // so a value repeated across url and headers is fetched (and decrypted) once.
 type resolver struct {
 	secrets SecretLookup
+	host    string
 	cache   map[string]string
 	values  []string
 }
@@ -178,6 +188,27 @@ func (r *resolver) lookup(ctx context.Context, name string) (string, bool, error
 	}
 	if r.secrets == nil {
 		return "", false, nil
+	}
+
+	// The binding is checked before the value is decrypted, so a refused
+	// reference never has the plaintext in memory at all.
+	hosts, err := r.secrets.AllowedHostsByName(ctx, secretScope, secretScopeName, name)
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("resolve ${%s}: %w", name, err)
+	}
+	if !HostAllowed(hosts, r.host) {
+		host := r.host
+		if host == "" {
+			host = "(none)"
+		}
+		return "", false, fmt.Errorf(
+			"%w: ${%s} may not be sent to host %s — add the host to the secret under Variables → Secrets, "+
+				"entering its value again",
+			ErrSecretHostNotAllowed, name, host,
+		)
 	}
 
 	v, err := r.secrets.GetValueByName(ctx, secretScope, secretScopeName, name)

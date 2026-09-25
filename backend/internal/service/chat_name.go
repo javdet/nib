@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/textutil"
-	"github.com/google/uuid"
 )
 
 const (

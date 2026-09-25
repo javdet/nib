@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/llm"
-	"github.com/google/uuid"
 )
 
 const CreateDAGToolName = "create_dag"

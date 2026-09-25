@@ -4,18 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/crypto"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/mcpconfig"
 	"github.com/javdet/nib/internal/repository"
 )
 
 // ErrSecretsEncryptionNotConfigured is returned when secret write operations
 // are attempted without SECRETS_ENCRYPTION_KEY.
 var ErrSecretsEncryptionNotConfigured = errors.New("secrets encryption not configured")
+
+// ErrSecretHostsNeedValue is returned when a host is added to a secret without
+// its value being entered again. The hosts decide where mcp.json may send the
+// value, and whoever can edit mcp.json can edit a secret's metadata too, so
+// widening the list must take knowing the value it releases. Removing a host
+// only narrows it and needs no value.
+var ErrSecretHostsNeedValue = errors.New("adding an allowed host to a secret requires entering its value again")
 
 // SecretInput carries metadata and a plaintext value for create/update.
 type SecretInput struct {
@@ -24,6 +33,9 @@ type SecretInput struct {
 	Name        string
 	Description string
 	Value       string
+	// AllowedHosts is nil when the caller did not supply it, which an update
+	// reads as "keep what is stored".
+	AllowedHosts []string
 }
 
 // SecretService implements business logic for encrypted prompt secrets.
@@ -80,6 +92,11 @@ func (s *SecretService) Create(ctx context.Context, input SecretInput) (domain.P
 	if err := validateSecretMeta(meta); err != nil {
 		return domain.PromptSecret{}, err
 	}
+	hosts, err := mcpconfig.NormalizeAllowedHosts(input.AllowedHosts)
+	if err != nil {
+		return domain.PromptSecret{}, err
+	}
+	meta.AllowedHosts = hosts
 	if strings.TrimSpace(input.Value) == "" {
 		return domain.PromptSecret{}, fmt.Errorf("%w: value is required", ErrInvalidVariableName)
 	}
@@ -108,8 +125,26 @@ func (s *SecretService) Update(ctx context.Context, id uuid.UUID, input SecretIn
 		return domain.PromptSecret{}, err
 	}
 
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return domain.PromptSecret{}, fmt.Errorf("get secret: %w", err)
+	}
+	hosts, err := mcpconfig.NormalizeAllowedHosts(input.AllowedHosts)
+	if err != nil {
+		return domain.PromptSecret{}, err
+	}
+	valueGiven := strings.TrimSpace(input.Value) != ""
+	switch {
+	case hosts == nil:
+		meta.AllowedHosts = existing.AllowedHosts
+	case !valueGiven && !isSubset(hosts, existing.AllowedHosts):
+		return domain.PromptSecret{}, ErrSecretHostsNeedValue
+	default:
+		meta.AllowedHosts = hosts
+	}
+
 	var encrypted []byte
-	if strings.TrimSpace(input.Value) == "" {
+	if !valueGiven {
 		var err error
 		encrypted, err = s.repo.GetEncrypted(ctx, id)
 		if err != nil {
@@ -176,6 +211,26 @@ func (s *SecretService) GetValueByName(ctx context.Context, scope, scopeName, na
 		return "", fmt.Errorf("decrypt secret %q: %w", name, err)
 	}
 	return plaintext, nil
+}
+
+func isSubset(sub, of []string) bool {
+	for _, h := range sub {
+		if !slices.Contains(of, h) {
+			return false
+		}
+	}
+	return true
+}
+
+// AllowedHostsByName returns the hosts a secret may be sent to from mcp.json.
+// It does not need the cipher, so the binding is checked before anything is
+// decrypted.
+func (s *SecretService) AllowedHostsByName(ctx context.Context, scope, scopeName, name string) ([]string, error) {
+	secret, err := s.getByName(ctx, scope, scopeName, name)
+	if err != nil {
+		return nil, fmt.Errorf("get secret %q: %w", name, err)
+	}
+	return secret.AllowedHosts, nil
 }
 
 // ExistsByName reports whether a secret with the given identity is stored.

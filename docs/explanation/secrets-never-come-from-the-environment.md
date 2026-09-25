@@ -32,8 +32,11 @@ choosing. Nothing about that requires a vulnerability: it is the feature working
 as specified. Every variable the backend holds becomes readable through any URL
 or header an MCP entry can name.
 
-The encrypted store does not have this property, because the only things in it
-are things an operator deliberately put there for this purpose.
+The encrypted store does not have this property on its own, because the only
+things in it are things an operator deliberately put there. But not all of them
+were put there *for `mcp.json`* — the executor's git and LLM tokens live in the
+same store — so the store alone would only narrow the leak, not close it. The
+rest of the answer is below, under host binding.
 
 ## The shape of the decision
 
@@ -61,6 +64,31 @@ The cost is real. You cannot hand nib a token by setting a variable in your
 deployment; you have to put it in the store. For anyone who configures
 everything through environment variables, that is friction, and it is the price
 of the property above.
+
+## Host binding
+
+Secret values are write-only: nothing in the API returns one. Without a further
+rule, `mcp.json` would be the exception — an entry pointing at a host of the
+editor's choosing, with `${GITHUB_TOKEN}` in a header or the query string,
+reads the token back out on the next discovery.
+
+So every secret carries the hosts it may be sent to, and a reference expands
+only for a server whose URL host is on that list. Three details make that hold:
+
+- **The host must be literal.** A `${NAME}` in the URL's scheme, host or port is
+  refused, since a host spelled from a secret could be anything.
+- **The list is guarded like the value.** Adding a host requires entering the
+  value again. Whoever can edit `mcp.json` can edit a secret's metadata too, so
+  a list that changed freely would bind nothing.
+- **Credentials stay with their origin.** Headers and tokens are added only to
+  requests for the server's own scheme, host and port, and a redirect to another
+  origin is refused rather than followed. The same holds for token connections
+  added at **Tools → MCP Servers**: moving one to another origin takes a new
+  token, rather than sending the old one to the new address.
+
+A secret nobody bound to a host cannot be reached from `mcp.json` at all. On
+the upgrade that introduced the binding, each secret was bound once to the
+hosts of the servers already referencing it, so a working setup kept working.
 
 ## The other half: redaction
 
@@ -93,10 +121,9 @@ stored values are gone, not merely inaccessible.
 
 It is not a claim that nib's secrets are safe against an attacker who reaches
 the API. They are not — anyone who can call the API can select a secret for the
-executor, register a server that uses it, and call a tool. The property is
-narrower: **editing `mcp.json` does not widen your access beyond the secrets
-someone deliberately stored.** The backend's own operating credentials are
-outside that boundary, and stay there.
+executor and run it. The property is narrower: **editing `mcp.json` sends a
+secret only to a host the person who stored it named.** The backend's own
+operating credentials are outside that boundary, and stay there.
 
 For the broader question of who can reach the API at all, nib assumes a trusted
 network or your own authenticating proxy. See [About the

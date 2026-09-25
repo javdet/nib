@@ -17,7 +17,7 @@ func TestParseStatsRange(t *testing.T) {
 		wantFrom, wantTo time.Time
 	}{
 		{
-			name: "defaults to the last 30 days in day buckets",
+			name:       "defaults to the last 30 days in day buckets",
 			wantBucket: "day", wantTo: now, wantFrom: now.Add(-defaultStatsWindow),
 		},
 		{

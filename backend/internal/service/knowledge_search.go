@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/javdet/nib/internal/llm"
 	"github.com/jackc/pgx/v5"
+	"github.com/javdet/nib/internal/llm"
 )
 
 const (

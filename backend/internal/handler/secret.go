@@ -3,10 +3,10 @@ package handler
 import (
 	"net/http"
 
-	"github.com/javdet/nib/internal/domain"
-	"github.com/javdet/nib/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/service"
 )
 
 // SecretHandler exposes HTTP endpoints for managing encrypted prompt secrets.
@@ -24,6 +24,8 @@ type secretPayload struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Value       string `json:"value"`
+	// Absent or null keeps the stored list on update.
+	AllowedHosts []string `json:"allowedHosts"`
 }
 
 func (h *SecretHandler) List() http.HandlerFunc {
@@ -52,11 +54,12 @@ func (h *SecretHandler) Create() http.HandlerFunc {
 		}
 
 		s, err := h.svc.Create(r.Context(), service.SecretInput{
-			Scope:       req.Scope,
-			ScopeName:   req.ScopeName,
-			Name:        req.Name,
-			Description: req.Description,
-			Value:       req.Value,
+			Scope:        req.Scope,
+			ScopeName:    req.ScopeName,
+			Name:         req.Name,
+			Description:  req.Description,
+			Value:        req.Value,
+			AllowedHosts: req.AllowedHosts,
 		})
 		if err != nil {
 			handleServiceError(w, err)
@@ -84,11 +87,12 @@ func (h *SecretHandler) Update() http.HandlerFunc {
 		}
 
 		s, err := h.svc.Update(r.Context(), id, service.SecretInput{
-			Scope:       req.Scope,
-			ScopeName:   req.ScopeName,
-			Name:        req.Name,
-			Description: req.Description,
-			Value:       req.Value,
+			Scope:        req.Scope,
+			ScopeName:    req.ScopeName,
+			Name:         req.Name,
+			Description:  req.Description,
+			Value:        req.Value,
+			AllowedHosts: req.AllowedHosts,
 		})
 		if err != nil {
 			handleServiceError(w, err)

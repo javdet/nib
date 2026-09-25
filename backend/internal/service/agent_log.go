@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/javdet/nib/internal/llm"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/llm"
 )
 
 const logTruncateRunes = 2048

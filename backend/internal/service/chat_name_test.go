@@ -7,14 +7,14 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/javdet/nib/internal/domain"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/domain"
 )
 
 type fakeDialogRepo struct {
-	title    string
-	taskID   *string
-	err      error
+	title  string
+	taskID *string
+	err    error
 }
 
 func (f *fakeDialogRepo) CreateDialog(_ context.Context, _, _ string, _ *uuid.UUID) (domain.Dialog, error) {

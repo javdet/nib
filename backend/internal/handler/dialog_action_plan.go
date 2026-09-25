@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/javdet/nib/internal/service"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/service"
 )
 
 type actionPlanChecksPayload struct {

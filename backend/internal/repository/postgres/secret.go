@@ -23,7 +23,7 @@ func NewSecretRepo(pool *pgxpool.Pool) *SecretRepo {
 	return &SecretRepo{pool: pool}
 }
 
-const secretColumns = `id, scope, scope_name, name, description, created_at, updated_at`
+const secretColumns = `id, scope, scope_name, name, description, allowed_hosts, created_at, updated_at`
 
 func (r *SecretRepo) List(ctx context.Context) ([]domain.PromptSecret, error) {
 	rows, err := r.pool.Query(ctx,
@@ -108,10 +108,10 @@ func (r *SecretRepo) GetEncryptedByName(ctx context.Context, scope, scopeName, n
 
 func (r *SecretRepo) Create(ctx context.Context, s domain.PromptSecret, encrypted []byte) (domain.PromptSecret, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO prompt_secrets (scope, scope_name, name, description, value_encrypted)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO prompt_secrets (scope, scope_name, name, description, allowed_hosts, value_encrypted)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING `+secretColumns,
-		s.Scope, s.ScopeName, s.Name, s.Description, encrypted)
+		s.Scope, s.ScopeName, s.Name, s.Description, hostsOrEmpty(s.AllowedHosts), encrypted)
 
 	result, err := scanSecretRow(row)
 	if err != nil {
@@ -126,10 +126,11 @@ func (r *SecretRepo) Create(ctx context.Context, s domain.PromptSecret, encrypte
 func (r *SecretRepo) Update(ctx context.Context, id uuid.UUID, s domain.PromptSecret, encrypted []byte) (domain.PromptSecret, error) {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE prompt_secrets
-		 SET scope = $2, scope_name = $3, name = $4, description = $5, value_encrypted = $6, updated_at = now()
+		 SET scope = $2, scope_name = $3, name = $4, description = $5, allowed_hosts = $6,
+		     value_encrypted = $7, updated_at = now()
 		 WHERE id = $1
 		 RETURNING `+secretColumns,
-		id, s.Scope, s.ScopeName, s.Name, s.Description, encrypted)
+		id, s.Scope, s.ScopeName, s.Name, s.Description, hostsOrEmpty(s.AllowedHosts), encrypted)
 
 	result, err := scanSecretRow(row)
 	if err != nil {
@@ -158,7 +159,7 @@ func (r *SecretRepo) Delete(ctx context.Context, id uuid.UUID) error {
 
 func scanSecret(rows pgx.Rows) (domain.PromptSecret, error) {
 	var s domain.PromptSecret
-	err := rows.Scan(&s.ID, &s.Scope, &s.ScopeName, &s.Name, &s.Description, &s.CreatedAt, &s.UpdatedAt)
+	err := rows.Scan(&s.ID, &s.Scope, &s.ScopeName, &s.Name, &s.Description, &s.AllowedHosts, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return domain.PromptSecret{}, err
 	}
@@ -167,9 +168,18 @@ func scanSecret(rows pgx.Rows) (domain.PromptSecret, error) {
 
 func scanSecretRow(row pgx.Row) (domain.PromptSecret, error) {
 	var s domain.PromptSecret
-	err := row.Scan(&s.ID, &s.Scope, &s.ScopeName, &s.Name, &s.Description, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.Scope, &s.ScopeName, &s.Name, &s.Description, &s.AllowedHosts, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return domain.PromptSecret{}, err
 	}
 	return s, nil
+}
+
+// hostsOrEmpty keeps a nil slice from being written as SQL NULL into a NOT NULL
+// column.
+func hostsOrEmpty(hosts []string) []string {
+	if hosts == nil {
+		return []string{}
+	}
+	return hosts
 }

@@ -6,6 +6,9 @@ export interface Secret {
 	scopeName?: string
 	name: string
 	description: string
+	// Hosts a ${NAME} reference in mcp.json may send the value to. Empty means
+	// the secret cannot be used from mcp.json at all.
+	allowedHosts?: string[]
 	createdAt: string
 	updatedAt: string
 }
@@ -16,6 +19,7 @@ export interface SecretInput {
 	name: string
 	description?: string
 	value?: string
+	allowedHosts?: string[]
 }
 
 export function listSecrets(): Promise<Secret[]> {

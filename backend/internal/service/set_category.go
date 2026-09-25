@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/javdet/nib/internal/llm"
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/llm"
 )
 
 const SetCategoryToolName = "set_category"
