@@ -188,15 +188,13 @@ Registered by URL in `mcp.json`. Streamable HTTP only.
 | `GET` | `/mcp/servers/{name}/tools` | Tools that server exposes. |
 | `GET` `PUT` | `/mcp/config/raw` | The raw `mcp.json` bytes. A `PUT` stores them as given — comments and key order survive. |
 
-## MCP connections (OAuth)
+## MCP connections
 
-Servers reached through an OAuth handshake rather than a static entry.
+Remote servers registered by URL and API token, stored in Postgres rather than `mcp.json`.
 
 | Method | Path | Meaning |
 |---|---|---|
 | `GET` `POST` | `/mcp/connections` | |
-| `GET` | `/mcp/connections/{type}/auth` | Begin the OAuth flow. |
-| `GET` | `/mcp/connections/{type}/callback` | OAuth redirect target. |
 | `PUT` `DELETE` | `/mcp/connections/{id}` | |
 | `GET` | `/mcp/connections/{id}/tools` | |
 | `POST` | `/mcp/connections/{id}/tools/{toolName}` | Call one tool directly. |

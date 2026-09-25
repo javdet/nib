@@ -11,15 +11,18 @@ the backend uses when both are set.
 
 | Variable | Default | Precedence | Meaning |
 |---|---|---|---|
-| `LLM_API_KEY` | — | env only | API key for the chat and embedding endpoint. **Required.** |
+| `LLM_API_KEY` | — | env only | API key for the completion endpoint, and for embeddings unless `LLM_EMBEDDINGS_API_KEY` is set. **Required.** |
 | `OPENAI_API_KEY` | — | env only | Used when `LLM_API_KEY` is empty. |
 | `LLM_BASE_URL` | — | YAML wins | Base URL of the OpenAI-compatible API. |
 | `LLM_MODEL` | `gpt-4o-mini` | YAML wins | Model id. |
 | `OPENAI_MODEL` | — | YAML wins | Used when `LLM_MODEL` is empty. |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | YAML wins | Embedding model. |
 | `LLM_API` | `chat` | YAML wins | `chat` or `responses`. |
-| `LLM_REASONING_EFFORT` | empty | YAML wins | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
-| `LLM_PROVIDER` | `openai` | env only | Provider label. |
+| `LLM_REASONING_EFFORT` | empty | YAML wins | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. An explicit `reasoningEffort: ""` in YAML clears it; an absent key defers to it. |
+| `LLM_EMBEDDINGS_BASE_URL` | falls back to `LLM_BASE_URL` | YAML wins | Base URL of the `/embeddings` endpoint, when it is not the completion host. |
+| `LLM_EMBEDDINGS_API_KEY` | falls back to `LLM_API_KEY` | env only | API key for the embeddings endpoint. |
+| `LLM_EMBEDDINGS_MODEL` | falls back to `OPENAI_EMBEDDING_MODEL` | YAML wins | Embedding model. Overwrites `llm.embeddingModel` when set. |
+| `LLM_EMBEDDINGS_DIMENSIONS` | `0` (omitted) | YAML wins | Embedding width to request. Must be 1536 for the knowledge base. |
 | `HTTP_REFERER` | empty | YAML wins | OpenRouter `HTTP-Referer` header. |
 | `OPENROUTER_APP_TITLE` | empty | YAML wins | OpenRouter `X-Title` header. |
 
@@ -70,19 +73,6 @@ stay readable. Generate one with `openssl rand -base64 32`.
 | `METRICS_PATH` | `/metrics` | **env wins** | Metrics path. Must start with `/`. |
 | `METRICS_REFRESH_SECONDS` | `30` | **env wins** | Recompute interval for plan gauges and the database probe. |
 | `LOG_LEVEL` | `info` | **env wins** | `debug`, `info`, `warn`, `error`. |
-
-## Backend — OAuth and MCP
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `OAUTH_CALLBACK_BASE_URL` | `http://localhost:8080` | Public base URL OAuth providers redirect back to. |
-| `FRONTEND_BASE_URL` | `http://localhost:5173` | Where the backend sends the browser after an OAuth round trip. |
-| `ATLASSIAN_CLIENT_ID` | empty | Atlassian OAuth app client id. |
-| `ATLASSIAN_CLIENT_SECRET` | empty | Atlassian OAuth app client secret. |
-| `ATLASSIAN_MCP_URL` | `https://mcp.atlassian.com/v1/mcp` | Atlassian MCP endpoint. |
-
-The Atlassian callback URL to register is
-`{OAUTH_CALLBACK_BASE_URL}/api/v1/mcp/connections/jira/callback`.
 
 ## Backend — executor
 
@@ -140,6 +130,7 @@ in `.env`.
 | `POSTGRES_PASSWORD` | `nib` | Bundled Postgres password. |
 | `POSTGRES_DB` | `nib` | Bundled Postgres database. |
 | `KB_EMBEDDINGS_BASE_URL` | — | Becomes `EMBEDDINGS_BASE_URL` in `kb-mcp`. |
+| `KB_EMBEDDINGS_DIMENSIONS` | — | Becomes `EMBEDDINGS_DIMENSIONS` in `kb-mcp`. Must equal `LLM_EMBEDDINGS_DIMENSIONS`, or queries are embedded at a different width than the chunks they search and match nothing. |
 | `API_PROXY_TARGET` | auto-detected | Dev compose only: where the Vite dev server proxies `/api`. |
 
 `/metrics` is unauthenticated and reports plan counts, the model id and

@@ -16,7 +16,6 @@ import (
 type Config struct {
 	Server                ServerConfig
 	Database              DatabaseConfig
-	OAuth                 OAuthConfig
 	LLM                   LLMConfig
 	Projects              []ProjectConfig
 	ConfigPath            string
@@ -39,11 +38,13 @@ type Config struct {
 const (
 	defaultEmbeddingModel    = "text-embedding-3-small"
 	defaultLLMTimeoutSeconds = 120
+	// maxEmbeddingDimensions is a sanity bound, not a provider limit: it is
+	// here to catch a typo before it reaches the API.
+	maxEmbeddingDimensions = 4096
 )
 
 // LLMConfig holds LLM provider settings. APIKey comes from env; model/baseURL may come from YAML.
 type LLMConfig struct {
-	Provider        string
 	APIKey          string
 	Model           string
 	BaseURL         string
@@ -56,6 +57,24 @@ type LLMConfig struct {
 	// "responses" (/v1/responses). Only the latter supports tools together
 	// with reasoning on gpt-5.6.
 	API string
+	// Embeddings points the embeddings client somewhere of its own. Every
+	// field falls back to the matching llm.* value, so an absent block is
+	// exactly the single-endpoint behaviour that came before it.
+	Embeddings EmbeddingsConfig
+}
+
+// EmbeddingsConfig gives embeddings an endpoint separate from completions.
+// The two cannot be assumed to share a host: several providers that serve
+// chat completions have no /embeddings route at all, and pointing one base URL
+// at them would take knowledge search and the tool catalog down with it.
+type EmbeddingsConfig struct {
+	BaseURL string
+	APIKey  string
+	Model   string
+	// Dimensions is sent as the request's `dimensions` parameter; zero omits
+	// it. It exists because kb_chunks.embedding is vector(1536), so a model
+	// whose native width is not 1536 has to be asked to return 1536.
+	Dimensions int
 }
 
 const (
@@ -185,14 +204,6 @@ type KnowledgeBaseConfig struct {
 	SettingsFile string `yaml:"settingsFile"`
 }
 
-type OAuthConfig struct {
-	CallbackBaseURL       string
-	FrontendBaseURL       string
-	AtlassianClientID     string
-	AtlassianClientSecret string
-	AtlassianMCPURL       string
-}
-
 type ServerConfig struct {
 	Host string
 	Port int
@@ -289,14 +300,26 @@ type fileConfig struct {
 }
 
 type fileLLMConfig struct {
-	BaseURL         string `yaml:"baseURL"`
-	Model           string `yaml:"model"`
-	EmbeddingModel  string `yaml:"embeddingModel"`
-	TimeoutSeconds  int    `yaml:"timeoutSeconds"`
-	HTTPReferer     string `yaml:"httpReferer"`
-	AppTitle        string `yaml:"appTitle"`
-	ReasoningEffort string `yaml:"reasoningEffort"`
-	API             string `yaml:"api"`
+	BaseURL        string `yaml:"baseURL"`
+	Model          string `yaml:"model"`
+	EmbeddingModel string `yaml:"embeddingModel"`
+	TimeoutSeconds int    `yaml:"timeoutSeconds"`
+	HTTPReferer    string `yaml:"httpReferer"`
+	AppTitle       string `yaml:"appTitle"`
+	// A pointer, not a string: `reasoningEffort: ""` in the file has to be
+	// able to clear a value that came from LLM_REASONING_EFFORT, because a
+	// model that rejects the parameter needs exactly that. Only an absent key
+	// should defer to the environment.
+	ReasoningEffort *string              `yaml:"reasoningEffort"`
+	API             string               `yaml:"api"`
+	Embeddings      fileEmbeddingsConfig `yaml:"embeddings"`
+}
+
+// fileEmbeddingsConfig has no apiKey: keys never come from the file.
+type fileEmbeddingsConfig struct {
+	BaseURL    string `yaml:"baseURL"`
+	Model      string `yaml:"model"`
+	Dimensions int    `yaml:"dimensions"`
 }
 
 // Load reads environment variables and the YAML file at path.
@@ -316,22 +339,19 @@ func Load(path string) (Config, error) {
 		},
 	}
 
-	cfg.OAuth = OAuthConfig{
-		CallbackBaseURL:       envOrDefault("OAUTH_CALLBACK_BASE_URL", "http://localhost:8080"),
-		FrontendBaseURL:       envOrDefault("FRONTEND_BASE_URL", "http://localhost:5173"),
-		AtlassianClientID:     envOrDefault("ATLASSIAN_CLIENT_ID", ""),
-		AtlassianClientSecret: envOrDefault("ATLASSIAN_CLIENT_SECRET", ""),
-		AtlassianMCPURL:       envOrDefault("ATLASSIAN_MCP_URL", "https://mcp.atlassian.com/v1/mcp"),
-	}
-
 	cfg.LLM = LLMConfig{
-		Provider:        envOrDefault("LLM_PROVIDER", "openai"),
 		APIKey:          resolveLLMAPIKey(),
 		Model:           resolveLLMModel(),
 		BaseURL:         resolveLLMBaseURL(),
 		EmbeddingModel:  envOrDefault("OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
 		ReasoningEffort: strings.TrimSpace(os.Getenv("LLM_REASONING_EFFORT")),
 		API:             envOrDefault("LLM_API", APIChat),
+		Embeddings: EmbeddingsConfig{
+			BaseURL:    strings.TrimSpace(os.Getenv("LLM_EMBEDDINGS_BASE_URL")),
+			APIKey:     strings.TrimSpace(os.Getenv("LLM_EMBEDDINGS_API_KEY")),
+			Model:      strings.TrimSpace(os.Getenv("LLM_EMBEDDINGS_MODEL")),
+			Dimensions: envOrDefaultInt("LLM_EMBEDDINGS_DIMENSIONS", 0),
+		},
 	}
 
 	cfg.Executor = ExecutorConfig{
@@ -437,6 +457,22 @@ func validateLLMConfig(llm LLMConfig) error {
 		return fmt.Errorf("config: invalid llm.reasoningEffort %q (allowed: %s)",
 			strings.TrimSpace(llm.ReasoningEffort), strings.Join(reasoningEfforts, ", "))
 	}
+	// Range-checked but deliberately not pinned to 1536 here: config must not
+	// import kb, and a width the provider ignores is only detectable from the
+	// response, so the real enforcement is in the embeddings client.
+	if llm.Embeddings.Dimensions < 0 || llm.Embeddings.Dimensions > maxEmbeddingDimensions {
+		return fmt.Errorf("config: llm.embeddings.dimensions must be between 1 and %d when set (got %d)",
+			maxEmbeddingDimensions, llm.Embeddings.Dimensions)
+	}
+	if strings.TrimSpace(llm.Embeddings.BaseURL) == "" {
+		return fmt.Errorf("config: llm.embeddings.baseURL is required (set llm.embeddings.baseURL, LLM_EMBEDDINGS_BASE_URL, or leave it to fall back to llm.baseURL)")
+	}
+	if strings.TrimSpace(llm.Embeddings.Model) == "" {
+		return fmt.Errorf("config: llm.embeddings.model is required (set llm.embeddings.model, LLM_EMBEDDINGS_MODEL, or llm.embeddingModel)")
+	}
+	if strings.TrimSpace(llm.Embeddings.APIKey) == "" {
+		return fmt.Errorf("config: llm.embeddings API key is required (set LLM_EMBEDDINGS_API_KEY, or LLM_API_KEY to share the completion key)")
+	}
 	switch strings.ToLower(strings.TrimSpace(llm.API)) {
 	case "", APIChat, APIResponses:
 	default:
@@ -467,6 +503,30 @@ func KnownReasoningEffort(effort string) bool {
 func applyLLMDefaults(llm *LLMConfig) {
 	if llm.TimeoutSeconds == 0 {
 		llm.TimeoutSeconds = defaultLLMTimeoutSeconds
+	}
+	ResolveEmbeddings(llm)
+}
+
+// ResolveEmbeddings collapses the embeddings block onto the llm.* values it
+// falls back to. It is idempotent, and exported so that a caller assembling an
+// LLMConfig without going through Load still gets a usable embeddings
+// endpoint rather than an empty one.
+//
+// The model is written back into EmbeddingModel rather than only read from it:
+// knowledge search compares that field against kb_collections.embedding_model
+// as an exact string, so letting the two spellings drift would return no
+// results and no error.
+func ResolveEmbeddings(llm *LLMConfig) {
+	if llm.Embeddings.BaseURL == "" {
+		llm.Embeddings.BaseURL = llm.BaseURL
+	}
+	if llm.Embeddings.APIKey == "" {
+		llm.Embeddings.APIKey = llm.APIKey
+	}
+	if llm.Embeddings.Model == "" {
+		llm.Embeddings.Model = llm.EmbeddingModel
+	} else {
+		llm.EmbeddingModel = llm.Embeddings.Model
 	}
 }
 
@@ -529,11 +589,22 @@ func applyFileLLMConfig(dst *LLMConfig, src fileLLMConfig) {
 	if v := strings.TrimSpace(src.AppTitle); v != "" {
 		dst.AppTitle = v
 	}
-	if v := strings.TrimSpace(src.ReasoningEffort); v != "" {
-		dst.ReasoningEffort = v
+	// Assigned whenever the key is present, including when it is empty: that
+	// is how a config clears an effort the environment set.
+	if src.ReasoningEffort != nil {
+		dst.ReasoningEffort = strings.TrimSpace(*src.ReasoningEffort)
 	}
 	if v := strings.TrimSpace(src.API); v != "" {
 		dst.API = v
+	}
+	if v := strings.TrimSpace(src.Embeddings.BaseURL); v != "" {
+		dst.Embeddings.BaseURL = v
+	}
+	if v := strings.TrimSpace(src.Embeddings.Model); v != "" {
+		dst.Embeddings.Model = v
+	}
+	if src.Embeddings.Dimensions > 0 {
+		dst.Embeddings.Dimensions = src.Embeddings.Dimensions
 	}
 }
 

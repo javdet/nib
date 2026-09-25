@@ -12,12 +12,11 @@ import (
 
 // MCPHandler exposes HTTP endpoints for managing MCP connections and tools.
 type MCPHandler struct {
-	svc             *service.MCPService
-	frontendBaseURL string
+	svc *service.MCPService
 }
 
-func NewMCPHandler(svc *service.MCPService, frontendBaseURL string) *MCPHandler {
-	return &MCPHandler{svc: svc, frontendBaseURL: frontendBaseURL}
+func NewMCPHandler(svc *service.MCPService) *MCPHandler {
+	return &MCPHandler{svc: svc}
 }
 
 type createMCPConnectionRequest struct {
@@ -122,54 +121,6 @@ func (h *MCPHandler) Delete() http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-// InitiateOAuth redirects the user to the OAuth provider's consent page.
-func (h *MCPHandler) InitiateOAuth() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		providerType := chi.URLParam(r, "type")
-		if providerType == "" {
-			writeError(w, http.StatusBadRequest, "provider type is required")
-			return
-		}
-
-		authURL, err := h.svc.InitiateOAuth(providerType)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-	}
-}
-
-// OAuthCallback handles the OAuth redirect callback from the provider.
-func (h *MCPHandler) OAuthCallback() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		providerType := chi.URLParam(r, "type")
-		code := r.URL.Query().Get("code")
-		state := r.URL.Query().Get("state")
-
-		if code == "" || state == "" {
-			oauthErr := r.URL.Query().Get("error")
-			desc := r.URL.Query().Get("error_description")
-			if oauthErr != "" {
-				writeError(w, http.StatusBadRequest, oauthErr+": "+desc)
-				return
-			}
-			writeError(w, http.StatusBadRequest, "missing code or state parameter")
-			return
-		}
-
-		_, err := h.svc.HandleOAuthCallback(r.Context(), providerType, state, code)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		redirectURL := h.frontendBaseURL + "/tools?oauth=success"
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 	}
 }
 

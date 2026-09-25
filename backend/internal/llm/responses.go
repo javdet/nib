@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/javdet/nib/internal/toolschema"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
@@ -195,15 +196,11 @@ func toolDefsToResponses(tools []ToolDef) []responses.ToolUnionParam {
 	return out
 }
 
+// responsesParametersFromRaw mirrors functionParametersFromRaw for the
+// responses endpoint; see the note there on why the sanitizer sits in this
+// package.
 func responsesParametersFromRaw(raw json.RawMessage) map[string]any {
-	if len(raw) == 0 {
-		return map[string]any{"type": "object"}
-	}
-	var params map[string]any
-	if err := json.Unmarshal(raw, &params); err != nil || len(params) == 0 {
-		return map[string]any{"type": "object"}
-	}
-	return params
+	return toolschema.Sanitize(raw)
 }
 
 func assistantFromResponse(resp *responses.Response) AssistantMessage {

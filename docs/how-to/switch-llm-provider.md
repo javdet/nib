@@ -4,8 +4,11 @@ Any OpenAI-compatible endpoint works. The move is four settings and, if the
 embedding model's name changes, one SQL statement — without which knowledge
 search silently returns nothing.
 
-The backend uses **one** base URL for both chat completions and embeddings. A
-provider that serves only one of the two cannot be used on its own.
+Completions and embeddings are configured separately. `llm.baseURL` serves
+completions; the `llm.embeddings` block serves embeddings and falls back to
+`llm.baseURL` when it is not set. That split is what makes a provider serving
+only chat completions usable — several of them serve no `/embeddings` route at
+all.
 
 Changing the provider here has no effect on the executor's agent containers,
 which are configured separately. See [Executor
@@ -65,6 +68,92 @@ Three things that bite:
   there has not been verified against a working key.
 - **Model ids are `provider/model` slugs**, including the embedding model.
 
+## Provider presets
+
+Each block below goes in the `llm` section. All of them use `api: chat` and an
+empty `reasoningEffort`, for the reasons under
+[What these presets have in common](#what-these-presets-have-in-common).
+
+Model ids move faster than this page does. Treat the ones here as the shape of
+the setting and check the provider's own model list before committing.
+
+### Google Gemini
+
+Serves both endpoints, so no separate embeddings host is needed — only a width.
+
+```yaml
+llm:
+  baseURL: https://generativelanguage.googleapis.com/v1beta/openai/
+  model: gemini-2.5-pro
+  api: chat
+  reasoningEffort: ""
+  embeddings:
+    model: gemini-embedding-001
+    dimensions: 1536
+```
+
+`gemini-embedding-001` returns 3072 dimensions by default and `kb_chunks.embedding`
+is `vector(1536)`, so `dimensions` is not optional here.
+
+### Alibaba Qwen (DashScope)
+
+Also serves both. Use `dashscope.aliyuncs.com` inside mainland China.
+
+```yaml
+llm:
+  baseURL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  model: qwen-max
+  api: chat
+  reasoningEffort: ""
+  embeddings:
+    model: text-embedding-v4
+    dimensions: 1536
+```
+
+`text-embedding-v4` supports 1536; `text-embedding-v3` does **not** — its
+largest width is 1024, which this schema cannot store.
+
+### DeepSeek, xAI Grok, Moonshot Kimi
+
+None of these serves an `/embeddings` route. Completions come from them and
+embeddings from somewhere else, which is what the `llm.embeddings` block is for.
+`LLM_EMBEDDINGS_API_KEY` holds the second provider's key.
+
+```yaml
+llm:
+  # DeepSeek: https://api.deepseek.com/v1          (deepseek-chat, deepseek-reasoner)
+  # xAI:      https://api.x.ai/v1                  (grok-4)
+  # Moonshot: https://api.moonshot.ai/v1           (kimi-k2-0905-preview)
+  baseURL: https://api.deepseek.com/v1
+  model: deepseek-chat
+  api: chat
+  reasoningEffort: ""
+  embeddings:
+    baseURL: https://api.openai.com/v1
+    model: text-embedding-3-small
+```
+
+Any embeddings host works as long as it returns 1536-wide vectors. Gemini's
+endpoint with `dimensions: 1536` is the alternative if you would rather not hold
+an OpenAI key.
+
+Whichever you choose, the embedding model's **name** is what knowledge search
+matches on, so changing it means the
+[rename](#rename-the-embedding-model-in-the-database) below.
+
+### What these presets have in common
+
+- **`api: chat`.** None of these providers serves `/v1/responses`. That costs
+  reasoning replay, which is an OpenAI-only feature — see
+  [LLM endpoints and reasoning replay](../explanation/llm-endpoints.md).
+- **`reasoningEffort: ""`.** The parameter is sent on every request whatever the
+  model is. Grok-4 and Kimi reject it outright; Gemini accepts only
+  `none`/`low`/`medium`/`high`, not `minimal` or `xhigh`. An empty value omits
+  it. Note that an *absent* key defers to `LLM_REASONING_EFFORT`, so write the
+  empty string explicitly rather than deleting the line.
+- **The `dimensions` setting must match `kb-mcp`.** See
+  [Update the knowledge-base container too](#update-the-knowledge-base-container-too).
+
 ## Rename the embedding model in the database
 
 Do this whenever `llm.embeddingModel` changes its **name**, even if the
@@ -88,6 +177,18 @@ If the underlying model is changing, not just its name, that is not a rename:
 the existing vectors are meaningless against the new one and every collection
 has to be re-ingested.
 
+### A note on width
+
+`kb_chunks.embedding` is `vector(1536)` and `kb_collections` carries a
+constraint to match, so every collection is 1536-wide. A model with a different
+native width has to be asked for 1536 through `llm.embeddings.dimensions`;
+providers implement that as Matryoshka truncation, which is only meaningful
+when the model was trained for it.
+
+nib does not slice vectors locally. If the endpoint ignores `dimensions` and
+answers at its own width, the request fails naming both numbers rather than
+storing something that would never match.
+
 ## Update the knowledge-base container too
 
 `kb-mcp` embeds queries itself and has its own copy of these settings:
@@ -95,6 +196,13 @@ has to be re-ingested.
 - Docker Compose — `KB_EMBEDDINGS_BASE_URL` in `.env`, which becomes
   `EMBEDDINGS_BASE_URL` in the container.
 - Helm — `kbMcp.embeddings.baseURL`.
+
+**If you set `llm.embeddings.dimensions`, set the container's width to match.**
+`KB_EMBEDDINGS_DIMENSIONS` in `.env` becomes `EMBEDDINGS_DIMENSIONS` in the
+container (`kbMcp.embeddings.dimensions` in Helm). The backend ingests the
+chunks and `kb-mcp` embeds the queries that search them: at different widths the
+comparison matches nothing, and, like the model-name mismatch below, it reports
+no error anywhere.
 
 Its `-provider openrouter` flag is only the CLI's name for a generic
 OpenAI-compatible `/embeddings` client. Leave it as is and point the base URL
@@ -129,12 +237,13 @@ multi-step prompt.
 
 ## Providers that will not work
 
-**Anthropic directly.** There is no Anthropic provider, and one base URL serves
-both chat and embeddings — pointing it at Anthropic would send `/embeddings`
-there too, which Anthropic does not offer, breaking knowledge search and the
-tool catalog. Claude through OpenRouter has no such problem.
+**Anything that is not OpenAI-compatible.** nib speaks `/v1/chat/completions`
+and `/v1/embeddings` and has no provider-specific code. A model behind a wire
+format of its own needs a gateway in front of it; OpenRouter is the usual one.
 
-Any provider that serves completions but not embeddings fails the same way.
+A provider that serves completions but **not** embeddings is no longer a
+problem: point `llm.embeddings` at something that does. See
+[Provider presets](#provider-presets).
 
 ## See also
 

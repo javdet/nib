@@ -1,33 +1,180 @@
-# Compose runtime config mounted over the image default at /app/config.yaml.
-# Database connection uses DB_* environment variables (knowledge_base.uri is omitted).
+# Example configuration for nib (OpenAI-compatible LLM API).
+# Copy to a local path and pass it to the CLI with -config.
+# API key is read from LLM_API_KEY env (fallback: OPENAI_API_KEY).
+
+# Provider presets (set baseURL + model; API key via env).
+# Ready-made blocks per provider: docs/how-to/switch-llm-provider.md#provider-presets
+#
+#   OpenAI:       https://api.openai.com/v1                        (api: responses)
+#   OpenRouter:   https://openrouter.ai/api/v1                     (+ httpReferer/appTitle)
+#   DO Gradient:  https://inference.do-ai.run/v1
+#   Gemini:       https://generativelanguage.googleapis.com/v1beta/openai/
+#   Qwen:         https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+#   DeepSeek:     https://api.deepseek.com/v1          -- no /embeddings
+#   xAI Grok:     https://api.x.ai/v1                  -- no /embeddings
+#   Kimi:         https://api.moonshot.ai/v1           -- no /embeddings
+#
+# Everything but OpenAI needs `api: chat` and an empty `reasoningEffort`.
+# The three marked "no /embeddings" need the `embeddings` block below.
 llm:
+  # Base URL for the OpenAI-compatible API (no trailing slash required).
   baseURL: https://api.openai.com/v1
+
+  # Model id as understood by the provider (OpenRouter uses provider/model slugs).
+  # OpenAI platform: gpt-5.6 is an alias for gpt-5.6-sol; gpt-5.6-terra / gpt-5.6-luna are cheaper.
   model: gpt-5.6
+
+  # Embedding model for knowledge-base ingestion (OpenAI-compatible /embeddings).
+  # MUST match kb_collections.embedding_model exactly (string compare in knowledge_search).
+  # OpenAI platform ids have no provider prefix (OpenRouter used "openai/text-embedding-3-small").
   embeddingModel: text-embedding-3-small
+
+  # Completion endpoint: chat (/v1/chat/completions) or responses (/v1/responses).
+  # gpt-5.6 rejects function tools on chat completions unless reasoning is off,
+  # so tools + reasoning requires responses. Use chat for gateways whose
+  # responses support is absent or unverified — see docs/how-to/switch-llm-provider.md.
   api: responses
-  reasoningEffort: medium
+
+  # Embeddings endpoint. Every field falls back to the llm.* value above, so
+  # omitting the block keeps one provider serving both.
+  #
+  # Set baseURL when the completion provider serves no /embeddings route
+  # (DeepSeek, xAI, Kimi). Set dimensions when the embedding model is not
+  # natively 1536 wide (Gemini is 3072, Qwen is 1024) -- kb_chunks.embedding is
+  # vector(1536), and a width that does not match is refused rather than stored.
+  # The key, when it differs, is LLM_EMBEDDINGS_API_KEY in the environment.
+  #
+  # Whatever is set here must match the kb-mcp container, which embeds the
+  # queries that search these chunks: KB_EMBEDDINGS_BASE_URL and
+  # KB_EMBEDDINGS_DIMENSIONS in .env.
+  # embeddings:
+  #   baseURL: https://api.openai.com/v1
+  #   model: text-embedding-3-small
+  #   dimensions: 1536
+
+  # reasoning_effort sent with every completion, whatever the model is.
+  # Allowed: none, minimal, low, medium, high, xhigh.
+  #
+  # Clear it for any provider that rejects the parameter (Grok, Kimi) or that
+  # accepts a narrower set (Gemini: none/low/medium/high). An explicit "" here
+  # overrides LLM_REASONING_EFFORT; deleting the key defers to it instead.
+  reasoningEffort: high
+
+  # HTTP client timeout for the chat completion request (seconds).
   timeoutSeconds: 300
+
+  # Optional OpenRouter attribution headers (omit or leave empty to skip).
+  # Not used by the OpenAI platform.
   httpReferer: ""
   appTitle: ""
 
+# Optional: mirror everything llmchat writes to stderr to a file (append mode).
+# Includes slog JSON logs and fenced / intermediate sections; stdout (final API JSON) is unchanged.
+# When enabled is true, file must be a non-empty path (absolute or relative). Omitted or false: file ignored.
+# Parent directory must already exist; missing file is created with mode 0644.
+# level controls slog verbosity (default: info). Use debug to log full tool call arguments and responses.
 log:
   enabled: true
-  file: /app/data/logs/llmchat.stderr.log
-  level: info
+  file: "/app/data/logs/llmchat.stderr.log"
+  level: info   # info (default) | debug | warn | error
+
+# Prometheus metrics, served on a listener of their own.
+#
+# A separate port, not a route on the API server: both the Helm ingress and the
+# frontend nginx route only the /api prefix to the backend, so this endpoint
+# stays unreachable from the public host while an in-cluster scraper on the pod
+# port still gets it. It is unauthenticated, like the rest of the API.
+metrics:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9090
+  path: /metrics
+  # Plans-by-status needs one Postgres query plus one plan_state file read per
+  # plan, so it is refreshed on this interval rather than on every scrape. The
+  # database health probe behind nib_db_up rides along on the same tick.
+  refreshSeconds: 30
 
 agent:
+  # Maximum number of LLM completion rounds in the agent loop.
+  # Each round = one POST to the chat API; tool calls re-trigger the LLM
+  # until the assistant returns no tool_calls or this cap is reached.
   maxIterations: 30
+  # Plan fan-out: one subagent per DAG stage, planning in parallel.
+  # How many stage subagents may run at once.
+  planFanoutConcurrency: 4
+  # Completion round budget for a single stage subagent. Lower than
+  # maxIterations because it researches one stage rather than a whole plan.
+  stageMaxIterations: 20
+  # Deadline for a whole fan-out run. It outlives the request that starts it.
+  planFanoutTimeoutMinutes: 60
+  # Action execution: one subagent per plan action, launched by the orchestrator.
+  # Retained so an existing config still loads, and clamped to 1: one execution
+  # at a time is a policy, not a capacity limit. Two agents changing the same
+  # infrastructure can undo each other's work, and an operator watching one chat
+  # cannot follow two. Use the Stop button, or ask in the chat, to free the slot.
+  actionExecConcurrency: 1
+  # Completion round budget for a single action subagent. It carries out one
+  # action rather than planning a stage, so it needs fewer rounds than a plan
+  # but more than a stage: executing tends to mean several tool calls in a row.
+  actionExecMaxIterations: 20
+  # Deadline for one action run. Like a fan-out it outlives the turn that
+  # starts it, so it needs a deadline of its own.
+  actionExecTimeoutMinutes: 30
+
+knowledge_base:
+  # Left unset on purpose: under compose the database is reached through the
+  # DB_* environment variables (DB_HOST=postgres). A uri here wins over them,
+  # and "localhost" inside the backend container is the container itself.
+  # uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable
+
+  # Directory holding the source file last uploaded to each collection, as
+  # {dir}/{collection}.md. Written after a successful ingest so the document can
+  # be read back and downloaded; the vector store stays the search path.
+  # Relative paths resolve under DATA_DIR; empty means {DATA_DIR}/knowledgebase.
+  # A collection with no file here falls back to the skeleton compiled into the
+  # binary, which is never written to disk.
+  dir: /app/data/knowledgebase
+
+  # Operator switches (currently just the knowledge-base auto-update that
+  # finishing a plan triggers), edited on the Knowledge Base page rather than
+  # here. Relative paths resolve under DATA_DIR; empty means
+  # {DATA_DIR}/knowledge.json. A file that does not exist yet is created with
+  # auto-update on.
+  settingsFile: knowledge.json
 
 skills:
   dir: /app/data/skills
 
 rules:
-  dir: /app/data/rules
+  dir: "/app/data/rules"
 
+# Runtime override directory for the discuss system prompt ({dir}/discuss.md).
+# All mode prompts are compiled into the binary; discuss is the only one editable
+# at runtime, and its override lives here so UI edits survive image rebuilds.
 prompts:
   dir: /app/data/prompts
 
+# Per-mode tool configuration directory.
+# System allow lists: <name>.json with shape {"allow_tools":["tool_a",...]}.
+# Included MCP tools: mcp-included.json maps mode -> tool names.
 includedTools:
   dir: /app/data/tools
 
-projects: []
+projects:
+  - name: "myproject"
+    description: "myproject project description"
+    environments:
+      - name: "stage"
+        description: "stage description"
+      - name: "prod"
+        description: "prod description"
+    clouds:
+      - name: "digitalocean"
+        description: "digitalocean description"
+        locations:
+          - fra1
+          - ams3
+      - name: "aws"
+        description: "aws description"
+        locations:
+          - us-east-2

@@ -180,7 +180,7 @@ func (s *ToolSearchService) SearchTools(ctx context.Context, args map[string]any
 		for _, h := range res.Tools {
 			toolRows = append(toolRows, toolSearchResponseRow{
 				Server:      h.Server,
-				Name:        h.Name,
+				Name:        sanitizeToolName(h.Name),
 				Description: h.Description,
 				Categories:  h.Categories,
 				Score:       h.Score,
@@ -207,8 +207,11 @@ func (s *ToolSearchService) SearchTools(ctx context.Context, args map[string]any
 		rows := make([]toolSearchResponseRow, 0, len(res.Tools))
 		for _, h := range res.Tools {
 			rows = append(rows, toolSearchResponseRow{
-				Server:      h.Server,
-				Name:        h.Name,
+				Server: h.Server,
+				// The sanitized name, not the server's: this row is what the
+				// model calls next, and the catalog offers tools under the
+				// rewritten spelling.
+				Name:        sanitizeToolName(h.Name),
 				Description: h.Description,
 				Categories:  h.Categories,
 				Score:       h.Score,
@@ -228,6 +231,27 @@ func (s *ToolSearchService) LookupTool(ctx context.Context, name string) (toolca
 		return toolcatalog.Tool{}, false, nil
 	}
 	return s.store.GetToolByName(ctx, name)
+}
+
+// LookupToolBySanitizedName finds the catalog entry whose provider-safe name is
+// the one given. The catalog indexes the spelling the server published, so an
+// exact lookup misses whenever that name had to be rewritten; this searches for
+// it instead and confirms the match by re-running the rewrite.
+func (s *ToolSearchService) LookupToolBySanitizedName(ctx context.Context, name string) (toolcatalog.Tool, bool, error) {
+	if s == nil || s.store == nil {
+		return toolcatalog.Tool{}, false, nil
+	}
+	res, err := s.store.Search(ctx, name, nil, nil, toolSearchMaxLimit, toolcatalog.SearchScopeTool)
+	if err != nil {
+		return toolcatalog.Tool{}, false, fmt.Errorf("tool search by sanitized name: %w", err)
+	}
+	for _, hit := range res.Tools {
+		if sanitizeToolName(hit.Name) != name {
+			continue
+		}
+		return s.store.GetToolByName(ctx, hit.Name)
+	}
+	return toolcatalog.Tool{}, false, nil
 }
 
 func (s *ToolSearchService) embedQuery(ctx context.Context, query string) []float32 {

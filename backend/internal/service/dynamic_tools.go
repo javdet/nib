@@ -54,6 +54,16 @@ func (s *ChatService) resolveDynamicTool(ctx context.Context, name string) (llm.
 		return llm.ToolDef{}, toolRoute{}, false
 	}
 	if !found {
+		// The catalog indexes the server's spelling, but the model can only
+		// have called the rewritten one. Search for the tool whose sanitized
+		// name is what came back.
+		tool, found, err = s.toolSearchSvc.LookupToolBySanitizedName(ctx, name)
+		if err != nil {
+			slog.Warn("resolve tool by sanitized name failed", "name", name, "error", err)
+			return llm.ToolDef{}, toolRoute{}, false
+		}
+	}
+	if !found {
 		return llm.ToolDef{}, toolRoute{}, false
 	}
 	return s.catalogToolRoute(ctx, tool)
@@ -83,15 +93,22 @@ func (s *ChatService) catalogToolRoute(ctx context.Context, tool toolcatalog.Too
 		return llm.ToolDef{}, toolRoute{}, false
 	}
 
+	exposed := sanitizeToolName(name)
+	if exposed == "" {
+		slog.Warn("catalog tool name has no provider-safe form", "server", tool.Server, "name", name)
+		return llm.ToolDef{}, toolRoute{}, false
+	}
+
 	def := llm.ToolDef{
-		Name:        name,
+		Name:        exposed,
 		Description: tool.Description,
 		Parameters:  toolParametersJSON(tool.InputSchema),
 	}
 	route := toolRoute{
-		serverURL: url,
-		headers:   cloneHeaderMap(server.Headers),
-		secrets:   server.Values(),
+		serverURL:  url,
+		headers:    cloneHeaderMap(server.Headers),
+		secrets:    server.Values(),
+		remoteName: name,
 	}
 	return def, route, true
 }

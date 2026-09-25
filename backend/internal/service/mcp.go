@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/mcpclient"
-	"github.com/javdet/nib/internal/oauth"
 	"github.com/javdet/nib/internal/repository"
 	"github.com/google/uuid"
 )
@@ -48,30 +46,14 @@ func normalizeMCPMetadata(meta json.RawMessage) (json.RawMessage, error) {
 	return json.RawMessage(trimmed), nil
 }
 
-// MCPService orchestrates MCP connection CRUD, OAuth flows, and live MCP sessions.
+// MCPService orchestrates MCP connection CRUD and live MCP sessions.
 type MCPService struct {
-	repo       repository.MCPRepository
-	manager    *mcpclient.Manager
-	providers  map[string]oauth.Provider
-	stateStore *oauth.StateStore
+	repo    repository.MCPRepository
+	manager *mcpclient.Manager
 }
 
-func NewMCPService(
-	repo repository.MCPRepository,
-	manager *mcpclient.Manager,
-	providers []oauth.Provider,
-	stateStore *oauth.StateStore,
-) *MCPService {
-	pm := make(map[string]oauth.Provider, len(providers))
-	for _, p := range providers {
-		pm[p.Type()] = p
-	}
-	return &MCPService{
-		repo:       repo,
-		manager:    manager,
-		providers:  pm,
-		stateStore: stateStore,
-	}
+func NewMCPService(repo repository.MCPRepository, manager *mcpclient.Manager) *MCPService {
+	return &MCPService{repo: repo, manager: manager}
 }
 
 func (s *MCPService) ListConnections(ctx context.Context) ([]domain.MCPConnection, error) {
@@ -132,82 +114,6 @@ func (s *MCPService) CreateConnectionWithToken(ctx context.Context, connType, na
 	return result, nil
 }
 
-// InitiateOAuth starts the OAuth 2.1 + PKCE flow for the given provider type.
-// Returns the authorization URL to redirect the user to.
-func (s *MCPService) InitiateOAuth(providerType string) (authURL string, err error) {
-	provider, ok := s.providers[providerType]
-	if !ok {
-		return "", fmt.Errorf("unknown provider: %s", providerType)
-	}
-
-	state, err := oauth.GenerateState()
-	if err != nil {
-		return "", fmt.Errorf("generate state: %w", err)
-	}
-
-	verifier, err := oauth.GenerateCodeVerifier()
-	if err != nil {
-		return "", fmt.Errorf("generate pkce verifier: %w", err)
-	}
-
-	s.stateStore.Put(state, oauth.PKCEParams{
-		CodeVerifier: verifier,
-		CreatedAt:    time.Now(),
-	})
-
-	challenge := oauth.CodeChallengeS256(verifier)
-	return provider.AuthCodeURL(state, challenge), nil
-}
-
-// HandleOAuthCallback processes the OAuth callback, exchanges the code for tokens,
-// creates the MCP connection record, and establishes the MCP session.
-func (s *MCPService) HandleOAuthCallback(ctx context.Context, providerType, state, code string) (domain.MCPConnection, error) {
-	provider, ok := s.providers[providerType]
-	if !ok {
-		return domain.MCPConnection{}, fmt.Errorf("unknown provider: %s", providerType)
-	}
-
-	params, found := s.stateStore.Pop(state)
-	if !found {
-		return domain.MCPConnection{}, fmt.Errorf("invalid or expired oauth state")
-	}
-
-	tokens, err := provider.Exchange(ctx, code, params.CodeVerifier)
-	if err != nil {
-		return domain.MCPConnection{}, fmt.Errorf("oauth exchange: %w", err)
-	}
-
-	conn := domain.MCPConnection{
-		Type:           providerType,
-		Name:           providerType,
-		ServerURL:      provider.DefaultServerURL(),
-		AuthMethod:     "oauth2",
-		AccessToken:    tokens.AccessToken,
-		RefreshToken:   tokens.RefreshToken,
-		TokenExpiresAt: tokens.ExpiresAt,
-		Status:         "connecting",
-	}
-
-	// Upsert, not insert: Name is the provider type, so a second run of the flow
-	// is a re-authentication of the same upstream. Inserting left both rows
-	// connected, and the tool router registered every tool twice.
-	result, err := s.repo.UpsertByTypeName(ctx, conn)
-	if err != nil {
-		return domain.MCPConnection{}, fmt.Errorf("create connection: %w", err)
-	}
-
-	if err := s.manager.Connect(ctx, result.ID, result.ServerURL, tokens.AccessToken, mcpclient.AuthSchemeBearer); err != nil {
-		slog.Error("failed to establish mcp session after oauth", "error", err, "connectionID", result.ID)
-		_ = s.repo.UpdateStatus(ctx, result.ID, "error")
-		result.Status = "error"
-		return result, nil
-	}
-
-	_ = s.repo.UpdateStatus(ctx, result.ID, "connected")
-	result.Status = "connected"
-	return result, nil
-}
-
 // UpdateConnection updates an existing MCP connection's name, server URL, API token, and metadata.
 // If the API token changed, it reconnects the MCP session with the new credentials.
 func (s *MCPService) UpdateConnection(ctx context.Context, id uuid.UUID, name, serverURL, apiToken string, metadata json.RawMessage) (domain.MCPConnection, error) {
@@ -257,8 +163,10 @@ func (s *MCPService) DeleteConnection(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Reconnect tries to re-establish an MCP session for an existing connection,
-// refreshing OAuth tokens if needed.
+// Reconnect tries to re-establish an MCP session for an existing connection.
+// A row left over from the removed OAuth flow connects with the access token it
+// holds; nothing refreshes it any more, so an expired one has to be re-added as
+// a token connection.
 func (s *MCPService) Reconnect(ctx context.Context, id uuid.UUID) error {
 	conn, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -270,17 +178,6 @@ func (s *MCPService) Reconnect(ctx context.Context, id uuid.UUID) error {
 	if conn.AuthMethod == "api_token" {
 		token = conn.APIToken
 		scheme = authSchemeForType(conn.Type)
-	} else if conn.RefreshToken != "" {
-		provider, ok := s.providers[conn.Type]
-		if ok {
-			refreshed, err := provider.Refresh(ctx, conn.RefreshToken)
-			if err != nil {
-				slog.Warn("token refresh failed, using existing token", "error", err, "connectionID", id)
-			} else {
-				token = refreshed.AccessToken
-				_ = s.repo.UpdateTokens(ctx, id, refreshed.AccessToken, refreshed.RefreshToken, refreshed.ExpiresAt)
-			}
-		}
 	}
 
 	if err := s.manager.Connect(ctx, id, conn.ServerURL, token, scheme); err != nil {

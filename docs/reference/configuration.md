@@ -60,12 +60,60 @@ The model id as the provider spells it. OpenRouter uses `provider/model` slugs.
 - **Default:** `text-embedding-3-small`
 - **Environment starting value:** `OPENAI_EMBEDDING_MODEL`
 
-The embedding model used when ingesting knowledge-base documents.
+The embedding model used when ingesting knowledge-base documents, and the
+fallback for [`llm.embeddings.model`](#llmembeddingsmodel). Setting that key
+**overwrites this one**, so the two can never disagree.
 
 This string must match the `embedding_model` column of the `kb_collections`
 table exactly. Knowledge search compares the two as strings, and a mismatch
 returns no results rather than an error. See
 [Switch the LLM provider](../how-to/switch-llm-provider.md) for the rename.
+
+### `llm.embeddings.baseURL`
+
+- **Type:** string
+- **Default:** falls back to [`llm.baseURL`](#llmbaseurl)
+- **Environment starting value:** `LLM_EMBEDDINGS_BASE_URL`
+- **Error:** `config: llm.embeddings.baseURL is required (set llm.embeddings.baseURL, LLM_EMBEDDINGS_BASE_URL, or leave it to fall back to llm.baseURL)`
+
+The host serving `/embeddings`. Set it only when the completion provider does
+not serve embeddings — DeepSeek, xAI and Moonshot do not.
+
+### `llm.embeddings.apiKey`
+
+- **Type:** string, **environment only** (never read from YAML)
+- **Default:** falls back to the completion API key
+- **Environment starting value:** `LLM_EMBEDDINGS_API_KEY`
+- **Error:** `config: llm.embeddings API key is required (set LLM_EMBEDDINGS_API_KEY, or LLM_API_KEY to share the completion key)`
+
+Needed only when the embeddings host is a different provider.
+
+### `llm.embeddings.model`
+
+- **Type:** string
+- **Default:** falls back to [`llm.embeddingModel`](#llmembeddingmodel)
+- **Environment starting value:** `LLM_EMBEDDINGS_MODEL`
+- **Error:** `config: llm.embeddings.model is required (set llm.embeddings.model, LLM_EMBEDDINGS_MODEL, or llm.embeddingModel)`
+
+Setting this **overwrites** `llm.embeddingModel`, which is what knowledge search
+compares against `kb_collections.embedding_model`.
+
+### `llm.embeddings.dimensions`
+
+- **Type:** integer
+- **Default:** `0` — the parameter is omitted from the request
+- **Accepted:** 1 to 4096
+- **Environment starting value:** `LLM_EMBEDDINGS_DIMENSIONS`
+- **Error:** `config: llm.embeddings.dimensions must be between 1 and 4096 when set (got <n>)`
+
+Sent as the request's `dimensions`. `kb_chunks.embedding` is `vector(1536)`, so
+a model whose native width is not 1536 — Gemini at 3072, Qwen at 1024 — has to
+be asked for it. Omitted when zero, because a provider that does not know the
+parameter rejects the whole request.
+
+If the endpoint ignores it and answers at its own width, the request fails
+naming both numbers rather than storing vectors that would never match. Set
+`EMBEDDINGS_DIMENSIONS` on the `kb-mcp` container to the same value.
 
 ### `llm.api`
 
@@ -96,7 +144,17 @@ replay](../explanation/llm-endpoints.md).
 - **Error:** `config: invalid llm.reasoningEffort "<value>" (allowed: none, minimal, low, medium, high, xhigh)`
 
 Sent as `reasoning_effort` on every completion, whatever the model is. Only an
-empty value is omitted, so a non-reasoning model needs this cleared.
+empty value is omitted, so a non-reasoning model needs this cleared — Grok and
+Kimi reject the parameter outright, and Gemini accepts only `none`, `low`,
+`medium` and `high`.
+
+Unlike every other key here, **an explicit empty string overrides the
+environment**: `reasoningEffort: ""` clears a value set by
+`LLM_REASONING_EFFORT`, while omitting the key defers to it. Clearing the
+parameter would otherwise be impossible wherever the environment sets one.
+
+A request rejected with HTTP 400 while an effort is configured has a hint
+appended to the error naming this key.
 
 ### `llm.timeoutSeconds`
 

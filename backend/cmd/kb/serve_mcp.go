@@ -28,6 +28,7 @@ type mcpRuntime struct {
 	modelOverride     string
 	timeout           time.Duration
 	embeddingsBaseURL string
+	dimensions        int
 	googleBaseURL     string
 	httpReferer       string
 	appTitle          string
@@ -44,6 +45,7 @@ func runServeMCP(args []string) int {
 		model             string
 		timeout           time.Duration
 		embeddingsBaseURL string
+		dimensions        int
 		googleBaseURL     string
 		httpReferer       string
 		appTitle          string
@@ -58,6 +60,7 @@ func runServeMCP(args []string) int {
 	fs.StringVar(&model, "model", "", "if set, every search collection must use this embedding_model (otherwise the collection row supplies the model)")
 	fs.DurationVar(&timeout, "timeout", 120*time.Second, "HTTP timeout for embedding requests")
 	fs.StringVar(&embeddingsBaseURL, "embeddings-base-url", "", "OpenAI-compatible API base URL ($EMBEDDINGS_BASE_URL)")
+	fs.IntVar(&dimensions, "dimensions", envInt("EMBEDDINGS_DIMENSIONS", 0), "embedding width to request; must match what the collection was ingested with (0 omits the parameter) ($EMBEDDINGS_DIMENSIONS)")
 	fs.StringVar(&embeddingsBaseURL, "openrouter-base-url", "", "Deprecated alias for -embeddings-base-url")
 	fs.StringVar(&googleBaseURL, "google-base-url", "", "Google Generative Language API base (default from embed package or $GOOGLE_API_BASE_URL)")
 	fs.StringVar(&httpReferer, "http-referer", "", "HTTP-Referer for OpenRouter ($HTTP_REFERER)")
@@ -101,6 +104,7 @@ func runServeMCP(args []string) int {
 		modelOverride:     strings.TrimSpace(model),
 		timeout:           timeout,
 		embeddingsBaseURL: embeddingsBaseURL,
+		dimensions:        dimensions,
 		googleBaseURL:     googleBaseURL,
 		httpReferer:       httpReferer,
 		appTitle:          appTitle,
@@ -193,7 +197,7 @@ func (rt *mcpRuntime) handleKnowledgeSearch(ctx context.Context, req mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("collection %q uses embedding_model %q, server -model is %q", collectionName, coll.EmbeddingModel, rt.modelOverride)), nil
 	}
 
-	embedder, err := buildEmbedder(rt.provider, coll.EmbeddingModel, rt.timeout, rt.embeddingsBaseURL, rt.googleBaseURL, rt.httpReferer, rt.appTitle)
+	embedder, err := buildEmbedder(rt.provider, coll.EmbeddingModel, rt.timeout, rt.dimensions, rt.embeddingsBaseURL, rt.googleBaseURL, rt.httpReferer, rt.appTitle)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

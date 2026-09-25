@@ -36,8 +36,6 @@
         "llmApiKey": { "type": "string" },
         "openaiApiKey": { "type": "string" },
         "secretsEncryptionKey": { "type": "string" },
-        "atlassianClientId": { "type": "string" },
-        "atlassianClientSecret": { "type": "string" },
         "executorLlmApiKey": { "type": "string" },
         "executorLlmModel": { "type": "string" }
       }
@@ -106,13 +104,6 @@
           }
         },
         "mcpServers": { "type": "object" },
-        "oauth": {
-          "type": "object",
-          "properties": {
-            "callbackBaseURL": { "type": "string" },
-            "frontendBaseURL": { "type": "string" }
-          }
-        },
         "dockerSocket": {
           "type": "object",
           "properties": {

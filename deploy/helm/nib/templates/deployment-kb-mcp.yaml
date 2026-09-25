@@ -63,6 +63,10 @@ spec:
                   key: LLM_API_KEY
             - name: EMBEDDINGS_BASE_URL
               value: {{ default .Values.kbMcp.openrouter.baseURL .Values.kbMcp.embeddings.baseURL | quote }}
+            {{- with .Values.kbMcp.embeddings.dimensions }}
+            - name: EMBEDDINGS_DIMENSIONS
+              value: {{ . | quote }}
+            {{- end }}
           {{- with .Values.kbMcp.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

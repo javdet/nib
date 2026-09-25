@@ -97,3 +97,76 @@ func TestOpenRouterEmbedder_Embed_empty(t *testing.T) {
 		t.Fatalf("got dim=%d vecs=%v", dim, vecs)
 	}
 }
+
+// TestOpenRouterDimensions covers the width parameter this client needs for
+// the same reason the backend's does -- it embeds the *queries* that search
+// vectors the backend ingested, so the two must agree. A mismatch returns no
+// results and reports no error.
+func TestOpenRouterDimensions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sent when configured", func(t *testing.T) {
+		t.Parallel()
+		var got map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"index":0,"embedding":[0.1,0.2]}]}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		e, err := NewOpenRouterEmbedder(OpenRouterOptions{
+			BaseURL: srv.URL, Model: "m", APIKey: "k", Dimensions: 2,
+		})
+		if err != nil {
+			t.Fatalf("NewOpenRouterEmbedder() error = %v", err)
+		}
+		if _, _, err := e.Embed(context.Background(), []string{"t"}); err != nil {
+			t.Fatalf("Embed() error = %v", err)
+		}
+		if got["dimensions"] != float64(2) {
+			t.Errorf("dimensions = %v, want 2", got["dimensions"])
+		}
+	})
+
+	t.Run("omitted when zero", func(t *testing.T) {
+		t.Parallel()
+		var got map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"index":0,"embedding":[0.1,0.2]}]}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		e, err := NewOpenRouterEmbedder(OpenRouterOptions{BaseURL: srv.URL, Model: "m", APIKey: "k"})
+		if err != nil {
+			t.Fatalf("NewOpenRouterEmbedder() error = %v", err)
+		}
+		if _, _, err := e.Embed(context.Background(), []string{"t"}); err != nil {
+			t.Fatalf("Embed() error = %v", err)
+		}
+		if _, has := got["dimensions"]; has {
+			t.Error("dimensions was sent although none is configured")
+		}
+	})
+
+	t.Run("width mismatch fails loudly", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"index":0,"embedding":[0.1,0.2]}]}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		e, err := NewOpenRouterEmbedder(OpenRouterOptions{
+			BaseURL: srv.URL, Model: "m", APIKey: "k", Dimensions: 1536,
+		})
+		if err != nil {
+			t.Fatalf("NewOpenRouterEmbedder() error = %v", err)
+		}
+		if _, _, err := e.Embed(context.Background(), []string{"t"}); err == nil {
+			t.Fatal("Embed() error = nil, want a width mismatch")
+		}
+	})
+}

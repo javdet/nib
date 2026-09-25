@@ -116,22 +116,6 @@ spec:
               value: /app/migrations
             - name: DATA_DIR
               value: /app/data
-            - name: OAUTH_CALLBACK_BASE_URL
-              value: {{ include "nib.oauth.callbackBaseURL" . | quote }}
-            - name: FRONTEND_BASE_URL
-              value: {{ include "nib.oauth.frontendBaseURL" . | quote }}
-            - name: ATLASSIAN_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "nib.secretName" . }}
-                  key: ATLASSIAN_CLIENT_ID
-            - name: ATLASSIAN_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "nib.secretName" . }}
-                  key: ATLASSIAN_CLIENT_SECRET
-            - name: ATLASSIAN_MCP_URL
-              value: "https://mcp.atlassian.com/v1/mcp"
             - name: LLM_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -142,6 +126,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "nib.secretName" . }}
                   key: OPENAI_API_KEY
+            - name: LLM_EMBEDDINGS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nib.secretName" . }}
+                  key: LLM_EMBEDDINGS_API_KEY
             - name: EXECUTOR_LLM_API_KEY
               valueFrom:
                 secretKeyRef:

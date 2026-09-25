@@ -3,24 +3,23 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/javdet/nib/internal/toolschema"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
 )
-
-const defaultEmbeddingModel = "text-embedding-3-small"
 
 // ClientOptions configures an OpenAI-compatible LLM client.
 type ClientOptions struct {
 	APIKey         string
 	Model          string
 	BaseURL        string
-	EmbeddingModel string
 	TimeoutSeconds int
 	HTTPReferer    string
 	AppTitle       string
@@ -62,21 +61,17 @@ func newHTTPClient(timeoutSeconds int, httpReferer, appTitle string) *http.Clien
 	return client
 }
 
-// OpenAIProvider implements Provider and Embedder using the OpenAI-compatible API.
+// OpenAIProvider implements Provider using the OpenAI-compatible chat
+// completions API. Embeddings are [EmbeddingsClient]'s job, on an endpoint of
+// their own.
 type OpenAIProvider struct {
 	client          openai.Client
 	model           string
-	embeddingModel  string
 	reasoningEffort shared.ReasoningEffort
 }
 
-// NewCompatProvider builds a provider for chat completions and embeddings using ClientOptions.
-// EmbeddingModel defaults to text-embedding-3-small when empty.
+// NewCompatProvider builds a chat-completions provider using ClientOptions.
 func NewCompatProvider(opts ClientOptions) *OpenAIProvider {
-	embeddingModel := opts.EmbeddingModel
-	if embeddingModel == "" {
-		embeddingModel = defaultEmbeddingModel
-	}
 	clientOpts := []option.RequestOption{
 		option.WithAPIKey(opts.APIKey),
 		option.WithHTTPClient(newHTTPClient(opts.TimeoutSeconds, opts.HTTPReferer, opts.AppTitle)),
@@ -88,69 +83,138 @@ func NewCompatProvider(opts ClientOptions) *OpenAIProvider {
 	return &OpenAIProvider{
 		client:          client,
 		model:           opts.Model,
-		embeddingModel:  embeddingModel,
 		reasoningEffort: shared.ReasoningEffort(strings.ToLower(strings.TrimSpace(opts.ReasoningEffort))),
 	}
 }
 
-// NewOpenAIProvider builds a provider for chat completions and embeddings.
-// embeddingModel defaults to text-embedding-3-small when empty.
-func NewOpenAIProvider(apiKey, model, baseURL, embeddingModel string) *OpenAIProvider {
-	return NewCompatProvider(ClientOptions{
-		APIKey:         apiKey,
-		Model:          model,
-		BaseURL:        baseURL,
-		EmbeddingModel: embeddingModel,
-	})
-}
-
 func (p *OpenAIProvider) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	const op = "openai chat completion"
+
+	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModel(p.model),
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(userPrompt),
 		},
-		ReasoningEffort: p.reasoningEffort,
-	})
+	}
+	p.applyReasoningEffort(&params)
+
+	resp, err := p.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return "", wrapAPIError("openai chat completion", err)
+		return "", p.wrapCompletionError(op, err)
 	}
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("openai chat completion: no choices returned")
+		return "", fmt.Errorf("%s: no choices returned", op)
 	}
-	return resp.Choices[0].Message.Content, nil
+	choice := resp.Choices[0]
+	// Checked here too, not only on the tool path: this call backs chat naming
+	// and summaries, where a truncated answer is silently wrong rather than
+	// obviously missing.
+	if err := completionStopError(op, finishReason(choice.FinishReason), choice.Message.Refusal); err != nil {
+		return "", err
+	}
+	return choice.Message.Content, nil
+}
+
+// applyReasoningEffort sets reasoning_effort only when one is configured.
+//
+// The SDK's omitzero tag already drops an empty value; the explicit guard
+// keeps the intent local and survives a tag change. It matters because the
+// parameter is sent on every request whatever the model is, and several models
+// reject it outright.
+func (p *OpenAIProvider) applyReasoningEffort(params *openai.ChatCompletionNewParams) {
+	if p.reasoningEffort != "" {
+		params.ReasoningEffort = p.reasoningEffort
+	}
+}
+
+// wrapCompletionError adds a hint when a request carrying reasoning_effort is
+// rejected outright, which is how a model that does not accept the parameter
+// presents. Deliberately not a retry without it: that doubles spend on every
+// genuinely bad request and hides a config error behind a latency spike.
+func (p *OpenAIProvider) wrapCompletionError(op string, err error) error {
+	wrapped := wrapAPIError(op, err)
+	if p.reasoningEffort == "" {
+		return wrapped
+	}
+	var apiErr *APIError
+	if !errors.As(wrapped, &apiErr) || apiErr.StatusCode != http.StatusBadRequest {
+		return wrapped
+	}
+	return fmt.Errorf("%w (reasoning_effort=%q is sent on every request; clear llm.reasoningEffort if this model rejects it)",
+		wrapped, string(p.reasoningEffort))
+}
+
+// finishReason normalises the provider's stop reason. Gemini's compatibility
+// layer has been seen answering with an upper-case "STOP".
+func finishReason(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+// completionStopError turns a stop reason that did not produce a usable answer
+// into an error. An unrecognised or absent reason passes.
+func completionStopError(op, reason, refusal string) error {
+	switch reason {
+	case "length":
+		return fmt.Errorf("%s: %w", op, ErrTruncated)
+	case "content_filter":
+		return fmt.Errorf("%s: %w (content filter)", op, ErrRefused)
+	}
+	if strings.TrimSpace(refusal) != "" {
+		return fmt.Errorf("%s: %w: %s", op, ErrRefused, strings.TrimSpace(refusal))
+	}
+	return nil
 }
 
 func (p *OpenAIProvider) CompleteWithTools(ctx context.Context, messages []Message, tools []ToolDef) (AssistantMessage, error) {
+	const op = "openai chat completion with tools"
+
 	openaiMessages, err := messagesToOpenAI(messages)
 	if err != nil {
 		return AssistantMessage{}, err
 	}
 
 	params := openai.ChatCompletionNewParams{
-		Model:           openai.ChatModel(p.model),
-		Messages:        openaiMessages,
-		ReasoningEffort: p.reasoningEffort,
+		Model:    openai.ChatModel(p.model),
+		Messages: openaiMessages,
 	}
+	p.applyReasoningEffort(&params)
 	if len(tools) > 0 {
 		params.Tools = toolDefsToOpenAI(tools)
 	}
 
 	resp, err := p.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return AssistantMessage{}, wrapAPIError("openai chat completion with tools", err)
+		return AssistantMessage{}, p.wrapCompletionError(op, err)
 	}
 	if len(resp.Choices) == 0 {
-		return AssistantMessage{}, fmt.Errorf("openai chat completion with tools: no choices returned")
+		return AssistantMessage{}, fmt.Errorf("%s: no choices returned", op)
 	}
 
-	msg := resp.Choices[0].Message
-	return AssistantMessage{
-		Content:   msg.Content,
-		ToolCalls: toolCallsFromOpenAI(msg.ToolCalls),
-		Usage:     usageFromCompletion(resp),
-	}, nil
+	choice := resp.Choices[0]
+	msg := choice.Message
+	out := AssistantMessage{
+		Content:      msg.Content,
+		ToolCalls:    toolCallsFromOpenAI(msg.ToolCalls),
+		Reasoning:    reasoningFromMessage(msg),
+		FinishReason: finishReason(choice.FinishReason),
+		Refusal:      strings.TrimSpace(msg.Refusal),
+		Usage:        usageFromCompletion(resp),
+	}
+
+	// Usage is carried out alongside the error, as the responses endpoint
+	// already does for an incomplete response: those tokens were generated and
+	// billed whether or not the answer was usable.
+	if err := completionStopError(op, out.FinishReason, out.Refusal); err != nil {
+		return AssistantMessage{Usage: out.Usage}, err
+	}
+	// A round with no text and no tool calls cannot move the agent forward, and
+	// both loops would read it as the turn's final answer. The responses
+	// endpoint has had this guard all along.
+	if out.Content == "" && len(out.ToolCalls) == 0 {
+		return AssistantMessage{Usage: out.Usage}, fmt.Errorf("%s: %w", op, ErrNoOutput)
+	}
+	return out, nil
 }
 
 // usageFromCompletion lifts the usage block the provider already returns. The
@@ -196,9 +260,15 @@ func messagesToOpenAI(messages []Message) ([]openai.ChatCompletionMessageParamUn
 			}
 		case "assistant":
 			asst := openai.ChatCompletionAssistantMessageParam{}
-			if m.Content != "" {
-				asst.Content.OfString = openai.String(m.Content)
-			}
+			// Set unconditionally, including when empty: the union omits the
+			// key at its zero value, and several gateways reject an assistant
+			// message that carries tool_calls and no content key at all.
+			asst.Content.OfString = openai.String(m.Content)
+			// m.Reasoning is deliberately not replayed. On this endpoint it is
+			// the provider's plaintext chain of thought, and DeepSeek rejects a
+			// request that sends reasoning_content back in an assistant
+			// message. Only the responses endpoint replays reasoning, and only
+			// the encrypted form it issued itself.
 			for _, tc := range m.ToolCalls {
 				asst.ToolCalls = append(asst.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
 					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
@@ -233,35 +303,11 @@ func toolDefsToOpenAI(tools []ToolDef) []openai.ChatCompletionToolUnionParam {
 	return out
 }
 
+// functionParametersFromRaw is one of the two places a published schema is
+// rewritten before it is sent; responsesParametersFromRaw is the other.
+// Between them they see every tool on both endpoints, which is why the
+// sanitizer sits here rather than beside the MCP catalog: local tools publish
+// the same awkward keywords and would otherwise bypass it.
 func functionParametersFromRaw(raw json.RawMessage) shared.FunctionParameters {
-	if len(raw) == 0 {
-		return shared.FunctionParameters{"type": "object"}
-	}
-	var params shared.FunctionParameters
-	if err := json.Unmarshal(raw, &params); err != nil || len(params) == 0 {
-		return shared.FunctionParameters{"type": "object"}
-	}
-	return params
-}
-
-func toolCallsFromOpenAI(calls []openai.ChatCompletionMessageToolCallUnion) []ToolCall {
-	if len(calls) == 0 {
-		return nil
-	}
-	out := make([]ToolCall, 0, len(calls))
-	for _, tc := range calls {
-		fn, ok := tc.AsAny().(openai.ChatCompletionMessageFunctionToolCall)
-		if !ok {
-			continue
-		}
-		out = append(out, ToolCall{
-			ID:        fn.ID,
-			Name:      fn.Function.Name,
-			Arguments: fn.Function.Arguments,
-		})
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return shared.FunctionParameters(toolschema.Sanitize(raw))
 }

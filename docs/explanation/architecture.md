@@ -17,7 +17,7 @@ C4Context
   title System Context — nib
   Person(operator, "Operator", "Infrastructure, platform or DevOps engineer planning and carrying out a change")
   System(nib, "nib", "Decomposes an infrastructure task, plans it to elementary steps, and executes them")
-  System_Ext(llm, "LLM provider", "OpenAI-compatible endpoint serving both completions and embeddings")
+  System_Ext(llm, "LLM provider", "OpenAI-compatible endpoint serving completions; embeddings may come from a second one")
   System_Ext(mcp, "MCP servers", "Remote streamable-HTTP servers exposing tools for the systems nib manages")
   System_Ext(git, "Git provider", "GitHub or GitLab, where agent containers push branches and open requests")
   System_Ext(runtime, "Container runtime", "Docker daemon or Kubernetes API that runs single-use agent containers")

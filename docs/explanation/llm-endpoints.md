@@ -62,21 +62,75 @@ A setting makes the uncertainty visible. Detection would hide it behind a
 heuristic that is right most of the time, which for a quality regression with no
 error message is the wrong trade.
 
-## The asymmetry with embeddings
+## Why embeddings have a block of their own
 
 Whatever `llm.api` says, embeddings always go to `/v1/embeddings`. The setting
 governs completions only.
 
-It is the seam where the single-endpoint design shows. One `baseURL` serves
-both, so a provider has to implement both — which is why Anthropic cannot be
-used directly, and why a provider switch that looks like a one-line change can
-silently break knowledge search if the embedding model's *name* changes. The
-vectors are fine; the label no longer matches what the collections recorded.
+They also go to their own host. `llm.embeddings` has its own `baseURL`,
+`apiKey`, `model` and `dimensions`, each falling back to the matching `llm.*`
+value, so an install that never sets the block behaves exactly as it did when
+one base URL served both.
 
-Separating the completion endpoint from the embedding endpoint would be the
-prerequisite for supporting providers that serve only one of the two. It is a
-genuine limitation rather than an oversight, and it has not been needed badly
-enough to justify the second set of settings.
+The block exists because "an OpenAI-compatible provider" turned out not to mean
+one thing. DeepSeek, xAI and Moonshot serve chat completions and no
+`/embeddings` route at all. Under a single base URL they were not
+misconfigurable, they were unusable: knowledge search and the tool catalog both
+embed, so pointing `llm.baseURL` at one of them broke two subsystems that have
+nothing to do with the model doing the reasoning.
+
+Falling back rather than defaulting is the load-bearing part. The common case
+is still one provider for both, and making the block required would have been a
+breaking change to every existing config for the benefit of the minority that
+needs it.
+
+`dimensions` comes from the other direction. `kb_chunks.embedding` is
+`vector(1536)`, which is a schema decision rather than a preference — several
+widths for real means a chunk table per width. Gemini's embedding model is
+natively 3072 and Qwen's is 1024, and both accept a request for 1536. Without a
+way to ask, neither could be used at all.
+
+What nib will not do is truncate locally. A vector sliced by the caller is only
+meaningful from a model trained for it, and afterwards it is indistinguishable
+from a good one. So a provider that ignores `dimensions` and answers at its own
+width fails the request, naming both numbers.
+
+## What the chat path tolerates
+
+`chat` is the endpoint every gateway implements, which in practice means every
+gateway implements it slightly differently. The parsing is deliberately more
+forgiving than the OpenAI schema:
+
+- **Tool calls without a `type` field.** Several compatibility layers omit it.
+  The typed SDK union discriminates on exactly that field, so a nil variant
+  used to drop every call in the round — and a round with no tool calls is what
+  the agent loops read as the turn's final answer. The failure looked like a
+  model that had decided to stop, on an agent whose whole job is tool calls.
+- **Tool-call arguments sent as an object** rather than a JSON string, which
+  decodes to an empty string without an error. The raw body is re-read when a
+  field comes back empty.
+- **Missing tool-call ids.** One is synthesized, because every later step pairs
+  the result back to the call by id.
+- **`finish_reason` and `refusal`,** which were previously not read at all. A
+  `length` truncation is now an error rather than a short answer: the loops
+  would otherwise persist a plan that stopped mid-stage as a finished one.
+- **`reasoning_content` and `reasoning`,** where DeepSeek, Qwen and OpenRouter
+  put a plaintext chain of thought. It is captured for the operator but never
+  replayed — DeepSeek rejects a request that sends it back. Only the responses
+  endpoint replays reasoning, and only the encrypted form it issued itself.
+
+Tool *schemas* and tool *names* are rewritten for the same reason, before they
+are sent. A published JSON Schema may carry `$ref`, `$defs`, `anyOf` or
+`format`, and a name may carry dots or run past 64 characters; a provider that
+validates strictly rejects the whole request rather than the offending tool, so
+one awkward MCP server would otherwise take down every turn that offers it.
+Dispatch keeps the server's own spelling on the route, since the rewrite has no
+inverse.
+
+The one thing the rewrite costs is `create_plan_contract`, whose `stages` is an
+open map keyed by stage name. That has no equivalent in the stricter
+function-call subsets, so it degrades to a bare object and the model takes the
+shape from the tool description instead.
 
 ## How to know you chose wrong
 
@@ -98,4 +152,4 @@ provider](../how-to/switch-llm-provider.md#apply-and-verify).
 
 - [How to switch the LLM provider](../how-to/switch-llm-provider.md)
 - [Configuration file](../reference/configuration.md#llmapi)
-- [About the architecture](architecture.md#what-nib-talks-to) — why there is one endpoint
+- [About the architecture](architecture.md#what-nib-talks-to) — what nib talks to

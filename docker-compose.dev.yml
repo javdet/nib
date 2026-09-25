@@ -90,13 +90,11 @@ services:
       DB_SSLMODE: disable
       MIGRATIONS_PATH: /app/migrations
       DATA_DIR: /app/data
-      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost:5173}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
-      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID:-}
-      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET:-}
-      ATLASSIAN_MCP_URL: ${ATLASSIAN_MCP_URL:-https://mcp.atlassian.com/v1/mcp}
       LLM_API_KEY: ${LLM_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # The rest of llm.embeddings comes from backend/config.yaml; only the key
+      # cannot, since keys are never read from the file.
+      LLM_EMBEDDINGS_API_KEY: ${LLM_EMBEDDINGS_API_KEY:-}
       EXECUTOR_LLM_API_KEY: ${EXECUTOR_LLM_API_KEY:-}
       EXECUTOR_LLM_MODEL: ${EXECUTOR_LLM_MODEL:-}
       AGENT_WEBHOOK_TOKEN: ${AGENT_WEBHOOK_TOKEN:-}

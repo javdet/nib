@@ -25,6 +25,9 @@ type FactoryOptions struct {
 	// Timeout applies to whichever client is built when the nested option's
 	// Timeout is zero (OpenRouterOptions.Timeout / GoogleOptions.Timeout).
 	Timeout time.Duration
+	// Dimensions applies to the OpenAI-compatible client when its own
+	// Dimensions is zero.
+	Dimensions int
 }
 
 // NewEmbedder returns an [Embedder] for the given provider name (e.g. from a flag).
@@ -42,6 +45,9 @@ func NewEmbedder(provider string, opts FactoryOptions) (Embedder, error) {
 		o := opts.OpenRouter
 		if o.Timeout == 0 {
 			o.Timeout = timeout
+		}
+		if o.Dimensions == 0 {
+			o.Dimensions = opts.Dimensions
 		}
 		return NewOpenRouterEmbedder(o)
 	case ProviderGoogle:

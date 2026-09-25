@@ -11,13 +11,17 @@ import (
 // it out of the content, but one that does not leaves it in the reply, where it
 // lands in the transcript and in the notes a finished action hands to the next.
 var (
-	// A closed block, tolerant of attributes and of casing.
-	thinkingBlock = regexp.MustCompile(`(?is)<thinking\b[^>]*>.*?</thinking\s*>`)
+	// A closed block, tolerant of attributes and of casing. Both spellings are
+	// matched: the prompts ask for `<thinking>`, while DeepSeek and Qwen emit
+	// `<think>` unprompted. The alternation is closed by \b, so `think` cannot
+	// match the head of `<thinking>`, and an unmatched pair -- `<think>` closed
+	// by `</thinking>`, which has been seen in the wild -- still cancels.
+	thinkingBlock = regexp.MustCompile(`(?is)<(?:thinking|think)\b[^>]*>.*?</(?:thinking|think)\s*>`)
 	// A block the model opened and never closed -- a reply cut off mid-narration
 	// would otherwise keep its whole tail.
-	thinkingOpen = regexp.MustCompile(`(?is)<thinking\b[^>]*>.*\z`)
+	thinkingOpen = regexp.MustCompile(`(?is)<(?:thinking|think)\b[^>]*>.*\z`)
 	// The markers alone, for the unwrap fallback below.
-	thinkingTags = regexp.MustCompile(`(?is)</?thinking\b[^>]*>`)
+	thinkingTags = regexp.MustCompile(`(?is)</?(?:thinking|think)\b[^>]*>`)
 )
 
 // stripThinking removes thinking narration from an assistant reply. A reply
@@ -48,6 +52,8 @@ func answerWithoutThinking(content string) string {
 	return strings.TrimSpace(thinkingTags.ReplaceAllString(content, ""))
 }
 
+// hasThinking tests for "<think", a prefix of both spellings, so one literal
+// covers `<think>` and `<thinking>` alike.
 func hasThinking(content string) bool {
-	return strings.Contains(strings.ToLower(content), "<thinking")
+	return strings.Contains(strings.ToLower(content), "<think")
 }

@@ -63,6 +63,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-nib}:${POSTGRES_PASSWORD:-nib}@postgres:5432/${POSTGRES_DB:-nib}?sslmode=disable
       OPENROUTER_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
       EMBEDDINGS_BASE_URL: ${KB_EMBEDDINGS_BASE_URL:-https://api.openai.com/v1}
+      # Must match LLM_EMBEDDINGS_DIMENSIONS: this container embeds the queries
+      # that search the chunks the backend ingested.
+      EMBEDDINGS_DIMENSIONS: ${KB_EMBEDDINGS_DIMENSIONS:-}
     # Reached only over the internal network at http://kb-mcp:8081/mcp
     # (see deploy/compose/mcp.json). No host port needed.
     networks:
@@ -95,19 +98,18 @@ services:
       DB_SSLMODE: disable
       MIGRATIONS_PATH: /app/migrations
       DATA_DIR: /app/data
-      # Must match how the browser reaches the UI (nginx on NIB_HTTP_PORT).
-      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost:${NIB_HTTP_PORT:-8080}}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:${NIB_HTTP_PORT:-8080}}
-      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID:-}
-      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET:-}
-      ATLASSIAN_MCP_URL: ${ATLASSIAN_MCP_URL:-https://mcp.atlassian.com/v1/mcp}
       # Secrets — set in .env, never in config.yaml.
       LLM_API_KEY: ${LLM_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-}
       LLM_API: ${LLM_API:-}
       LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-}
+      # Embeddings endpoint, when it is not the completion host. Each falls
+      # back to the matching LLM_* value when empty.
+      LLM_EMBEDDINGS_BASE_URL: ${LLM_EMBEDDINGS_BASE_URL:-}
+      LLM_EMBEDDINGS_API_KEY: ${LLM_EMBEDDINGS_API_KEY:-}
+      LLM_EMBEDDINGS_MODEL: ${LLM_EMBEDDINGS_MODEL:-}
+      LLM_EMBEDDINGS_DIMENSIONS: ${LLM_EMBEDDINGS_DIMENSIONS:-}
       EXECUTOR_LLM_API_KEY: ${EXECUTOR_LLM_API_KEY:-}
       EXECUTOR_LLM_MODEL: ${EXECUTOR_LLM_MODEL:-}
       AGENT_WEBHOOK_TOKEN: ${AGENT_WEBHOOK_TOKEN:-}
@@ -145,6 +147,62 @@ services:
       - "${NIB_HTTP_PORT:-8080}:80"
     environment:
       API_UPSTREAM: http://backend:8080
+    networks:
+      - nib
+
+  github-mcp:
+    image: ghcr.io/github/github-mcp-server:latest
+    restart: unless-stopped
+    command:
+      - http
+      - --port=9082
+    networks:
+      - nib
+
+  aws-mcp:
+    image: public.ecr.aws/awslabs-mcp/awslabs/aws-api-mcp-server:latest
+    restart: unless-stopped
+    environment:
+      AWS_API_MCP_TRANSPORT: "streamable-http"
+      AWS_API_MCP_HOST: "0.0.0.0"
+      AWS_API_MCP_PORT: "9081"
+      AUTH_TYPE: "no-auth"
+      AWS_REGION: "${AWS_REGION:-us-east-2}"
+      AWS_API_MCP_ALLOWED_HOSTS: "aws-mcp,localhost,127.0.0.1"
+      AWS_API_MCP_ALLOWED_ORIGINS: "aws-mcp,localhost,127.0.0.1"
+      READ_OPERATIONS_ONLY: "false"
+      REQUIRE_MUTATION_CONSENT: "false"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    networks:
+      - nib
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_PORT: "9083"
+      SEARXNG_BASE_URL: "http://searxng:9083/"
+      SEARXNG_SECRET: "${SEARXNG_SECRET}"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    networks:
+      - nib
+
+
+  searxng-mcp:
+    image: docker.io/isokoliuk/mcp-searxng:latest
+    container_name: searxng-mcp
+    restart: unless-stopped
+    environment:
+      SEARXNG_URL: "http://searxng:9083"
+      SEARXNG_DEFAULT_RESPONSE_FORMAT: "json"
+      SEARXNG_MAX_RESULT_CHARS: "500"
+      SEARXNG_TIMEOUT_MS: "15000"
+      MCP_HTTP_PORT: "9084"
+      MCP_HTTP_HOST: "0.0.0.0"
+      MCP_HTTP_STATELESS: "true"
     networks:
       - nib
 
