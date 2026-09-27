@@ -132,6 +132,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrEmptyDialogTitle),
 		errors.Is(err, service.ErrInvalidDialogMode),
 		errors.Is(err, service.ErrInvalidDialogParent),
+		errors.Is(err, service.ErrNotAPlan),
+		errors.Is(err, service.ErrInvalidPlanBundle),
 		errors.Is(err, service.ErrInvalidMCPMetadata),
 		errors.Is(err, service.ErrTooManyDialogTags),
 		errors.Is(err, service.ErrInvalidVariableName),

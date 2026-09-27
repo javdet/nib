@@ -33,3 +33,11 @@ type DialogRepository interface {
 	AppendMessage(ctx context.Context, dialogID uuid.UUID, msg domain.DialogMessage) (domain.DialogMessage, error)
 	DeleteMessagesAfterSeq(ctx context.Context, dialogID uuid.UUID, afterSeq int) error
 }
+
+// DialogImporter writes a set of dialogs, their transcripts and attachments as
+// one unit. It is separate from DialogRepository because only the plan import
+// needs it, and an import that stops halfway would leave a plan whose chat
+// replays a transcript with holes in it.
+type DialogImporter interface {
+	ImportDialogs(ctx context.Context, dialogs []domain.DialogImport) error
+}

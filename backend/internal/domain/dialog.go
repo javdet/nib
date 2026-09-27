@@ -33,3 +33,12 @@ type DialogMessage struct {
 	Attachments []Attachment    `json:"attachments,omitempty"`
 	CreatedAt   time.Time       `json:"createdAt"`
 }
+
+// DialogImport is one dialog of an imported plan with its whole transcript.
+// Every field of Dialog but UpdatedAt is written as given, ids included, so the
+// caller decides them; message Seq is taken from the slice position instead,
+// and each message's Attachments are inserted against the row it becomes.
+type DialogImport struct {
+	Dialog   Dialog
+	Messages []DialogMessage
+}

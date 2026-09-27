@@ -227,6 +227,19 @@ export function createDialog(
 	return api.post<Dialog>('/dialogs', input)
 }
 
+/**
+ * Fetches the plan as a .nib document: everything that built it, nothing about
+ * how it ran. Returned parsed, so the caller decides how it is written out.
+ */
+export function exportPlanBundle(id: string): Promise<unknown> {
+	return api.get<unknown>(`/dialogs/${encodeURIComponent(id)}/export`)
+}
+
+/** Creates a new plan from a parsed .nib document and returns its root dialog. */
+export function importPlanBundle(bundle: unknown): Promise<Dialog> {
+	return api.post<Dialog>('/dialogs/import', bundle)
+}
+
 export function getDialog(id: string): Promise<Dialog> {
 	return api.get<Dialog>(`/dialogs/${encodeURIComponent(id)}`)
 }

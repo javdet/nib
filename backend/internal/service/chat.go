@@ -142,6 +142,10 @@ type ChatService struct {
 	statsWriter     repository.StatsWriter
 	configuredModel string
 
+	// dialogImporter is optional the same way: nil refuses ImportPlan. Set
+	// through SetDialogImporter.
+	dialogImporter repository.DialogImporter
+
 	// kbSettings is optional the same way: nil leaves the knowledge-base
 	// auto-update switched off rather than guessing a default. Set through
 	// SetKBSettings.

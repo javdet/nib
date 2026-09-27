@@ -1,6 +1,14 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router'
-import { ClipboardList, Plus, Search, Star, Trash2, X } from 'lucide-react'
+import {
+	ClipboardList,
+	FileUp,
+	Plus,
+	Search,
+	Star,
+	Trash2,
+	X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import { IconButton } from '@/components/ui/icon-button'
@@ -19,6 +27,10 @@ import { usePagedDialogs } from '@/features/dialogs/hooks/use-paged-dialogs'
 import { useDialog } from '@/features/dialogs/dialog-context'
 import { dialogDisplayTitle } from '@/features/dialogs/lib/dialog-title'
 import { PlanStatusBadge } from '@/features/workplace/components/plan-status-badge'
+import {
+	planImportAccept,
+	usePlanImport,
+} from '@/features/workplace/hooks/use-plan-import'
 
 const PAGE_SIZE = 10
 
@@ -115,6 +127,7 @@ export function WorkplacePage() {
 		bumpDialogsVersion,
 	} = useDialog()
 	const { selectMode } = useMode()
+	const planImport = usePlanImport(setError)
 
 	const {
 		dialogs,
@@ -280,14 +293,34 @@ export function WorkplacePage() {
 								</Button>
 							)}
 						</form>
-						<Button
-							size="sm"
-							onClick={() => void handleNewPlan()}
-							disabled={creating}
-						>
-							<Plus className="mr-2 h-4 w-4" />
-							New plan
-						</Button>
+						<div className="flex items-center gap-2">
+							<IconButton
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-8 w-8"
+								onClick={planImport.openFilePicker}
+								disabled={planImport.importing}
+								tooltip="Import plan from .nib file"
+							>
+								<FileUp className="h-4 w-4" />
+							</IconButton>
+							<input
+								ref={planImport.inputRef}
+								type="file"
+								accept={planImportAccept}
+								className="hidden"
+								onChange={(e) => void planImport.handleFileChange(e)}
+							/>
+							<Button
+								size="sm"
+								onClick={() => void handleNewPlan()}
+								disabled={creating}
+							>
+								<Plus className="mr-2 h-4 w-4" />
+								New plan
+							</Button>
+						</div>
 					</div>
 
 					{loading ? (

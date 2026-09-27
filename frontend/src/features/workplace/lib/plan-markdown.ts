@@ -252,7 +252,9 @@ export function buildPlanMarkdown(input: PlanExportInput): string {
 	return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
 }
 
-export function planMarkdownFileName(title: string): string {
+// planFileBaseName is the plan title reduced to a file name without its
+// extension, shared by every format a plan is downloaded in.
+export function planFileBaseName(title: string): string {
 	const sanitized = title
 		.trim()
 		.toLowerCase()
@@ -261,6 +263,9 @@ export function planMarkdownFileName(title: string): string {
 		.replace(/-+/g, '-')
 		.replace(/^-|-$/g, '')
 
-	const base = sanitized || 'plan'
-	return `${base}.md`
+	return sanitized || 'plan'
+}
+
+export function planMarkdownFileName(title: string): string {
+	return `${planFileBaseName(title)}.md`
 }

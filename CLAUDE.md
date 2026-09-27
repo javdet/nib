@@ -332,6 +332,24 @@ Round budgets are `agent.maxIterations` and the per-sub-agent `stageMaxIteration
 `actionExecMaxIterations`. Only one execution runs at a time, by policy, and
 `agent.actionExecConcurrency` is clamped to 1.
 
+### Sharing a plan: `.nib` files
+
+A plan page's import/export menu offers **Download as Markdown** (read-only),
+**Export as .nib file** and **Import plan from .nib file**. The **Plans** page also has an import
+button. The API is `GET /api/v1/dialogs/{id}/export` and `POST /api/v1/dialogs/import`. A `.nib`
+file is JSON (`"format": "nib-plan"`, `"version": 1`). It carries the title, categories, summary,
+DAG, plan contract, action plan with comments, the plan chat, the `decompose` and `plan`
+sub-agent transcripts (attachments in base64), and any unanswered decompose question.
+
+It does **not** carry execution state (checks, runs, exec records, notes, stage runs, status,
+schedule, fan-out record, report, KB updates, code fixes, `execute` transcripts) or system
+prompts. An import renders fresh prompts from the importing install's variables and current
+selection. It always creates a **new draft plan** with new ids for every dialog and attachment,
+and rewrites the old ids wherever they appear in the imported text. It is all or nothing, and
+the body is capped at 64 MiB. MCP servers, secrets, variables, skills, rules and executor settings
+are not in the file. A step calling a tool the importer lacks fails when it runs, not at import.
+See `docs/how-to/share-a-plan.md`.
+
 ### What an upgrade does and does not touch
 
 A new image replaces the binary, the embedded prompts, the built-in skills and the built-in allow
@@ -547,6 +565,11 @@ them are remapped together whenever a stage is rewritten, reordered or replaced 
 them, the HTTP `PUT` clears none. `.stagerun.json` (the latest "execute all") is the exception: it
 is never remapped, because a structural edit stops the run instead; `create` clears it and
 `ReconcileStuckRuns` stops one a restart stranded.
+
+The `.nib` export ([plan_bundle.go](backend/internal/service/plan_bundle.go)) lists what a plan
+*is* by hand, so a new per-plan artifact has to be sorted there as plan or run. Leaving it out is
+the safe default for run state. Import writes the rows through `repository.DialogImporter` in one
+transaction, keeping each row's `created_at`, since `ListChildren` orders by it.
 
 `.notes.json` is the exception to "artifacts are for the operator": it is the executors' own memory.
 A finished action sub-agent's final message is recorded there and handed to the sub-agents that run
