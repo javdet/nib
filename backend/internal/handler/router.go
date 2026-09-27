@@ -239,9 +239,11 @@ func NewRouter(d Deps) chi.Router {
 				r.Route("/dialogs", func(r chi.Router) {
 					r.Get("/", dialogs.List())
 					r.Post("/", dialogs.Create())
+					r.Post("/import", dialogs.ImportPlan())
 
 					r.Route("/{id}", func(r chi.Router) {
 						r.Get("/", dialogs.Get())
+						r.Get("/export", dialogs.ExportPlan())
 						r.Put("/title", dialogs.UpdateTitle())
 						r.Put("/categories", dialogs.UpdateCategories())
 						r.Put("/pin", dialogs.Pin())

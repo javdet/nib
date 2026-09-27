@@ -8,14 +8,24 @@ import {
 import { useNavigate, useParams } from 'react-router'
 import {
 	ArrowDown,
+	ArrowDownUp,
 	ArrowLeft,
 	ChevronDown,
 	ChevronRight,
-	Download,
+	FileDown,
+	FileText,
+	FileUp,
 	Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,6 +40,7 @@ import {
 import { MarkdownMessage } from '@/components/markdown-message'
 import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
+import { extractErrorMessage } from '@/lib/api-client'
 import {
 	getActionPlanExecRuns,
 	type ActionExecRuns,
@@ -38,6 +49,7 @@ import {
 	getDialogDag,
 	getDialogReport,
 	getDialogSummary,
+	exportPlanBundle,
 	getPlanState,
 	getPlanFanout,
 	getStageRun,
@@ -80,6 +92,8 @@ import { DagView } from '../components/dag-view'
 import { PlanMetaTable } from '../components/plan-meta-table'
 import { PlanProgressBar } from '../components/plan-progress-bar'
 import { buildPlanItemKeys } from '../lib/plan-item-keys'
+import { planBundleFileName } from '../lib/plan-bundle'
+import { planImportAccept, usePlanImport } from '../hooks/use-plan-import'
 import {
 	buildPlanMarkdown,
 	planMarkdownFileName,
@@ -187,6 +201,11 @@ export function WorkplaceDetail() {
 	// Finish and Cancel report into their own slot: the page-level error state
 	// replaces the whole view, which would blank the plan on a failed click.
 	const [planActionError, setPlanActionError] = useState<string | null>(null)
+	// Kept apart from error, which replaces the whole page: a file that fails
+	// to import or export says nothing about the plan on screen.
+	const [transferError, setTransferError] = useState<string | null>(null)
+	const [exportingBundle, setExportingBundle] = useState(false)
+	const planImport = usePlanImport(setTransferError)
 	const [commentDialogKey, setCommentDialogKey] = useState<string | null>(null)
 	const [commentDraft, setCommentDraft] = useState('')
 	const [savingComment, setSavingComment] = useState(false)
@@ -565,6 +584,25 @@ export function WorkplaceDetail() {
 		actionPlanChecked,
 		actionPlanComments,
 	])
+
+	const handleExportBundle = useCallback(async () => {
+		if (!id || !dialog) return
+
+		setTransferError(null)
+		setExportingBundle(true)
+		try {
+			const bundle = await exportPlanBundle(id)
+			downloadTextFile(
+				planBundleFileName(dialogDisplayTitle(dialog)),
+				JSON.stringify(bundle, null, 2) + '\n',
+				'application/json',
+			)
+		} catch (err) {
+			setTransferError(extractErrorMessage(err))
+		} finally {
+			setExportingBundle(false)
+		}
+	}, [id, dialog])
 
 	const handleActionPlanToggle = useCallback(
 		(key: string, nextChecked: boolean) => {
@@ -1151,18 +1189,50 @@ export function WorkplaceDetail() {
 							Detailed
 						</Button>
 					</div>
-					<IconButton
-						type="button"
-						variant="outline"
-						size="sm"
-						className="h-8 w-8"
-						onClick={handleDownloadPlan}
-						tooltip="Download plan as Markdown"
-					>
-						<Download className="h-4 w-4" />
-					</IconButton>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<IconButton
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-8 w-8"
+								disabled={exportingBundle || planImport.importing}
+								tooltip="Import / export"
+							>
+								<ArrowDownUp className="h-4 w-4" />
+							</IconButton>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-64">
+							<DropdownMenuItem onSelect={handleDownloadPlan}>
+								<FileText />
+								Download as Markdown
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => void handleExportBundle()}>
+								<FileDown />
+								Export as .nib file
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onSelect={planImport.openFilePicker}>
+								<FileUp />
+								Import plan from .nib file
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+					<input
+						ref={planImport.inputRef}
+						type="file"
+						accept={planImportAccept}
+						className="hidden"
+						onChange={(e) => void planImport.handleFileChange(e)}
+					/>
 				</div>
 			</div>
+
+			{transferError && (
+				<div className="rounded-md border border-destructive/35 bg-destructive/12 px-4 py-3 text-sm text-destructive">
+					{transferError}
+				</div>
+			)}
 
 			<div className="text-center">
 				{isEditingTitle ? (

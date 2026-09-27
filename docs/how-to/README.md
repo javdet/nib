@@ -40,6 +40,8 @@ how you watch what happens once you do.
 - [How to run planned actions in containers](run-actions-in-containers.md) —
   configure the executor so `code` steps actually run, watch their logs, run a
   whole stage with **Execute all**, and ask for a fix from the chat
+- [How to share a plan as a `.nib` file](share-a-plan.md) — hand a plan you
+  built to another install, with its chat and sub-agent history, to run there
 - [How to scrape nib's metrics with Prometheus](scrape-metrics-with-prometheus.md)
   — get the metrics listener into your monitoring stack
 

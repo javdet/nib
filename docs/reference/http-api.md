@@ -133,7 +133,9 @@ sub-agent dialogs parented to it.
 |---|---|---|
 | `POST` | `/chat` | Single-shot completion. 30-minute deadline. |
 | `GET` `POST` | `/dialogs` | List, create. List query: `page`, `limit`, `scope` (`all`, `pinned`), `mode`, `search`. |
+| `POST` | `/dialogs/import` | Create a new plan from a `.nib` file sent as the JSON body, up to 64 MiB. Answers `201` with the new root dialog; `400` for a file this version cannot read, `413` when it is too large. |
 | `GET` `DELETE` | `/dialogs/{id}` | Fetch, delete. |
+| `GET` | `/dialogs/{id}/export` | The plan as a `.nib` file (`Content-Disposition: attachment`). `400` for a dialog that is not a plan's root. |
 | `PUT` | `/dialogs/{id}/title` | Rename. |
 | `PUT` | `/dialogs/{id}/categories` | Set tool categories for the lineage. |
 | `PUT` | `/dialogs/{id}/pin` | Pin or unpin. |

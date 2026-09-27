@@ -390,6 +390,7 @@ func run() error {
 	statsRepo := postgres.NewStatsRepo(pool)
 	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
 	chatSvc.SetKBSettings(kbSettingsStore)
+	chatSvc.SetDialogImporter(dialogRepo)
 	statsSvc := service.NewStatsService(statsRepo, chatSvc)
 
 	if cfg.Agent.ActionExecConcurrency > 1 {
