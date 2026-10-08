@@ -195,6 +195,7 @@ func stripSubagentTools(allow map[string]struct{}) map[string]struct{} {
 	delete(allow, RunSubagentToolName)
 	delete(allow, StopExecutionToolName)
 	delete(allow, ExecuteActionToolName)
+	delete(allow, RunInvestigationToolName)
 	return allow
 }
 

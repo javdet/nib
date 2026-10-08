@@ -1,9 +1,15 @@
 {
   "allow_tools": [
     "knowledge_search",
+    "get_kb_document",
     "tool_search",
     "get_skill",
     "list_variables",
-    "create_table"
+    "create_table",
+    "ask_question",
+    "api_call",
+    "get_postmortem",
+    "update_postmortem",
+    "run_investigation"
   ]
 }

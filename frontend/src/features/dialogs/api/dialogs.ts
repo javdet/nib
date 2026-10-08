@@ -83,6 +83,9 @@ export type AgentActivityKind =
 	| 'action_exec_failed'
 	| 'report_updated'
 	| 'stage_run_updated'
+	| 'postmortem_updated'
+	| 'investigation_updated'
+	| 'investigation_done'
 
 export interface AgentActivity {
 	kind: AgentActivityKind

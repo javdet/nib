@@ -38,6 +38,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { MarkdownMessage } from '@/components/markdown-message'
+import { PlanOriginLink } from '@/features/incidents/components/plan-origin-link'
 import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
 import { extractErrorMessage } from '@/lib/api-client'
@@ -1314,6 +1315,8 @@ export function WorkplaceDetail() {
 					</p>
 				)}
 			</div>
+
+			<PlanOriginLink planId={dialog.id} />
 
 			<PlanProgressBar plan={actionPlan} checked={actionPlanChecked} />
 

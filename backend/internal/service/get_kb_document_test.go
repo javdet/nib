@@ -192,7 +192,9 @@ func TestGetKBDocumentToolDef_shape(t *testing.T) {
 }
 
 // TestGetKBDocument_isDiscussOnly mirrors the update_kb gating: the read half
-// belongs in the same mode as the write half it feeds.
+// belongs in the same mode as the write half it feeds. Incident is the one
+// reader without the write half: it reads the topology an investigation starts
+// from and never rewrites it mid-incident.
 func TestGetKBDocument_isDiscussOnly(t *testing.T) {
 	t.Parallel()
 
@@ -223,8 +225,8 @@ func TestGetKBDocument_isDiscussOnly(t *testing.T) {
 	if !found {
 		t.Fatalf("get_kb_document missing from SystemToolDefs")
 	}
-	if !slices.Equal(modes, []string{"discuss"}) {
-		t.Fatalf("get_kb_document modes = %#v, want [discuss]", modes)
+	if !slices.Equal(modes, []string{"discuss", "incident"}) {
+		t.Fatalf("get_kb_document modes = %#v, want [discuss incident]", modes)
 	}
 
 	for _, modeName := range mode.Modes {
@@ -239,7 +241,7 @@ func TestGetKBDocument_isDiscussOnly(t *testing.T) {
 				break
 			}
 		}
-		if want := modeName == "discuss"; present != want {
+		if want := modeName == "discuss" || modeName == "incident"; present != want {
 			t.Fatalf("get_kb_document present in %q = %v, want %v", modeName, present, want)
 		}
 	}

@@ -16,7 +16,7 @@ jobs:
   # ---------------------------------------------------------------------------
   test-backend:
     name: Test backend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -77,7 +77,7 @@ jobs:
   # ---------------------------------------------------------------------------
   push-images:
     name: Build & push images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test-backend, test-frontend]
     permissions:
       contents: read
@@ -151,7 +151,7 @@ jobs:
   # ---------------------------------------------------------------------------
   push-agent-image:
     name: Build & push agent image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test-backend, test-frontend]
     permissions:
       contents: read

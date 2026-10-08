@@ -65,7 +65,7 @@ Work happens in several modes (the current mode is shown in the top right of the
 * **Plan** — works each stage out into elementary steps, one agent per stage in parallel, plus one that derives the rollback.
 * **Execute** — carries the steps out. Only one execution runs at a time.
 * **Discuss** — free-form conversation, and the only mode whose system prompt you can edit.
-* **Incident** — root cause analysis of incidents (in development).
+* **Incident** — investigates an incident, ongoing or past, and fills in its post-mortem as it goes: Digger sub-agents examine each affected system in parallel, then the findings become a hypothesis, root causes, a timeline, corrective actions and an impact report. Ticked actions go to a new plan with one button. See [Investigate an incident](docs/how-to/investigate-an-incident.md).
 
 Details: [Modes](docs/reference/modes.md) · [How a plan is produced](docs/explanation/how-a-plan-is-produced.md)
 

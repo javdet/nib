@@ -83,6 +83,9 @@ wrote them. Each is written atomically.
 | `plan_fanout/{id}.json` | Progress of a detailed-planning run. |
 | `subagents/{id}.json` | A suspended sub-agent waiting on an answer. |
 | `code_fixes/{id}.json` | Chat-requested code fixes: each fix's own dialog id mapped to its run. The agent-runner webhook recognises a fix by it, and a restart sweeps one left `running`. |
+| `postmortems/{id}.json` | An incident's post-mortem, keyed by the incident. |
+| `incident_runs/{id}.json` | An incident's latest investigation or closure run. A restart closes one left `running` as failed. |
+| `plan_origin/{id}.json` | The incident and actions a plan was created from. Not part of a `.nib` export. |
 | `kb_updates/{id}.json` | That the plan has been folded into its knowledge base collection, and whether anything changed. A failed run writes none, so **Finish** can retry it. |
 
 ### The action plan

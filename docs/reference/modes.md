@@ -14,7 +14,7 @@ The list is fixed in the backend. `GET /api/v1/modes` returns it.
 | `plan` | yes | `main`, as a sub-agent | Works each stage out into elementary steps; one agent per stage, plus one that derives the rollback. |
 | `execute` | yes | `main`, as a sub-agent | Carries out one action of the plan. |
 | `discuss` | no | the operator | Free-form conversation. The only mode that can change nib's own configuration. |
-| `incident` | no | the operator | Root-cause analysis of incidents. In development. |
+| `incident` | no | the **New incident** button | The incident commander. Triages, launches Diggers with `run_investigation` and keeps the incident's post-mortem current. Never changes a system. |
 
 `main` is the default mode a dialog gets when none is asked for, and it matches
 the `chat_dialogs.mode` column default.
@@ -38,6 +38,23 @@ offers.
 
 Every sub-agent is parented directly to the root dialog, so listing the root's
 children returns everything a plan spawned.
+
+## Incident sub-agents
+
+An `incident` dialog is an orchestrator of its own, and does not use
+`run_subagent`. Its `run_investigation` tool starts a run in the background; every
+agent of it runs in a child `incident` dialog with a catalog of its own.
+
+| Agent | Started by | Writes |
+|---|---|---|
+| Digger | `run_investigation`, one per system, in parallel | Its system's finding, with `report_finding`, plus that system's timeline events. |
+| Synthesis | `run_investigation`, after every Digger | Summary, hypothesis, root causes, the merged timeline, short- and long-term actions. |
+| Impact | `run_investigation`, beside the synthesis; **Close incident** | Impacted areas and the impact report. |
+| Closure | **Close incident**, after the impact | The closure summary. The incident is closed only once it is written. |
+
+None of them can ask the operator: an agent that calls `ask_question` is told to
+state its assumption, and fails the second time. See [Investigate an
+incident](../how-to/investigate-an-incident.md).
 
 Two more `execute`-mode agents run without `run_subagent`, both started by
 **Finish**: the report agent (`execute_report` overlay, catalog `get_action_list`
@@ -80,6 +97,10 @@ to start if a mode has no prompt.
 | `execute_kb.md` | the knowledge-base update agent chained after the report |
 | `discuss.md` | `discuss` |
 | `incident.md` | `incident` |
+| `incident_digger.md` | one Digger, standing alone rather than appended |
+| `incident_synthesis.md` | the synthesis agent |
+| `incident_impact.md` | the impact agent |
+| `incident_closure.md` | the closure writer |
 
 **Only `discuss` is editable.** `PUT` and `DELETE` on
 `/api/v1/system-prompts/{name}` accept `discuss` and reject every other name.
@@ -101,6 +122,9 @@ Two modes own tools that no allow list can grant to another:
 - **`discuss`** owns `write_rule`, `update_tool_category` and
   `update_included_tools`.
 - **`main`** owns the three orchestrator tools above.
+- **`incident`** owns `get_postmortem`, `update_postmortem`, `run_investigation`
+  and `report_finding`, and has `run_subagent`, `stop_execution`,
+  `execute_action`, `run_executor`, `set_report` and `update_kb` withdrawn.
 
 ## Adding a mode
 

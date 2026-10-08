@@ -188,6 +188,10 @@ token limit.
 | `actionExecConcurrency` | integer | `1` | Action sub-agents executing at once. **Clamped to 1.** |
 | `actionExecMaxIterations` | integer | `20` | Round budget of one action sub-agent. |
 | `actionExecTimeoutMinutes` | integer | `30` | Deadline for one action run. |
+| `incidentConcurrency` | integer | `4` | Diggers investigating one incident at the same time. |
+| `incidentDiggerMaxIterations` | integer | `25` | Round budget of one Digger. |
+| `incidentStepMaxIterations` | integer | `15` | Round budget of the synthesis, impact and closure agents. |
+| `incidentTimeoutMinutes` | integer | `30` | Deadline for one investigation or closure run. |
 
 A value of `0` or less means the default. A `actionExecConcurrency` above 1 is
 accepted, logged as `agent.actionExecConcurrency is clamped to 1; one execution

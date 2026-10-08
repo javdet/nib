@@ -40,6 +40,9 @@ how you watch what happens once you do.
 - [How to run planned actions in containers](run-actions-in-containers.md) —
   configure the executor so `code` steps actually run, watch their logs, run a
   whole stage with **Execute all**, and ask for a fix from the chat
+- [How to investigate an incident](investigate-an-incident.md) — let Digger
+  sub-agents examine each affected system, keep the post-mortem, and hand the
+  corrective actions to a plan
 - [How to share a plan as a `.nib` file](share-a-plan.md) — hand a plan you
   built to another install, with its chat and sub-agent history, to run there
 - [How to scrape nib's metrics with Prometheus](scrape-metrics-with-prometheus.md)

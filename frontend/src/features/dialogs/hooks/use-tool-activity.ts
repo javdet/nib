@@ -79,14 +79,15 @@ export function useToolActivity(
 					dispatch({ type: 'reset' })
 					onAgentResultRef.current?.()
 					break
-				// An action sub-agent posts its result into this dialog, and a
-				// stage planner posts its question there, without either being
-				// part of a turn here. The indicator state is left alone:
-				// resetting it would blank the tool chip of whatever the
-				// operator is running right now.
+				// An action sub-agent posts its result into this dialog, a stage
+				// planner its question and an incident's investigation its
+				// outcome, without any of them being part of a turn here. The
+				// indicator state is left alone: resetting it would blank the
+				// tool chip of whatever the operator is running right now.
 				case 'action_exec_done':
 				case 'action_exec_failed':
 				case 'plan_question':
+				case 'investigation_done':
 					onActionResultRef.current?.()
 					break
 			}
