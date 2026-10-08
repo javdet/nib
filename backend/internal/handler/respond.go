@@ -151,7 +151,12 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrExecutorGitTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorSecretMissing),
 		errors.Is(err, service.ErrActionNotContainerRun),
-		errors.Is(err, service.ErrInvalidStageRunScope):
+		errors.Is(err, service.ErrInvalidStageRunScope),
+		errors.Is(err, service.ErrNotIncidentDialog),
+		errors.Is(err, service.ErrInvalidPostmortemPatch),
+		errors.Is(err, service.ErrNoActionsSelected),
+		errors.Is(err, service.ErrUnknownPostmortemItem),
+		errors.Is(err, service.ErrInvalidInvestigation):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, service.ErrExecutionBusy),
 		errors.Is(err, service.ErrActionAlreadyRunning),
@@ -160,7 +165,11 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrActionNotRunning),
 		errors.Is(err, service.ErrStageRunActive),
 		errors.Is(err, service.ErrStageRunNothingToRun),
-		errors.Is(err, service.ErrNoStageRunActive):
+		errors.Is(err, service.ErrNoStageRunActive),
+		errors.Is(err, service.ErrPostmortemActionPlanned),
+		errors.Is(err, service.ErrInvestigationInProgress),
+		errors.Is(err, service.ErrIncidentClosed),
+		errors.Is(err, service.ErrNoInvestigationRunning):
 		// The request is well formed; something else holds the resource. The
 		// message names what, because waiting or stopping it is the only choice
 		// the operator has.

@@ -325,6 +325,9 @@ func (h *DialogHandler) Delete() http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// An incident's agents would otherwise go on writing into a lineage
+		// that no longer exists, for as long as their budget lasts.
+		h.chatSvc.CancelInvestigation(id)
 		if err := h.dialogSvc.Delete(r.Context(), id); err != nil {
 			handleServiceError(w, err)
 			return

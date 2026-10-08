@@ -391,6 +391,12 @@ func run() error {
 	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
 	chatSvc.SetKBSettings(kbSettingsStore)
 	chatSvc.SetDialogImporter(dialogRepo)
+	chatSvc.SetIncidentConfig(service.IncidentConfig{
+		Concurrency:         cfg.Agent.IncidentConcurrency,
+		DiggerMaxIterations: cfg.Agent.IncidentDiggerMaxIterations,
+		StepMaxIterations:   cfg.Agent.IncidentStepMaxIterations,
+		TimeoutMinutes:      cfg.Agent.IncidentTimeoutMinutes,
+	})
 	statsSvc := service.NewStatsService(statsRepo, chatSvc)
 
 	if cfg.Agent.ActionExecConcurrency > 1 {
@@ -406,10 +412,10 @@ func run() error {
 		slog.Warn("reconcile stuck runs", "error", err)
 	} else {
 		metrics.AddStuckRunsReconciled(rec.Actions, rec.Fanouts, rec.CodeFixes)
-		if rec.Actions > 0 || rec.Fanouts > 0 || rec.CodeFixes > 0 || rec.StageRuns > 0 {
+		if rec.Actions > 0 || rec.Fanouts > 0 || rec.CodeFixes > 0 || rec.StageRuns > 0 || rec.Incidents > 0 {
 			slog.Info("closed runs left behind by a previous process",
 				"actions", rec.Actions, "fanouts", rec.Fanouts, "code_fixes", rec.CodeFixes,
-				"stage_runs", rec.StageRuns)
+				"stage_runs", rec.StageRuns, "incidents", rec.Incidents)
 		}
 	}
 

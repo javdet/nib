@@ -20,6 +20,7 @@ type ReconcileResult struct {
 	Fanouts   int
 	CodeFixes int
 	StageRuns int
+	Incidents int
 }
 
 // ReconcileStuckRuns closes the run records a previous process left behind.
@@ -60,7 +61,45 @@ func (s *ChatService) ReconcileStuckRuns() (ReconcileResult, error) {
 	}
 	out.StageRuns = stageRuns
 
+	incidents, err := s.reconcileStuckIncidentRuns()
+	if err != nil {
+		return out, err
+	}
+	out.Incidents = incidents
+
 	return out, nil
+}
+
+// reconcileStuckIncidentRuns closes investigations and closures a previous
+// process left running, without which ErrInvestigationInProgress would refuse
+// every later run of those incidents.
+func (s *ChatService) reconcileStuckIncidentRuns() (int, error) {
+	paths, err := filepath.Glob(filepath.Join(s.incidentRunsDir, "*.json"))
+	if err != nil {
+		return 0, fmt.Errorf("list incident runs: %w", err)
+	}
+
+	closed := 0
+	now := time.Now().Unix()
+	for _, path := range paths {
+		var run IncidentRun
+		if !readJSONFileOrWarn(path, &run) || !run.Active() {
+			continue
+		}
+		run.Status = IncidentRunFailed
+		run.FinishedAt = now
+		run.Error = restartedReason
+		for i := range run.Steps {
+			if run.Steps[i].Status == IncidentStepPending || run.Steps[i].Status == IncidentStepRunning {
+				run.Steps[i].Status = IncidentStepFailed
+				run.Steps[i].FinishedAt = now
+				run.Steps[i].Error = restartedReason
+			}
+		}
+		writeJSONFileOrWarn(path, run)
+		closed++
+	}
+	return closed, nil
 }
 
 func (s *ChatService) reconcileStuckActionRuns() (int, error) {

@@ -34,6 +34,13 @@ type toolBinding struct {
 	// owns, so an operator adding one of them to another mode's allow list
 	// cannot hand it out.
 	mode string
+	// incidentRole says which part of an incident's post-mortem the turn may
+	// write. Empty outside incident mode and on a follow-up typed into an
+	// incident sub-agent's transcript, which therefore writes nothing.
+	incidentRole incidentRole
+	// system is the system a Digger investigates, which its finding is filed
+	// under. Empty for every other turn.
+	system string
 }
 
 // newToolBinding returns a binding for an ordinary turn, where the dialog that
@@ -87,6 +94,10 @@ func init() {
 		registerStopExecutionTool,
 		registerUpdateToolCategoryTool,
 		registerUpdateIncludedToolsTool,
+		registerGetPostmortemTool,
+		registerUpdatePostmortemTool,
+		registerRunInvestigationTool,
+		registerReportFindingTool,
 	}
 }
 

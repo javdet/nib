@@ -39,6 +39,10 @@ var localSystemToolNames = []string{
 	UpdateKBToolName,
 	RunSubagentToolName,
 	StopExecutionToolName,
+	GetPostmortemToolName,
+	UpdatePostmortemToolName,
+	RunInvestigationToolName,
+	ReportFindingToolName,
 }
 
 func isLocalSystemTool(name string) bool {

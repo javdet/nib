@@ -123,6 +123,9 @@ type ChatService struct {
 	dagsDir          string
 	summariesDir     string
 	reportsDir       string
+	postmortemsDir   string
+	planOriginDir    string
+	incidentRunsDir  string
 	actionPlansDir   string
 	planContractsDir string
 	planFanoutDir    string
@@ -134,6 +137,7 @@ type ChatService struct {
 	attachmentsDir   string
 	maxIterations    int
 	fanout           PlanFanoutConfig
+	incident         IncidentConfig
 	actionExec       ActionExecConfig
 	activity         *ActivityBroker
 
@@ -210,6 +214,20 @@ type ChatService struct {
 	// the same subagent twice over the same transcript.
 	subagentClaims sync.Map
 
+	// postmortemWriteMu serialises the read-modify-write of an incident's
+	// post-mortem, keyed by the incident. Diggers, the synthesis and impact
+	// agents and the operator all write the one document concurrently.
+	postmortemWriteMu sync.Map
+
+	// incidentRuns holds the cancel func of each incident's live run, keyed by
+	// the incident. Process-local like fanoutRuns: a restart is swept by
+	// ReconcileStuckRuns, never resumed.
+	incidentRuns sync.Map
+
+	// incidentRunWriteMu guards an incident's run record, which the steps of a
+	// wave update concurrently.
+	incidentRunWriteMu sync.Map
+
 	// kbCollectionLocks serialises knowledge-base updates per collection.
 	// update_kb is a read-merge-overwrite, so two plans finishing against one
 	// collection would otherwise lose whichever side wrote first.
@@ -267,6 +285,9 @@ func NewChatService(
 		dagsDir:          filepath.Join(dataDir, "dags"),
 		summariesDir:     filepath.Join(dataDir, "summaries"),
 		reportsDir:       filepath.Join(dataDir, "reports"),
+		postmortemsDir:   filepath.Join(dataDir, "postmortems"),
+		planOriginDir:    filepath.Join(dataDir, "plan_origin"),
+		incidentRunsDir:  filepath.Join(dataDir, "incident_runs"),
 		actionPlansDir:   filepath.Join(dataDir, "action_plans"),
 		planContractsDir: filepath.Join(dataDir, "plan_contracts"),
 		planFanoutDir:    filepath.Join(dataDir, "plan_fanout"),
@@ -412,6 +433,36 @@ func enforceModeToolLimits(modeName string, allow map[string]struct{}) {
 		delete(allow, UpdateIncludedToolsToolName)
 		delete(allow, WriteRuleToolName)
 	}
+	if modeName != incidentDialogMode {
+		for _, name := range incidentOnlyTools {
+			delete(allow, name)
+		}
+		return
+	}
+	// An incident investigates and hands its fixes to a plan; it never runs
+	// one, never launches the plan track's sub-agents and never rewrites the
+	// knowledge base mid-investigation.
+	for _, name := range incidentWithheldTools {
+		delete(allow, name)
+	}
+}
+
+// incidentOnlyTools exist only for an incident's lineage.
+var incidentOnlyTools = []string{
+	GetPostmortemToolName,
+	UpdatePostmortemToolName,
+	RunInvestigationToolName,
+	ReportFindingToolName,
+}
+
+// incidentWithheldTools are taken from incident mode whatever its list says.
+var incidentWithheldTools = []string{
+	RunSubagentToolName,
+	StopExecutionToolName,
+	ExecuteActionToolName,
+	RunExecutorToolName,
+	SetReportToolName,
+	UpdateKBToolName,
 }
 
 // resolveDialogAllowSet returns the mode allow set plus the tools of whichever
@@ -422,6 +473,12 @@ func enforceModeToolLimits(modeName string, allow map[string]struct{}) {
 // agent reaches an MCP tool the mode list does not name, because the catalog is
 // fixed when the turn starts and cannot be widened from inside it.
 func (s *ChatService) resolveDialogAllowSet(ctx context.Context, d domain.Dialog) (map[string]struct{}, error) {
+	// An incident's sub-agents run on catalogs of their own, and a follow-up
+	// typed into one of their transcripts gets the read half of it back -- the
+	// incident's list is the orchestrator's.
+	if d.Mode == incidentDialogMode && d.ParentID != nil {
+		return s.incidentFollowUpAllowSet(ctx, d), nil
+	}
 	allow, err := s.resolveAllowSet(d.Mode)
 	if err != nil {
 		return nil, err
@@ -526,6 +583,9 @@ func (s *ChatService) planDialogCategories(ctx context.Context, d domain.Dialog)
 func (s *ChatService) dialogToolBinding(ctx context.Context, d domain.Dialog) toolBinding {
 	b := newToolBinding(d.ID)
 	b.mode = d.Mode
+	if d.ParentID == nil && d.Mode == incidentDialogMode {
+		b.incidentRole = incidentRoleOrchestrator
+	}
 	if d.ParentID == nil || s.dialogRepo == nil {
 		return b
 	}

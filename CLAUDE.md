@@ -114,9 +114,11 @@ redirect to another one.
 ### Modes, prompts and how to change them
 
 Modes: `main` (orchestrator; routes to sub-agents), `decompose` (task → DAG), `plan` (DAG → action
-plan), `execute` (carry out one action), `discuss` (read-only investigation), `incident`. Overlay
-prompts `plan_stage`, `rollback_stage`, `execute_action`, `execute_report` and `decompose_subagent`
-are appended to their base mode's prompt.
+plan), `execute` (carry out one action), `discuss` (read-only investigation), `incident` (incident
+commander; see *Incidents* below). Overlay prompts `plan_stage`, `rollback_stage`, `execute_action`,
+`execute_report`, `execute_kb` and `decompose_subagent` are appended to their base mode's prompt. The
+incident's sub-agent prompts `incident_digger`, `incident_synthesis`, `incident_impact` and
+`incident_closure` stand alone instead, since the `incident` prompt is the orchestrator's.
 
 Every prompt is compiled into the binary from `internal/systemprompts/defaults/{mode}.md`.
 **Only `discuss` is editable at runtime**; its override is `{DATA_DIR}/prompts/discuss.md`
@@ -329,7 +331,7 @@ the subset every provider accepts before they are sent, since a strict validator
 request rather than the offending tool; dispatch keeps the server's own spelling on the route.
 
 Round budgets are `agent.maxIterations` and the per-sub-agent `stageMaxIterations` /
-`actionExecMaxIterations`. Only one execution runs at a time, by policy, and
+`actionExecMaxIterations` / `incidentDiggerMaxIterations` / `incidentStepMaxIterations`. Only one execution runs at a time, by policy, and
 `agent.actionExecConcurrency` is clamped to 1.
 
 ### Sharing a plan: `.nib` files
@@ -349,6 +351,43 @@ and rewrites the old ids wherever they appear in the imported text. It is all or
 the body is capped at 64 MiB. MCP servers, secrets, variables, skills, rules and executor settings
 are not in the file. A step calling a tool the importer lacks fails when it runs, not at import.
 See `docs/how-to/share-a-plan.md`.
+
+### Incidents
+
+An incident is a root `incident` dialog, created by **New incident**. Its deliverable is a
+**post-mortem** at `{DATA_DIR}/postmortems/{id}.json`, filled in live while the investigation runs and
+rendered on the incident page: status (`ongoing` → `mitigated` → `resolved` → `closed`), severity
+`sev1`–`sev4`, environment, started/detected/mitigated/resolved times, summary, working hypothesis,
+root causes, impacted areas, timeline, short-term and long-term corrective actions, per-system
+findings, impact report and closure summary.
+
+- **The orchestrator** is the incident dialog itself. It triages (ongoing or past, where, since when,
+  severity), keeps the post-mortem current with `update_postmortem`, and launches the investigation
+  with `run_investigation`. It never changes a system and never launches the plan track's
+  sub-agents: `run_subagent`, `execute_action`, `run_executor`, `set_report` and `update_kb` are
+  withdrawn from incident mode in code (`enforceModeToolLimits`).
+- **`run_investigation`** starts a run in the background and returns `started`. One **Digger** per
+  system (at most 8, `agent.incidentConcurrency` at once) examines its system before and during the
+  window and files a finding with `report_finding`; then a **synthesis** agent writes the hypothesis,
+  root causes, merged timeline and actions while an **impact** agent writes the impacted list and the
+  impact report. Each runs in a child `incident` dialog with its own literal catalog. The outcome is
+  posted into the incident chat as a named message; it does not start a turn.
+- **Read-only is enforced by prompt only.** Diggers and the impact agent hold `execute_command`,
+  `api_call`, the MCP tools included for incident mode and those of their categories, and are told
+  not to mutate anything. They take no execution lease. Like every `execute_command`, theirs sees no
+  `KUBECONFIG` or cloud credentials, so clusters and clouds are reached through MCP.
+- **Operator edits win.** The page edits through `PUT /dialogs/{id}/postmortem` with a patch. A
+  scalar field the operator edits is locked against agents until handed back (`locks`), and a list
+  item the operator wrote, or an action already in a plan, survives an agent's rewrite of the list.
+- **Create plan** hands the ticked actions to the change-management track: one new `main` plan
+  seeded with the incident's context, linked both ways (`linkedPlans` in the post-mortem,
+  `{DATA_DIR}/plan_origin/{plan}.json` for the plan), with the actions marked `in_plan`.
+- **Close incident** runs the impact agent over the final window and then a closure writer; the
+  incident is marked `closed` only when the closure summary is written, and agents cannot change a
+  closed post-mortem. A failed closure leaves it open to retry.
+- The latest run is `{DATA_DIR}/incident_runs/{id}.json`; a run a restart stranded is closed as failed
+  at boot. Budgets: `agent.incidentConcurrency` (4), `incidentDiggerMaxIterations` (25),
+  `incidentStepMaxIterations` (15), `incidentTimeoutMinutes` (30).
 
 ### What an upgrade does and does not touch
 
@@ -537,6 +576,19 @@ request is held open. It takes no execution lease — it rewrites nib's own know
 managed system — and `actionAgentAllowSet` withholds `update_kb` for the same reason it withholds
 `set_report`.
 
+An **incident** is a second, smaller orchestrator ([incident_run.go](backend/internal/service/incident_run.go)),
+deliberately kept off `run_subagent`: its flat schema is shared by every plan specialist and
+`resolveOrchestratorRoot` requires `main`. `run_investigation` registers only on an incident root
+(`toolBinding.incidentRole == orchestrator`) and runs Diggers, then synthesis and impact, as two waves
+modelled on the fan-out, under a plain deadline — nothing in it waits on the operator. A step that
+calls `ask_question` anyway is answered once with "state your assumption" and fails on the second.
+Every write to the post-mortem goes through `applyPostmortemPatch`
+([postmortem.go](backend/internal/service/postmortem.go)), whose per-role field matrix is what keeps
+agents running side by side off each other's sections and off the operator's locked ones. The
+handoff to a plan ([incident_handoff.go](backend/internal/service/incident_handoff.go)) creates the
+`main` root and returns its first message rather than starting a turn: the web interface queues it
+with `enqueuePendingMessage`, so the orchestrator's first turn runs under a request like any other.
+
 System prompts, rules, and skills are markdown files under `data/`, rendered as `text/template`
 ([prompttpl](backend/internal/prompttpl/render.go), with Helm-style `toYaml`/`nindent`) against
 prompt variables from Postgres plus the current selection (project/environment/cloud/location).
@@ -555,7 +607,8 @@ A `Dialog` UUID is the unit of work. Beyond the Postgres transcript, artifacts a
 dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
 `data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json`,
 `data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`,
-`data/code_fixes/{id}.json`.
+`data/code_fixes/{id}.json`, `data/plan_origin/{id}.json`, and for an incident
+`data/postmortems/{id}.json` and `data/incident_runs/{id}.json`.
 
 An action plan carries side files beside it, all keyed by the same dialog id and by the positional
 row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),

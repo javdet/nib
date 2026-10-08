@@ -38,6 +38,16 @@ const (
 	// next item, or ended. One kind for all three: the plan page only re-reads
 	// the run record, so telling them apart would buy it nothing.
 	ActivityStageRunUpdated AgentActivityKind = "stage_run_updated"
+
+	// ActivityPostmortemUpdated says an incident's post-mortem changed. Its
+	// sections are written by agents in dialogs of their own, so it is published
+	// against the incident, which is what the incident page listens to.
+	ActivityPostmortemUpdated AgentActivityKind = "postmortem_updated"
+	// ActivityInvestigationUpdated says a step of an incident's run started or
+	// ended; ActivityInvestigationDone that the whole run did, and its report
+	// is in the incident's chat.
+	ActivityInvestigationUpdated AgentActivityKind = "investigation_updated"
+	ActivityInvestigationDone    AgentActivityKind = "investigation_done"
 )
 
 type AgentActivity struct {

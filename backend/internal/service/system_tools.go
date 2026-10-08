@@ -18,10 +18,17 @@ var systemToolsDialogID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 // the same reason the whole-catalog listing passes the mode of the tools scoped
 // to one mode: without it they would be missing from the catalog entirely, and
 // their real availability comes from the allow lists.
+//
+// An incident binding is the orchestrator's, with a placeholder system, so the
+// tools of every incident role are listed too.
 func systemToolsBinding(modeName string) toolBinding {
 	b := newToolBinding(systemToolsDialogID)
 	b.stage = "placeholder"
 	b.mode = modeName
+	if modeName == incidentDialogMode {
+		b.incidentRole = incidentRoleOrchestrator
+		b.system = "placeholder"
+	}
 	return b
 }
 
@@ -41,6 +48,22 @@ func (s *ChatService) SystemToolDefs() ([]SystemToolDef, error) {
 		localHandlers: make(map[string]localToolHandler),
 	}
 	s.addLocalTools(&catalog, nil, systemToolsBinding(discussDialogMode))
+	// The incident tools are scoped to incident mode, so a second pass under
+	// its binding adds them; the tools both passes register are kept once.
+	incident := toolCatalog{
+		mcpRoutes:     make(map[string]toolRoute),
+		localHandlers: make(map[string]localToolHandler),
+	}
+	s.addLocalTools(&incident, nil, systemToolsBinding(incidentDialogMode))
+	seen := make(map[string]struct{}, len(catalog.tools))
+	for _, tool := range catalog.tools {
+		seen[tool.Name] = struct{}{}
+	}
+	for _, tool := range incident.tools {
+		if _, ok := seen[tool.Name]; !ok {
+			catalog.tools = append(catalog.tools, tool)
+		}
+	}
 
 	modeAllowLists, err := s.loadModeAllowLists()
 	if err != nil {

@@ -38,7 +38,6 @@ const WORKPLACE_NAV: NavItem[] = [
 		label: 'Incidents',
 		icon: AlertTriangle,
 		end: true,
-		badge: 'In dev',
 	},
 ]
 

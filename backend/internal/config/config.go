@@ -107,6 +107,15 @@ type AgentConfig struct {
 	// ActionExecTimeoutMinutes bounds one action run. Like a fan-out it outlives
 	// the turn that starts it, so it needs a deadline of its own.
 	ActionExecTimeoutMinutes int `yaml:"actionExecTimeoutMinutes"`
+	// IncidentConcurrency caps how many Diggers investigate an incident at once.
+	IncidentConcurrency int `yaml:"incidentConcurrency"`
+	// IncidentDiggerMaxIterations is the completion round budget of one Digger.
+	IncidentDiggerMaxIterations int `yaml:"incidentDiggerMaxIterations"`
+	// IncidentStepMaxIterations is the budget of the synthesis, impact and
+	// closure agents, which write rather than search.
+	IncidentStepMaxIterations int `yaml:"incidentStepMaxIterations"`
+	// IncidentTimeoutMinutes bounds one investigation or closure run.
+	IncidentTimeoutMinutes int `yaml:"incidentTimeoutMinutes"`
 }
 
 // LogConfig controls optional mirroring of stderr to a file.

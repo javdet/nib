@@ -188,6 +188,18 @@ answers `202` and runs on past the request.
 | `GET` | `/dialogs/{id}/plan-fanout` | Progress. |
 | `DELETE` | `/dialogs/{id}/plan-fanout` | Cancel. |
 
+### Incidents
+
+| Method | Path | Meaning |
+|---|---|---|
+| `GET` | `/dialogs/{id}/postmortem` | The incident's post-mortem; the empty document before anything is written. `400` for a dialog that is not an incident's root. |
+| `PUT` | `/dialogs/{id}/postmortem` | An operator edit, as a patch: `{"set": {...}, "ops": [{"list", "op": "add" \| "update" \| "delete", "id", "fields"}], "unlock": [...]}`. A field set here is locked against agents until unlocked. |
+| `POST` | `/dialogs/{id}/postmortem/plan` | Create one `main` plan from `{"actionIds": [...]}`. Answers `201` `{"planId", "message"}`; the client sends `message` as the plan's first message. `409` for an action already in a plan. |
+| `POST` | `/dialogs/{id}/postmortem/close` | Close the incident: final impact, then the closure summary. Body `{"resolvedAt"}` (optional). Answers `202`; *no deadline*. |
+| `GET` | `/dialogs/{id}/investigation` | The latest investigation or closure run, `404` before the first. |
+| `DELETE` | `/dialogs/{id}/investigation` | Stop it. `409` when none is running. |
+| `GET` | `/dialogs/{id}/origin` | The incident a plan was created from, `404` for any other plan. |
+
 ### Attachments
 
 | Method | Path |

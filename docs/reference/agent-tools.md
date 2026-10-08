@@ -38,7 +38,7 @@ Shipped with the image and seeded onto the data volume at first start.
 | `knowledge_search` | ● | ● | ● | ● | ● | ● |
 | `get_skill` | ● | ● | ● | ● | ● | ● |
 | `tool_search` | | ● | ● | ● | ● | ● |
-| `ask_question` | ● | ● | ● | | | |
+| `ask_question` | ● | ● | ● | | | ● |
 | `get_dag` | ● | ● | | | | |
 | `get_action_list` | ● | | | ● | | |
 | `run_subagent` | ● | | | | | |
@@ -53,15 +53,18 @@ Shipped with the image and seeded onto the data volume at first start.
 | `update_action_plan` | | | ● | | | |
 | `update_rollback_plan` | | | ● | | | |
 | `get_secrets` | | | | ● | | |
-| `api_call` | | | | ● | | |
+| `api_call` | | | | ● | | ● |
 | `execute_command` | | | | ● | | |
 | `run_executor` | | | | ● | | |
-| `get_kb_document` | | | | | ● | |
+| `get_kb_document` | | | | | ● | ● |
 | `update_kb` | | | | | ● | |
 | `write_rule` | | | | | ● | |
 | `update_tool_category` | | | | | ● | |
 | `update_included_tools` | | | | | ● | |
 | `create_table` | | | | | ● | ● |
+| `get_postmortem` | | | | | | ● |
+| `update_postmortem` | | | | | | ● |
+| `run_investigation` | | | | | | ● |
 
 `chat_name` is not in any allow list: it is offered on every turn that has a
 dialog. `report_blocker` is added in code to every fan-out stage planner's set.
@@ -268,6 +271,49 @@ Assigns a display name to the conversation. With a `task_id`, the title is
 stored as `<task_id>: <chat_name>` and the id is persisted on the dialog.
 
 Offered on every turn that has a dialog; not in any allow list.
+
+## Incidents
+
+All four are **incident-mode-owned**: every other mode has them withdrawn
+whatever its allow list says. They are bound to the incident, not to the
+transcript of the dialog that calls them.
+
+### `get_postmortem`
+
+Returns the incident's post-mortem as JSON, including `locks`, the fields the
+operator owns.
+
+### `update_postmortem`
+
+Writes the post-mortem. `set` overwrites scalar fields; `lists` restates whole
+lists, replacing every item an agent wrote before while keeping the items the
+operator wrote and the actions already in a plan. Which fields a caller may
+write depends on its role — the orchestrator, the synthesis, impact and closure
+agents each own a slice — and a field the operator has edited is refused until
+they hand it back. Refusals are named in the result; the rest is applied. An agent
+cannot set `closed`, and cannot write a closed post-mortem except the closure
+writer.
+
+**Binding:** an incident role. A follow-up typed into a sub-agent's transcript has
+none.
+
+### `run_investigation`
+
+Starts an investigation and returns `started`: one Digger per entry of `systems`
+(1 to 8, each with `name`, `environment`, `categories` and `focus`), then the
+synthesis and impact agents. `brief` is required and must stand alone, since no
+sub-agent reads the incident's chat. `impact_only: true` reruns the impact
+assessment alone. Refused while a run is going or once the incident is closed.
+
+**Root-only.** Registered only on the root turn of an incident.
+
+### `report_finding`
+
+A Digger's one write: its system's finding (`status`, `summary`, `before`,
+`during`, `changes`, `suspected_cause`, `confidence`, `assumptions`) and the
+timeline events it saw, which are added to the timeline rather than replacing it.
+
+**Binding:** Digger-only. In no allow list; handed out in code.
 
 ## Changing nib's own configuration
 

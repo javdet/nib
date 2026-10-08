@@ -31,7 +31,16 @@ const EditableName = "discuss"
 // execute_kb turns it around the other way, for the subagent chained after the
 // report: it merges what the plan established into the project's knowledge base
 // collection instead of recording it for the operator.
-var Auxiliary = []string{"plan_stage", "rollback_stage", "execute_action", "decompose_subagent", "execute_report", "execute_kb"}
+// incident_digger, incident_synthesis, incident_impact and incident_closure are
+// the incident's sub-agents. Unlike the others they stand alone rather than
+// being appended to the incident prompt, which is the orchestrator's: a Digger
+// examines one system, the synthesis turns the findings into the post-mortem,
+// the impact agent measures what the incident cost and the closure writer
+// writes the account the incident is closed with.
+var Auxiliary = []string{
+	"plan_stage", "rollback_stage", "execute_action", "decompose_subagent", "execute_report", "execute_kb",
+	"incident_digger", "incident_synthesis", "incident_impact", "incident_closure",
+}
 
 const mdSuffix = ".md"
 
