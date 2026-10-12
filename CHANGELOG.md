@@ -4,6 +4,21 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.8.2] - 2026-10-12
+
+### Added
+- Incident management: a new **New incident** flow opens an `incident` dialog whose deliverable is a live post-mortem (status, severity, timeline, root causes, impacted areas, corrective actions) rendered on the incident page. The orchestrator triages and keeps the post-mortem current with `update_postmortem`.
+- `run_investigation` starts a background investigation: one read-only Digger sub-agent per system (at most 8, `agent.incidentConcurrency` at once) files findings with `report_finding`, then synthesis and impact agents write the hypothesis, timeline and impact report. Read-only is enforced by prompt only.
+- Incident post-mortems can be edited from the page through `PUT /dialogs/{id}/postmortem`; a field an operator edits is locked against agents until handed back, and operator-written list items survive an agent's rewrite.
+- **Create plan** on an incident hands the ticked corrective actions to a new, linked `main` plan, and **Close incident** writes the closure summary and marks the incident `closed`.
+- New `agent` settings bound incident runs: `incidentConcurrency`, `incidentDiggerMaxIterations`, `incidentStepMaxIterations` and `incidentTimeoutMinutes`.
+- Plans can be shared between installations as `.nib` files: **Export as .nib file** and **Import plan from .nib file** on the plan page, plus an import button on the Plans page (`GET /api/v1/dialogs/{id}/export`, `POST /api/v1/dialogs/import`). An import always creates a new draft plan and carries no execution state, secrets, variables or MCP servers.
+- Documentation for investigating an incident and sharing a plan.
+
+### Removed
+- **Breaking:** the per-secret allowed-hosts list introduced in v0.8.1 is gone. Secrets are no longer bound to hosts, and any global secret can be referenced as `${NAME}` from any `mcp.json` server. The Secrets form no longer asks for hosts, and the `allowed_hosts` field is dropped from the secrets API.
+- Upgraded installs need no action: migration `000040` drops `prompt_secrets.allowed_hosts` and the stored host lists with it. Note that anyone who can edit `mcp.json` can now send any global secret to a host of their choosing, so restrict who may edit it. MCP clients still add credentials only to their own server's origin and refuse cross-origin redirects, and `NIB_ALLOWED_HOSTS` is unchanged.
+
 ## [v0.8.1] - 2026-09-25
 
 ### Added
