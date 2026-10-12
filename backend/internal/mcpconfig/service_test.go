@@ -219,10 +219,7 @@ func TestListServerToolsReportsTransportFailure(t *testing.T) {
 	defer srv.Close()
 
 	svc := seededService(t, `{"mcpServers": {"gw": {"url": "`+srv.URL+`/mcp", "headers": {"Authorization": "Bearer ${MCP_GW_TOKEN}"}}}}`)
-	svc.SetSecretLookup(&fakeSecrets{
-		values: map[string]string{"MCP_GW_TOKEN": "ghp_secret"},
-		hosts:  map[string][]string{"MCP_GW_TOKEN": {"127.0.0.1"}},
-	})
+	svc.SetSecretLookup(&fakeSecrets{values: map[string]string{"MCP_GW_TOKEN": "ghp_secret"}})
 
 	_, err := svc.ListServerTools(context.Background(), "gw")
 	if !errors.Is(err, ErrDiscoveryFailed) {

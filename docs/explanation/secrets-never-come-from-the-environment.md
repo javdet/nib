@@ -33,11 +33,11 @@ choosing. Nothing about that requires a vulnerability: it is the feature working
 as specified. Every variable the backend holds becomes readable through any URL
 or header an MCP entry can name.
 
-The encrypted store does not have this property on its own, because the only
-things in it are things an operator deliberately put there. But not all of them
-were put there *for `mcp.json`* — the executor's git and LLM tokens live in the
-same store — so the store alone would only narrow the leak, not close it. The
-rest of the answer is below, under host binding.
+The encrypted store narrows this to things an operator deliberately put there.
+It does not close it: not everything in the store was put there *for
+`mcp.json`* — the executor's git and LLM tokens live in the same store — and an
+entry pointing at a host of the editor's choosing can still reference any of
+them. See [What this is not](#what-this-is-not).
 
 ## The shape of the decision
 
@@ -66,30 +66,18 @@ deployment; you have to put it in the store. For anyone who configures
 everything through environment variables, that is friction, and it is the price
 of the property above.
 
-## Host binding
+## Credentials stay with their origin
 
-Secret values are write-only: nothing in the API returns one. Without a further
-rule, `mcp.json` would be the exception — an entry pointing at a host of the
-editor's choosing, with `${GITHUB_TOKEN}` in a header or the query string,
-reads the token back out on the next discovery.
+A resolved value goes only to the server whose entry named it. Headers and
+tokens are added only to requests for the server's own scheme, host and port,
+and a redirect to another origin is refused rather than followed. The same
+holds for token connections (added through `POST /api/v1/mcp/connections`):
+moving one to another origin takes a new token, rather than sending the old one
+to the new address.
 
-So every secret carries the hosts it may be sent to, and a reference expands
-only for a server whose URL host is on that list. Three details make that hold:
-
-- **The host must be literal.** A `${NAME}` in the URL's scheme, host or port is
-  refused, since a host spelled from a secret could be anything.
-- **The list is guarded like the value.** Adding a host requires entering the
-  value again. Whoever can edit `mcp.json` can edit a secret's metadata too, so
-  a list that changed freely would bind nothing.
-- **Credentials stay with their origin.** Headers and tokens are added only to
-  requests for the server's own scheme, host and port, and a redirect to another
-  origin is refused rather than followed. The same holds for token connections
-  (added through `POST /api/v1/mcp/connections`): moving one to another origin takes a new
-  token, rather than sending the old one to the new address.
-
-A secret nobody bound to a host cannot be reached from `mcp.json` at all. On
-the upgrade that introduced the binding, each secret was bound once to the
-hosts of the servers already referencing it, so a working setup kept working.
+Secrets themselves are not bound to hosts. v0.8.1 carried a per-secret list of
+allowed hosts; it was withdrawn because keeping it in step with `mcp.json` cost
+more than it was worth to operators.
 
 ## The other half: redaction
 
@@ -137,9 +125,10 @@ stored values are gone, not merely inaccessible.
 
 It is not a claim that nib's secrets are safe against someone who holds the API
 token. They are not — anyone who can call the API can select a secret for the
-executor and run it. The property is narrower: **editing `mcp.json` sends a
-secret only to a host the person who stored it named.** The backend's own
-operating credentials are outside that boundary, and stay there.
+executor and run it, or reference it from an `mcp.json` entry pointing at a
+host of their choosing. The property is narrower: **editing `mcp.json` can reach
+only what someone deliberately put in the store.** The backend's own operating
+credentials are outside that boundary, and stay there.
 
 For the broader question of who can reach the API at all, see [How nib
 authenticates callers](how-nib-authenticates-callers.md).

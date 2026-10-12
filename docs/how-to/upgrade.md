@@ -31,8 +31,8 @@ longer exist.
 
 ## Upgrading from v0.8.0
 
-The release after v0.8.0 changes how nib authenticates, which user it runs as
-and where a secret may be sent. Go through this list before the first start,
+The release after v0.8.0 changes how nib authenticates and which user it runs
+as. Go through this list before the first start,
 not after.
 
 1. **Set `NIB_API_TOKEN`.** The backend now refuses to start without a token of
@@ -51,27 +51,19 @@ not after.
 3. **Remove `WEBHOOK_AUTH_HEADER` from the Kubernetes agent Secret**
    (`agentSecretName`). The backend sets it on every Job and overrides it
    anyway.
-4. **Check your secrets' allowed hosts.** A `${NAME}` in `mcp.json` is now
-   resolved only for a server whose host is on that secret's allowed-hosts
-   list. At the first start, every secret the current `mcp.json` references is
-   bound once to the hosts referencing it; nothing is bound after that. A
-   server you add later, or a secret the file did not reference at upgrade,
-   fails with `secret is not allowed for this host` until you add the host at
-   **Variables → Secrets** — which means entering the value again. See [How to
-   keep tokens out of `mcp.json`](keep-tokens-out-of-mcp-json.md).
-5. **Replace OAuth MCP connections.** The OAuth flow is gone, and with it the
+4. **Replace OAuth MCP connections.** The OAuth flow is gone, and with it the
    `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET`, `ATLASSIAN_MCP_URL`,
    `OAUTH_CALLBACK_BASE_URL` and `FRONTEND_BASE_URL` variables. An existing
    OAuth connection keeps its access token until it expires; nothing refreshes
    it. Re-add the server with a static token.
-6. **Expect the backend to run as `nib` (uid/gid 10001)**, not root. On start,
+5. **Expect the backend to run as `nib` (uid/gid 10001)**, not root. On start,
    the entrypoint hands every file in `DATA_DIR` not owned by `nib` over to it,
    so the first start on a large volume takes longer and a bind-mounted data
    directory on the host changes owner. The mounted `config.yaml` has to be
    readable by uid 10001. A pod started as another user through a
    `securityContext` skips the entrypoint's root step entirely: give the
    volume an `fsGroup` or `chown` it yourself, or the backend cannot write it.
-7. **Expect narrower agent tools.** `execute_command` and `api_call` now run as
+6. **Expect narrower agent tools.** `execute_command` and `api_call` now run as
    `nib` and inherit only `PATH`, `HOME` and `LANG` — no proxies, no
    `KUBECONFIG`, none of the backend's keys. `api_call` also refuses loopback
    and link-local hosts (cloud metadata included), reading from or writing to

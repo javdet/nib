@@ -14,9 +14,6 @@ type PromptSecret struct {
 	ScopeName   string    `json:"scopeName"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	// AllowedHosts are the hosts a ${NAME} reference in mcp.json may send the
-	// value to. Empty means none.
-	AllowedHosts []string  `json:"allowedHosts"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }

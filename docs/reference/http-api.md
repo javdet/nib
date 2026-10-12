@@ -232,8 +232,8 @@ the HTTP API never lists or returns them.
 |---|---|---|
 | `GET` `POST` | `/variables` | Prompt variables. |
 | `GET` `PUT` `DELETE` | `/variables/{id}` | |
-| `GET` `POST` | `/secrets` | Encrypted secrets. `GET` returns names and `allowedHosts`, never values. |
-| `PUT` `DELETE` | `/secrets/{id}` | A blank `value` keeps the stored one; adding to `allowedHosts` then fails with 400. An absent `allowedHosts` keeps the list. |
+| `GET` `POST` | `/secrets` | Encrypted secrets. `GET` returns names and metadata, never values. |
+| `PUT` `DELETE` | `/secrets/{id}` | A blank `value` keeps the stored one. |
 | `GET` `PUT` | `/company` | Company profile used in prompts. |
 
 ## Tools

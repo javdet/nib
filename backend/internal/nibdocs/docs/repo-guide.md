@@ -99,15 +99,11 @@ Two independent sources feed the tool catalog, merged in `buildToolCatalog`:
    connection's URL to another origin (scheme, host or port) requires a new token
    (`ErrMCPTokenRequired`); a blank token keeps the stored one only on the same origin.
 
-A header, or the URL's path, query or userinfo, in `mcp.json` may reference `${NAME}`, expanded
+Any value in an `mcp.json` server entry (URL or header) may reference `${NAME}`, expanded
 from the encrypted secret store at call time only — never from process environment. Without
 `SECRETS_ENCRYPTION_KEY` every `${NAME}` stays unresolved.
 
-**A secret is sent only to a host on its own allowed-hosts list** (`prompt_secrets.allowed_hosts`,
-set per secret at **Variables → Secrets**). A reference for a server whose URL host is not on the
-list fails with `secret is not allowed for this host`. A secret with an empty list cannot be used
-from `mcp.json` at all. The host must be written literally: `${NAME}` in the URL's scheme, host or
-port is refused. Adding a host requires entering the secret's value again; removing one does not.
+Any global secret can be referenced from any server; secrets carry no per-host restriction.
 MCP clients add headers and tokens only to requests for the server's own origin, and refuse a
 redirect to another one.
 
@@ -656,18 +652,12 @@ header the agent then calls. Do not add an env fallback to `resolver.lookup`.
 Expanded values travel with the route as `route.secrets` and are stripped from errors by
 `redactRouteError` — any new path that surfaces MCP transport errors must keep going through it.
 
-The store alone is not a boundary: secret values are write-only everywhere else, and whoever can
-edit mcp.json could point a server at their own host and read any secret back out. So each secret
-is bound to hosts (`allowed_hosts`), and `resolver.lookup` checks the server URL's literal host
-against them *before* decrypting (`mcpconfig/hosts.go`; `serverHost` refuses a reference in the
-scheme/host/port). The list is guarded like the value: `SecretService.Update` refuses a new host
-without the value (`ErrSecretHostsNeedValue`), because the API that edits mcp.json also edits
-secret metadata. The same rule applies to token connections, which need a new token to change
-origin. And the round trippers in `mcpclient` add credentials only for the endpoint's origin, with
-`CheckRedirect` refusing cross-origin hops — a `RoundTripper` runs again on every redirect, so it
-would otherwise re-add the `Authorization` that net/http strips. Existing secrets were bound once at
-upgrade to the hosts already referencing them (`cmd/nib/secret_hosts.go`, recorded in
-`schema_migrations`); nothing binds a host automatically after that.
+Secrets are not bound to hosts: whoever can edit mcp.json can point a server anywhere and have any
+global secret sent there. A per-secret allowed-hosts list existed in v0.8.1 and was withdrawn as too
+cumbersome to operate (migration `000040` drops the column). Token connections still need a new token
+to change origin, and the round trippers in `mcpclient` add credentials only for the endpoint's
+origin, with `CheckRedirect` refusing cross-origin hops — a `RoundTripper` runs again on every
+redirect, so it would otherwise re-add the `Authorization` that net/http strips.
 
 Saving never resolves a reference, so a `${NAME}` whose secret does not exist yet still saves and the
 failure surfaces when the server is contacted. `SetRaw` stores the editor's bytes as given — comments,
