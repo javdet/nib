@@ -108,8 +108,8 @@ token is derived per run rather than shared.
 
 **Anyone with the token is everyone.** It opens every route, including the ones
 that edit `mcp.json`, choose which secret the executor gets, and run commands on
-the backend's host. The other guards in nib — [secrets bound to
-hosts](secrets-never-come-from-the-environment.md#host-binding), the scrubbed
+the backend's host. The other guards in nib — [credentials kept to their
+origin](secrets-never-come-from-the-environment.md#credentials-stay-with-their-origin), the scrubbed
 environment of the [backend's own tools](modes-tools-and-the-catalog.md#the-backends-own-hands) —
 exist precisely because the token alone is a coarse boundary.
 
