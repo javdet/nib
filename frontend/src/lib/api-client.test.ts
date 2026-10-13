@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, setUnauthorizedHandler } from './api-client'
+import { api, ApiError, isTransportError, setUnauthorizedHandler } from './api-client'
 
-function stubFetch(status: number, body: unknown = {}) {
+function stubFetch(
+	status: number,
+	body: unknown = {},
+	headers: Record<string, string> = {},
+) {
 	const fetchMock = vi.fn<typeof fetch>(async () =>
-		new Response(status === 204 ? null : JSON.stringify(body), { status }),
+		new Response(status === 204 ? null : JSON.stringify(body), {
+			status,
+			headers,
+		}),
 	)
 	vi.stubGlobal('fetch', fetchMock)
 	return fetchMock
@@ -43,5 +50,18 @@ describe('api client', () => {
 			message: 'cross-origin request refused',
 		})
 		expect(onUnauthorized).not.toHaveBeenCalled()
+	})
+
+	it('treats a 502 the backend wrote as a final answer', async () => {
+		stubFetch(502, { error: 'The AI provider rejected the API key.' }, { 'X-Nib-Error': '1' })
+		const err = await api.post('/dialogs/x/messages', {}).catch((e: unknown) => e)
+		expect(err).toMatchObject({ status: 502, fromBackend: true })
+		expect(isTransportError(err)).toBe(false)
+	})
+
+	it('treats a proxy 502 as a dropped connection', async () => {
+		stubFetch(502, { error: 'proxy error: socket hang up' })
+		const err = await api.post('/dialogs/x/messages', {}).catch((e: unknown) => e)
+		expect(isTransportError(err)).toBe(true)
 	})
 })

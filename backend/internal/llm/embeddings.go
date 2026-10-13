@@ -81,7 +81,7 @@ func (c *EmbeddingsClient) Embed(ctx context.Context, texts []string) ([][]float
 
 	resp, err := c.client.Embeddings.New(ctx, params)
 	if err != nil {
-		return nil, 0, wrapAPIError("openai embeddings", err)
+		return nil, 0, wrapAPIError("openai embeddings", requestSettings{model: c.model}, err)
 	}
 	if len(resp.Data) != len(texts) {
 		return nil, 0, fmt.Errorf("openai embeddings: returned %d rows, want %d", len(resp.Data), len(texts))

@@ -1188,7 +1188,7 @@ export function ChatPanel() {
 					className="flex shrink-0 items-start gap-2 border-t border-destructive/35 bg-destructive/12 px-4 py-2 text-xs leading-relaxed text-destructive"
 				>
 					<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-					<span className="min-w-0 whitespace-normal break-words">{error}</span>
+					<span className="min-w-0 whitespace-pre-line break-words">{error}</span>
 				</div>
 			)}
 

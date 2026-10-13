@@ -116,6 +116,10 @@ func (p *OpenAIProvider) Complete(ctx context.Context, systemPrompt, userPrompt 
 	return choice.Message.Content, nil
 }
 
+func (p *OpenAIProvider) settings() requestSettings {
+	return requestSettings{model: p.model, reasoningEffort: string(p.reasoningEffort)}
+}
+
 // applyReasoningEffort sets reasoning_effort only when one is configured.
 //
 // The SDK's omitzero tag already drops an empty value; the explicit guard
@@ -133,7 +137,7 @@ func (p *OpenAIProvider) applyReasoningEffort(params *openai.ChatCompletionNewPa
 // presents. Deliberately not a retry without it: that doubles spend on every
 // genuinely bad request and hides a config error behind a latency spike.
 func (p *OpenAIProvider) wrapCompletionError(op string, err error) error {
-	wrapped := wrapAPIError(op, err)
+	wrapped := wrapAPIError(op, p.settings(), err)
 	if p.reasoningEffort == "" {
 		return wrapped
 	}

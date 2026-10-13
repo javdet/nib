@@ -326,6 +326,12 @@ truncation is an error rather than a short answer. Tool schemas and tool names a
 the subset every provider accepts before they are sent, since a strict validator rejects the whole
 request rather than the offending tool; dispatch keeps the server's own spelling on the route.
 
+A request the provider rejects ends the turn with the reason in the chat: nib's own sentence, what
+the provider said, and the endpoint, model and reasoning effort the request was sent with — never
+the key. A 401 against an endpoint that does not match the key (an OpenAI key sent to
+`openrouter.ai`) is the usual cause, and `llm.baseURL` in the mounted `config.yaml` is the only
+place the provider is chosen.
+
 Round budgets are `agent.maxIterations` and the per-sub-agent `stageMaxIterations` /
 `actionExecMaxIterations` / `incidentDiggerMaxIterations` / `incidentStepMaxIterations`. Only one execution runs at a time, by policy, and
 `agent.actionExecConcurrency` is clamped to 1.

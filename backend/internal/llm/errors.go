@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 )
@@ -14,7 +16,21 @@ type APIError struct {
 	Code       string
 	Message    string
 	Op         string
-	err        error
+	// Endpoint, Model and ReasoningEffort are what the failed request was
+	// sent with. They are reported back to the operator because a rejected
+	// request is most often a config mismatch (a key for one provider sent to
+	// another), which is invisible from the provider's message alone.
+	Endpoint        string
+	Model           string
+	ReasoningEffort string
+	err             error
+}
+
+// requestSettings is the part of a provider's configuration worth naming in
+// an error. The API key is deliberately absent.
+type requestSettings struct {
+	model           string
+	reasoningEffort string
 }
 
 // ErrTruncated is returned when the provider stopped at the output cap. The
@@ -44,7 +60,7 @@ func (e *APIError) Unwrap() error {
 
 // wrapAPIError converts an OpenAI-compatible provider error into *APIError.
 // Non-API errors are wrapped with op and returned unchanged.
-func wrapAPIError(op string, err error) error {
+func wrapAPIError(op string, settings requestSettings, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -59,13 +75,42 @@ func wrapAPIError(op string, err error) error {
 		msg = extractProviderMessage(apiErr.RawJSON())
 	}
 
-	return &APIError{
-		StatusCode: apiErr.StatusCode,
-		Code:       apiErr.Code,
-		Message:    msg,
-		Op:         op,
-		err:        err,
+	endpoint := ""
+	if apiErr.Request != nil {
+		endpoint = safeEndpoint(apiErr.Request.URL)
+		msg = redactBearer(msg, apiErr.Request.Header.Get("Authorization"))
 	}
+
+	return &APIError{
+		StatusCode:      apiErr.StatusCode,
+		Code:            apiErr.Code,
+		Message:         msg,
+		Op:              op,
+		Endpoint:        endpoint,
+		Model:           settings.model,
+		ReasoningEffort: settings.reasoningEffort,
+		err:             err,
+	}
+}
+
+// safeEndpoint keeps scheme, host and path only: userinfo and a query string
+// are where credentials hide in a base URL, and this string reaches the UI.
+func safeEndpoint(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
+}
+
+// redactBearer strips the API key from a provider message that echoes it back.
+// Most providers mask it themselves; this one goes to the browser, so nothing
+// is assumed.
+func redactBearer(msg, authorization string) string {
+	token := strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+	if len(token) < 8 {
+		return msg
+	}
+	return strings.ReplaceAll(msg, token, "[redacted]")
 }
 
 func extractProviderMessage(raw string) string {

@@ -6,13 +6,20 @@ export function apiUrl(path: string): string {
 
 export class ApiError extends Error {
 	status: number
+	/** The backend wrote this error itself rather than a proxy in front of it. */
+	fromBackend: boolean
 
-	constructor(status: number, message: string) {
+	constructor(status: number, message: string, fromBackend = false) {
 		super(message)
 		this.name = 'ApiError'
 		this.status = status
+		this.fromBackend = fromBackend
 	}
 }
+
+/** Set by the backend on every error it writes; a proxy's own 502 lacks it. */
+const BACKEND_ERROR_HEADER = 'X-Nib-Error'
+
 
 let unauthorizedHandler: (() => void) | null = null
 
@@ -28,7 +35,11 @@ async function toApiError(res: Response): Promise<ApiError> {
 	if (res.status === 401) {
 		unauthorizedHandler?.()
 	}
-	return new ApiError(res.status, await parseErrorBody(res))
+	return new ApiError(
+		res.status,
+		await parseErrorBody(res),
+		res.headers.has(BACKEND_ERROR_HEADER),
+	)
 }
 
 async function parseErrorBody(res: Response): Promise<string> {
@@ -147,7 +158,9 @@ const TRANSPORT_ERROR_STATUSES = new Set([502, 503, 504])
  */
 export function isTransportError(err: unknown): boolean {
 	if (err instanceof ApiError) {
-		return TRANSPORT_ERROR_STATUSES.has(err.status)
+		// A 502 the backend wrote is a provider failure it already reported;
+		// waiting for the turn to finish would only hide the reason.
+		return !err.fromBackend && TRANSPORT_ERROR_STATUSES.has(err.status)
 	}
 	return err instanceof TypeError
 }

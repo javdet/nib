@@ -18,7 +18,7 @@ func TestWrapAPIErrorProviderError(t *testing.T) {
 		Message:    "This request requires more credits, or fewer max_tokens.",
 	}
 
-	wrapped := wrapAPIError("openai chat completion with tools", providerErr)
+	wrapped := wrapAPIError("openai chat completion with tools", requestSettings{}, providerErr)
 	var apiErr *APIError
 	if !errors.As(wrapped, &apiErr) {
 		t.Fatalf("errors.As() = false, want *APIError")
@@ -45,7 +45,7 @@ func TestWrapAPIErrorThroughWrappingChain(t *testing.T) {
 		Code:       "429",
 		Message:    "rate limit exceeded",
 	}
-	wrapped := wrapAPIError("openai chat completion with tools", providerErr)
+	wrapped := wrapAPIError("openai chat completion with tools", requestSettings{}, providerErr)
 	outer := fmt.Errorf("completion round %d: %w", 1, wrapped)
 	inner := fmt.Errorf("chat send in dialog: %w", outer)
 
@@ -62,7 +62,7 @@ func TestWrapAPIErrorNonProviderError(t *testing.T) {
 	t.Parallel()
 
 	base := errors.New("connection reset")
-	wrapped := wrapAPIError("openai chat completion with tools", base)
+	wrapped := wrapAPIError("openai chat completion with tools", requestSettings{}, base)
 
 	var apiErr *APIError
 	if errors.As(wrapped, &apiErr) {
@@ -123,12 +123,43 @@ func TestWrapAPIErrorExtractsMessageFromRawJSON(t *testing.T) {
 	}
 	providerErr.StatusCode = http.StatusPaymentRequired
 
-	wrapped := wrapAPIError("openai chat completion with tools", &providerErr)
+	wrapped := wrapAPIError("openai chat completion with tools", requestSettings{}, &providerErr)
 	var apiErr *APIError
 	if !errors.As(wrapped, &apiErr) {
 		t.Fatal("errors.As() = false, want true")
 	}
 	if apiErr.Message != "requires more credits" {
 		t.Errorf("Message = %q, want %q", apiErr.Message, "requires more credits")
+	}
+}
+
+func TestWrapAPIErrorReportsSafeSettings(t *testing.T) {
+	t.Parallel()
+
+	const key = "sk-proj-secretsecretsecret"
+	req, err := http.NewRequest(http.MethodPost, "https://user:pass@gw.example/api/v1/chat/completions?key=abc", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	providerErr := &openai.Error{
+		StatusCode: http.StatusUnauthorized,
+		Message:    "Incorrect API key provided: " + key,
+		Request:    req,
+	}
+
+	wrapped := wrapAPIError("openai chat completion with tools", requestSettings{model: "gpt-x", reasoningEffort: "low"}, providerErr)
+	var apiErr *APIError
+	if !errors.As(wrapped, &apiErr) {
+		t.Fatal("errors.As() = false, want true")
+	}
+	if want := "https://gw.example/api/v1/chat/completions"; apiErr.Endpoint != want {
+		t.Errorf("Endpoint = %q, want %q", apiErr.Endpoint, want)
+	}
+	if apiErr.Model != "gpt-x" || apiErr.ReasoningEffort != "low" {
+		t.Errorf("Model, ReasoningEffort = %q, %q, want %q, %q", apiErr.Model, apiErr.ReasoningEffort, "gpt-x", "low")
+	}
+	if want := "Incorrect API key provided: [redacted]"; apiErr.Message != want {
+		t.Errorf("Message = %q, want %q", apiErr.Message, want)
 	}
 }

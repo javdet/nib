@@ -54,7 +54,7 @@ func (p *ResponsesProvider) Complete(ctx context.Context, systemPrompt, userProm
 
 	resp, err := p.client.Responses.New(ctx, params)
 	if err != nil {
-		return "", wrapAPIError("openai responses", err)
+		return "", wrapAPIError("openai responses", p.settings(), err)
 	}
 	if err := checkResponseStatus("openai responses", resp); err != nil {
 		return "", err
@@ -78,7 +78,7 @@ func (p *ResponsesProvider) CompleteWithTools(ctx context.Context, messages []Me
 
 	resp, err := p.client.Responses.New(ctx, params)
 	if err != nil {
-		return AssistantMessage{}, wrapAPIError(op, err)
+		return AssistantMessage{}, wrapAPIError(op, p.settings(), err)
 	}
 	if err := checkResponseStatus(op, resp); err != nil {
 		// Usage is carried out even though this is an error. An incomplete

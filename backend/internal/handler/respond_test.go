@@ -233,3 +233,53 @@ func TestHandleServiceError_stageRun(t *testing.T) {
 		})
 	}
 }
+
+// The chat shows this text verbatim, so it has to name what was sent where:
+// a key for one provider sent to another is invisible from the generic line.
+func TestHandleServiceError_llmErrorNamesSettings(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("chat send in dialog: %w", &llm.APIError{
+		StatusCode:      http.StatusUnauthorized,
+		Message:         "Missing Authentication header",
+		Op:              "openai chat completion with tools",
+		Endpoint:        "https://openrouter.ai/api/v1/chat/completions",
+		Model:           "anthropic/claude-opus-4.8",
+		ReasoningEffort: "low",
+	})
+
+	rec := httptest.NewRecorder()
+	handleServiceError(rec, err)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	if got := rec.Header().Get(errorOriginHeader); got != "1" {
+		t.Fatalf("%s = %q, want %q", errorOriginHeader, got, "1")
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	for _, want := range []string{
+		"rejected the API key",
+		"Provider said (HTTP 401): Missing Authentication header",
+		"endpoint https://openrouter.ai/api/v1/chat/completions",
+		"model anthropic/claude-opus-4.8",
+		"reasoning effort low",
+	} {
+		if !strings.Contains(body.Error, want) {
+			t.Errorf("message = %q, want it to contain %q", body.Error, want)
+		}
+	}
+}
+
+func TestLLMErrorDetails_empty(t *testing.T) {
+	t.Parallel()
+
+	if got := llmErrorDetails(&llm.APIError{StatusCode: http.StatusBadGateway}); got != "" {
+		t.Fatalf("llmErrorDetails() = %q, want empty", got)
+	}
+}

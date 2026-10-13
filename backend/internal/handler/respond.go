@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/kb"
@@ -33,7 +34,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// errorOriginHeader marks an error the backend wrote itself. The web UI reads
+// a 502/503/504 without it as a dropped connection and waits for the turn to
+// finish; with it, the turn has already failed and the message is the answer.
+// The dev proxy writes its own 502 as JSON too, so the body cannot tell them apart.
+const errorOriginHeader = "X-Nib-Error"
+
 func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set(errorOriginHeader, "1")
 	writeJSON(w, status, errorResponse{Error: msg})
 }
 
@@ -194,6 +202,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		var llmErr *llm.APIError
 		if errors.As(err, &llmErr) {
 			status, msg := llmErrorResponse(llmErr)
+			msg += llmErrorDetails(llmErr)
 			slog.Error("llm provider error",
 				"status", llmErr.StatusCode,
 				"provider_message", llmErr.Message,
@@ -228,6 +237,39 @@ func llmErrorResponse(err *llm.APIError) (int, string) {
 		return http.StatusBadGateway,
 			fmt.Sprintf("The AI provider is temporarily unavailable (HTTP %d). Try again in a moment.", err.StatusCode)
 	}
+}
+
+// llmErrorDetails names what the provider said and what the failed request was
+// sent to. The generic sentence alone cannot tell "wrong key" from "key for a
+// different provider", and the latter is the usual cause; the API key itself is
+// never part of it.
+func llmErrorDetails(err *llm.APIError) string {
+	var b strings.Builder
+	if msg := strings.TrimSpace(err.Message); msg != "" {
+		fmt.Fprintf(&b, "\nProvider said (HTTP %d): %s", err.StatusCode, truncateRunes(msg, 500))
+	}
+	var settings []string
+	if err.Endpoint != "" {
+		settings = append(settings, "endpoint "+err.Endpoint)
+	}
+	if err.Model != "" {
+		settings = append(settings, "model "+err.Model)
+	}
+	if err.ReasoningEffort != "" {
+		settings = append(settings, "reasoning effort "+err.ReasoningEffort)
+	}
+	if len(settings) > 0 {
+		b.WriteString("\nCurrent settings: " + strings.Join(settings, ", "))
+	}
+	return b.String()
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // decodeJSON reads a JSON request body into dst. Returns false and writes
