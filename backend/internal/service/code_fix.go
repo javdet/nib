@@ -289,7 +289,7 @@ func (s *ChatService) finishCodeFixRun(ctx context.Context, rootID uuid.UUID, di
 	status, errMsg := ActionExecDone, ""
 	if !strings.EqualFold(strings.TrimSpace(res.Status), "success") {
 		status = ActionExecFailed
-		errMsg = fmt.Sprintf("the coding agent exited with code %d", res.ExitCode)
+		errMsg = agentRunFailureText(res)
 	}
 
 	s.closeCodeFixRun(ctx, rootID, dialogID, codeFixOutcome{

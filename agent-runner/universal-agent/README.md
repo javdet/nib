@@ -163,6 +163,7 @@ POST JSON to `WEBHOOK_URL` on container exit (success or failure):
   "exit_code": 0,
   "agent_type": "claude-code",
   "result": "...",
+  "error": "",
   "log_tail": "...",
   "task_id": "...",
   "thread_root_id": "...",
@@ -183,6 +184,10 @@ POST JSON to `WEBHOOK_URL` on container exit (success or failure):
 - `total_cost_usd` is populated for Claude Code; codex sets it to `0`.
 - `input_tokens` / `output_tokens` are populated for codex; Claude sets them to `0`.
 - `agent_type` identifies which runtime ran.
+- `error` is the runner's own reason for a failure the agent did not report, such as a token
+  that cannot push, a refused push or a pull request that would not open. It is empty on
+  success. `status` is `failed` whenever any step after the agent fails, even if the agent
+  itself finished cleanly.
 
 ## Example: Claude Code (default)
 
@@ -241,6 +246,15 @@ and `GITLAB_HOST` is set for `glab` automatically.
   stays the documented wire name because Kubernetes installs supply it through an
   operator-managed Secret this image does not control, and MCP configs expand `${GITHUB_TOKEN}`.
   Note that a GitHub MCP server therefore receives the GitLab token when `GIT_PROVIDER=gitlab`.
+- **Push access is checked before the agent runs:** a `git push --dry-run` to the target
+  branch right after checkout. A clone proves nothing, because the remote never asks a public
+  repository's reader for credentials, so a revoked or read-only token used to fail only at
+  the final push, after the whole budget was spent.
+- **The runner owns commit, push and the PR:** a note appended to `PROMPT` tells the agent
+  that the run is unattended and that it must not commit, push or open the request itself.
+  Without it, an agent that asks before an externally visible step stops short. Commits the
+  agent makes anyway are still pushed, since what gets pushed is counted against the branch's
+  starting point, not read off the working tree.
 - **Credential helper, not a URL with the token in it:** the remote is reset to the clean
   `REPO_URL` after clone and the token is supplied by a helper keyed to the repository's own
   host, so it never lands in `.git/config`.

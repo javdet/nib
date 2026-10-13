@@ -279,6 +279,14 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   finished run's account is in its execute chat instead. A force stop removes the container, so its
   logs go with it.
 
+Before the agent starts, the container checks that the git token can push with a
+`git push --dry-run` to the target branch. A token that cannot push fails the run then, not
+after the agent has spent its budget. A clone does not catch this, because a public repository
+never asks for credentials. The runner, not the agent, commits, pushes and opens the request,
+and the agent is told so. Any step that fails after the agent finishes reports the run as
+`failed`, with the runner's reason (the webhook's `error`, for example the remote refusing the
+token) shown ahead of the agent's own summary.
+
 Git provider: `GIT_PROVIDER` is derived from the free-text `VersionControlSystem` company variable
 by `executor.NormalizeGitProvider` — anything containing "gitlab" is GitLab, everything else
 including blank is GitHub. The agent container branches on it: GitHub clones as

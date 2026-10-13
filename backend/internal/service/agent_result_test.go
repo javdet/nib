@@ -133,3 +133,47 @@ func TestCodeActionNoteText(t *testing.T) {
 // costPtr builds the optional cost the webhook now carries: nil means the
 // agent reported no price, which is not the same as a free run.
 func costPtr(v float64) *float64 { return &v }
+
+// A push the runner could not make arrives after the agent's own upbeat
+// summary, so the runner's reason has to lead or the failure reads as success.
+func TestFormatAgentResultMessageRunnerError(t *testing.T) {
+	t.Parallel()
+
+	got := formatAgentResultMessage(AgentRunResult{
+		Status:       "failed",
+		ExitCode:     1,
+		Error:        "git push of nib/x failed: remote: Invalid username or token.",
+		Result:       "I've implemented everything.",
+		TargetBranch: "nib/x",
+	})
+
+	reason := strings.Index(got, "Invalid username or token")
+	summary := strings.Index(got, "I've implemented everything.")
+	if reason < 0 || summary < 0 || reason > summary {
+		t.Fatalf("runner error should precede the agent's summary: %q", got)
+	}
+	if !strings.Contains(got, "`nib/x` (not pushed)") {
+		t.Fatalf("unpushed branch should be marked: %q", got)
+	}
+}
+
+func TestAgentRunFailureText(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		res  AgentRunResult
+		want string
+	}{
+		{name: "runner reason wins", res: AgentRunResult{ExitCode: 1, Error: " push refused "}, want: "push refused"},
+		{name: "older image falls back to the exit code", res: AgentRunResult{ExitCode: 128}, want: "the coding agent exited with code 128"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := agentRunFailureText(tt.res); got != tt.want {
+				t.Fatalf("agentRunFailureText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

@@ -23,6 +23,7 @@ type AgentRunResult struct {
 	Status       string
 	ExitCode     int
 	Result       string
+	Error        string
 	LogTail      string
 	TaskID       string
 	ThreadRootID string
@@ -135,7 +136,7 @@ func (s *ChatService) finishCodeActionRun(ctx context.Context, exec domain.Dialo
 	status, errMsg := ActionExecDone, ""
 	if !strings.EqualFold(strings.TrimSpace(res.Status), "success") {
 		status = ActionExecFailed
-		errMsg = fmt.Sprintf("the coding agent exited with code %d", res.ExitCode)
+		errMsg = agentRunFailureText(res)
 	}
 
 	run := s.finishActionExecRun(planID, key, status, errMsg)
@@ -195,6 +196,17 @@ func codeActionNoteText(res AgentRunResult) string {
 	return b.String()
 }
 
+// agentRunFailureText is the one-line reason a failed run is reported with.
+// The runner's own reason comes first when it sent one: a push it could not
+// make happens after the agent has already written a confident summary, and
+// without it the chat would show that summary under a bare exit code.
+func agentRunFailureText(res AgentRunResult) string {
+	if reason := strings.TrimSpace(res.Error); reason != "" {
+		return reason
+	}
+	return fmt.Sprintf("the coding agent exited with code %d", res.ExitCode)
+}
+
 func agentRunMessageName(jobName string) string {
 	jobName = strings.TrimSpace(jobName)
 	if jobName == "" {
@@ -208,6 +220,9 @@ func formatAgentResultMessage(res AgentRunResult) string {
 
 	if res.Status != "success" {
 		fmt.Fprintf(&b, "**Agent run failed** (exit code %d)\n\n", res.ExitCode)
+		if reason := strings.TrimSpace(res.Error); reason != "" {
+			fmt.Fprintf(&b, "%s\n\n", reason)
+		}
 	}
 
 	body := strings.TrimSpace(res.Result)
@@ -246,7 +261,12 @@ func formatAgentResultFooter(res AgentRunResult) string {
 		lines = append(lines, fmt.Sprintf("**PR:** %s", pr))
 	}
 	if branch := strings.TrimSpace(res.TargetBranch); branch != "" {
-		lines = append(lines, fmt.Sprintf("**Branch:** `%s`", branch))
+		// A failed run names its branch whether or not it reached the remote.
+		if res.Status != "success" && !res.RepoPushed {
+			lines = append(lines, fmt.Sprintf("**Branch:** `%s` (not pushed)", branch))
+		} else {
+			lines = append(lines, fmt.Sprintf("**Branch:** `%s`", branch))
+		}
 	}
 
 	usageParts := make([]string, 0, 3)

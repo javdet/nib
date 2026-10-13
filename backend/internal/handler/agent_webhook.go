@@ -29,9 +29,13 @@ func NewAgentWebhookHandler(chatSvc *service.ChatService, key []byte) *AgentWebh
 const agentWebhookMaxBytes = 1 << 20
 
 type agentWebhookPayload struct {
-	Status       string    `json:"status"`
-	ExitCode     int       `json:"exit_code"`
-	Result       string    `json:"result"`
+	Status   string `json:"status"`
+	ExitCode int    `json:"exit_code"`
+	Result   string `json:"result"`
+	// Error is the runner's own reason for a failure the agent did not cause --
+	// a token that cannot push, a pull request that would not open. Older
+	// images do not send it.
+	Error        string    `json:"error"`
 	LogTail      string    `json:"log_tail"`
 	TaskID       string    `json:"task_id"`
 	ThreadRootID string    `json:"thread_root_id"`
@@ -109,6 +113,7 @@ func (h *AgentWebhookHandler) Receive() http.HandlerFunc {
 			Status:       req.Status,
 			ExitCode:     req.ExitCode,
 			Result:       req.Result,
+			Error:        req.Error,
 			LogTail:      req.LogTail,
 			TaskID:       req.TaskID,
 			ThreadRootID: req.ThreadRootID,

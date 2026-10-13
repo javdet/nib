@@ -21,6 +21,14 @@ CODEX_OUTPUT_TOKENS=0
 
 REPO_PUSHED=false
 PR_URL=""
+# The runner's own reason for a failure, sent as the webhook's `error`. Without
+# it a push refused after the agent finished arrives as the agent's confident
+# summary under a bare exit code.
+RUN_ERROR=""
+# What HEAD is compared with to tell whether there is anything to push; set
+# once the target branch is checked out.
+PUSH_BASE_REF=""
+AGENT_PROMPT=""
 
 # Derived from REPO_URL by resolve_git_host so self-hosted GitLab and GitHub
 # Enterprise authenticate the same way gitlab.com/github.com do.
@@ -51,7 +59,19 @@ log() {
 die() {
   log "ERROR: $*"
   AGENT_EXIT_CODE=1
+  RUN_ERROR="${RUN_ERROR:-$*}"
   exit 1
+}
+
+# The lines of a git/gh/glab transcript that say why it failed, on one line.
+# Only the remote's own words and git's errors: progress output is noise here.
+command_error_summary() {
+  grep -E '^(remote: |fatal: |error: | ! |HTTP |GraphQL: )' "$1" 2>/dev/null \
+    | sed -E 's/^remote: *//' \
+    | grep -v '^[[:space:]]*$' \
+    | head -n 6 \
+    | paste -sd ' ' - \
+    || true
 }
 
 is_codex_agent() {
@@ -303,11 +323,27 @@ prepare_workspace() {
         die "git ls-remote origin ${TARGET_BRANCH} failed with exit ${ls_remote_status}"
         ;;
     esac
+    PUSH_BASE_REF="$(git rev-parse HEAD)"
+    check_push_access
   else
     WORK_DIR="/workspace/scratch"
     mkdir -p "${WORK_DIR}"
     cd "${WORK_DIR}"
     log "No REPO_URL; working in ${WORK_DIR} (MCP-only mode)"
+  fi
+}
+
+# Proves the token can write before the agent spends its budget. Cloning proves
+# nothing: on a public repository the remote never challenges for credentials,
+# so a revoked or read-only token clones fine and is only refused at the push,
+# after the work is done. A dry run still negotiates receive-pack, which is
+# where the remote checks the token, and sends no objects.
+check_push_access() {
+  local out="/tmp/git-push-check.out"
+  log "Checking that the git token can push to ${TARGET_BRANCH}"
+  if ! git push --dry-run origin "HEAD:refs/heads/${TARGET_BRANCH}" >"${out}" 2>&1; then
+    cat "${out}" >&2
+    die "the git token cannot push to ${REPO_URL}: $(command_error_summary "${out}") Check the secret selected as the executor's git token; the agent was not started."
   fi
 }
 
@@ -621,9 +657,26 @@ prepare_mcp_config() {
   fi
 }
 
+# The runner, not the agent, commits, pushes and opens the request, and nobody
+# is there to answer a question. Left unsaid, an agent that treats a push as an
+# outward action to confirm first stops short and reports success with the work
+# uncommitted; one that pushes itself races the runner's own push.
+build_agent_prompt() {
+  AGENT_PROMPT="${PROMPT}"
+  [ -n "${REPO_URL:-}" ] || return 0
+
+  local request="pull request"
+  [ "${GIT_PROVIDER}" = "gitlab" ] && request="merge request"
+  AGENT_PROMPT+="
+
+---
+How this run is delivered: you are running unattended in a disposable container, and nobody will see a question or approve a step until you have finished. Do not stop to ask for confirmation; complete the task, then end with a summary of what you changed and anything you could not do.
+The working tree is a clone of ${REPO_URL} checked out on branch ${TARGET_BRANCH}. After you exit, the runner commits everything left in the working tree, pushes ${TARGET_BRANCH} and opens the ${request} itself. Do not run git commit, git push, gh pr create or glab mr create, and do not switch branches."
+}
+
 build_claude_args() {
   CLAUDE_ARGS=(
-    -p "${PROMPT}"
+    -p "${AGENT_PROMPT}"
     --output-format stream-json
     --verbose
   )
@@ -726,7 +779,7 @@ build_codex_args() {
 }
 
 build_codex_prompt() {
-  local prompt="${PROMPT}"
+  local prompt="${AGENT_PROMPT}"
   if [ -n "${SYSTEM_PROMPT_RESOLVED:-}" ]; then
     case "${SYSTEM_PROMPT_MODE}" in
       replace)
@@ -951,6 +1004,7 @@ run_agent() {
 
   if [ "${AGENT_EXIT_CODE}" -eq 124 ]; then
     log "Agent timed out after ${TIMEOUT_SECONDS}s"
+    RUN_ERROR="the agent timed out after ${TIMEOUT_SECONDS}s; nothing was pushed"
   elif [ "${AGENT_EXIT_CODE}" -ne 0 ]; then
     log "Agent exited with code ${AGENT_EXIT_CODE}"
   else
@@ -970,21 +1024,35 @@ git_commit_push_pr() {
 
   cd "${WORK_DIR}"
 
-  if [ -z "$(git status --porcelain)" ]; then
-    log "No file changes to commit"
-    return 0
-  fi
-
   local commit_msg pr_title pr_body
   pr_title="${PR_TITLE:-$(printf '%s' "${PROMPT}" | head -n1)}"
   pr_body="${PR_BODY:-${PROMPT}}"
   commit_msg="${pr_title}"
 
-  git add -A
-  git commit -m "${commit_msg}"
+  if [ -n "$(git status --porcelain)" ]; then
+    git add -A
+    git commit -m "${commit_msg}"
+  fi
 
-  log "Pushing branch ${TARGET_BRANCH}"
-  git push -u origin "${TARGET_BRANCH}"
+  # Counted against where the branch started rather than read off the working
+  # tree: an agent that committed its own work leaves a clean tree, and that
+  # work used to be dropped as "no changes".
+  local ahead
+  ahead="$(git rev-list --count "${PUSH_BASE_REF}..HEAD")"
+  if [ "${ahead}" -eq 0 ]; then
+    log "No changes to push"
+    return 0
+  fi
+
+  # HEAD rather than the branch name, so commits the agent made on a branch of
+  # its own still land on the one nib is waiting for.
+  local out="/tmp/git-push.out"
+  log "Pushing ${ahead} commit(s) to ${TARGET_BRANCH}"
+  if ! git push origin "HEAD:refs/heads/${TARGET_BRANCH}" >"${out}" 2>&1; then
+    cat "${out}" >&2
+    die "git push to ${TARGET_BRANCH} failed: $(command_error_summary "${out}") The commit $(git rev-parse --short HEAD) exists only in ${JOB_NAME:-this container}."
+  fi
+  cat "${out}" >&2
   REPO_PUSHED=true
 
   open_change_request "${pr_title}" "${pr_body}"
@@ -1009,12 +1077,17 @@ open_pull_request() {
     return 0
   fi
 
+  local err="/tmp/gh-pr.err"
   log "Creating PR (${TARGET_BRANCH} -> ${BASE_BRANCH})"
-  PR_URL="$(gh pr create \
+  if ! PR_URL="$(gh pr create \
     --base "${BASE_BRANCH}" \
     --head "${TARGET_BRANCH}" \
     --title "${pr_title}" \
-    --body "${pr_body}")"
+    --body "${pr_body}" 2>"${err}")"; then
+    cat "${err}" >&2
+    PR_URL=""
+    die "${TARGET_BRANCH} was pushed, but gh pr create failed: $(head -c 600 "${err}" | tr '\n' ' ')"
+  fi
   log "PR created: ${PR_URL}"
 }
 
@@ -1045,7 +1118,7 @@ open_merge_request() {
     --description "${mr_body}" \
     --yes >"${out}" 2>&1; then
     cat "${out}" >&2
-    die "glab mr create failed"
+    die "${TARGET_BRANCH} was pushed, but glab mr create failed: $(head -c 600 "${out}" | tr '\n' ' ')"
   fi
   cat "${out}" >&2
 
@@ -1076,6 +1149,14 @@ prepare_webhook_payload_files() {
 }
 
 send_webhook() {
+  # The EXIT trap's status: any step that tripped `set -e` without calling die
+  # lands here with AGENT_EXIT_CODE still 0, and used to be reported as success.
+  local rc=$?
+  if [ "${AGENT_EXIT_CODE}" -eq 0 ] && [ "${rc}" -ne 0 ]; then
+    AGENT_EXIT_CODE="${rc}"
+    RUN_ERROR="${RUN_ERROR:-the agent runner stopped on an unexpected error (exit ${rc}); see the container log}"
+  fi
+
   if [ "${WEBHOOK_SENT}" -eq 1 ]; then
     return 0
   fi
@@ -1101,6 +1182,7 @@ send_webhook() {
     --argjson exit_code "${AGENT_EXIT_CODE}" \
     --arg agent_type "${AGENT_TYPE}" \
     --rawfile result "${WEBHOOK_RESULT_FILE}" \
+    --arg error "${RUN_ERROR}" \
     --rawfile log_tail "${WEBHOOK_LOG_TAIL_FILE}" \
     --arg job_name "${JOB_NAME:-}" \
     --arg pod_name "${POD_NAME:-${HOSTNAME:-}}" \
@@ -1125,6 +1207,7 @@ send_webhook() {
       exit_code: $exit_code,
       agent_type: $agent_type,
       result: $result,
+      error: $error,
       log_tail: $log_tail,
       task_id: $task_id,
       thread_root_id: $thread_root_id,
@@ -1157,6 +1240,7 @@ send_webhook() {
       --argjson exit_code "${AGENT_EXIT_CODE}" \
       --arg agent_type "${AGENT_TYPE}" \
       --arg result "webhook payload could not be built inside the agent container; see Job logs" \
+      --arg error "${RUN_ERROR}" \
       --arg job_name "${JOB_NAME:-}" \
       --arg pod_name "${POD_NAME:-${HOSTNAME:-}}" \
       --arg pod_namespace "${POD_NAMESPACE:-}" \
@@ -1169,6 +1253,7 @@ send_webhook() {
         exit_code: $exit_code,
         agent_type: $agent_type,
         result: $result,
+        error: $error,
         log_tail: "",
         task_id: $task_id,
         thread_root_id: $thread_root_id,
@@ -1215,6 +1300,7 @@ setup_git_identity
 prepare_workspace
 resolve_system_prompt_file
 prepare_mcp_config
+build_agent_prompt
 run_agent
 git_commit_push_pr
 
