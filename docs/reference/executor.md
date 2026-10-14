@@ -55,6 +55,28 @@ bare "No such image".
 On remote Kubernetes the pull is the kubelet's, under the Job's
 `imagePullPolicy`.
 
+## `registryUsername`, `registryPasswordSecretName`
+
+- **Type:** string; the password is the *name* of an entry in Variables →
+  Secrets
+- **Default:** both blank — the image is pulled anonymously
+- **Error when only one is set:** `registry username and password secret must
+  be set together`
+
+The login for pulling `image` from a private registry, under **Private
+registry** (collapsed by default). The registry is the one the image reference
+names, `https://index.docker.io/v1/` for a Docker Hub image.
+
+On `local` it is sent with the pull, and the secret is read only when a pull
+actually happens, so a cached image never needs it. On remote Kubernetes each
+Job gets its own `kubernetes.io/dockerconfigjson` Secret, `{job}-registry`,
+added to the pod's `imagePullSecrets` (also on an overridden `job.yaml.tmpl`)
+and owned by the Job, so it is deleted with it. That needs nib's Kubernetes
+identity to create, update and delete Secrets in the namespace.
+
+A secret that cannot be read fails the launch with `failed to resolve executor
+registry credentials: …` (HTTP `400`).
+
 ## `llmModel`, `authType`, `tokenSecretName`, `baseURL`
 
 | Field | Meaning |

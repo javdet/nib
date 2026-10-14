@@ -101,7 +101,9 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, executor.ErrTargetBranchRequired),
 		errors.Is(err, executor.ErrGitTokenRequired),
 		errors.Is(err, executor.ErrLLMTokenRequired),
-		errors.Is(err, executor.ErrLogTargetRequired):
+		errors.Is(err, executor.ErrLogTargetRequired),
+		errors.Is(err, executor.ErrRegistryAuthIncomplete),
+		errors.Is(err, executor.ErrRegistryAuth):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, executor.ErrNotImplemented),
 		// Remote Kubernetes runs and stops actions; only reading their logs is

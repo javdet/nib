@@ -239,7 +239,12 @@ type Config struct {
 	GitTokenSecretName string `json:"gitTokenSecretName"`
 	BaseURL            string `json:"baseURL"`
 	Image              string `json:"image"`
-	LLMModel           string `json:"llmModel"`
+	// RegistryUsername and RegistryPasswordSecretName log in to the registry
+	// Image is pulled from. Both or neither; the password is a prompt_secrets
+	// name like every other executor credential, so executor.json never holds it.
+	RegistryUsername           string `json:"registryUsername"`
+	RegistryPasswordSecretName string `json:"registryPasswordSecretName"`
+	LLMModel                   string `json:"llmModel"`
 	// WebhookBaseURL is the backend origin the agent container calls back on
 	// (scheme + host + port, no path). WEBHOOK_URL is derived from it at launch.
 	WebhookBaseURL string `json:"webhookBaseURL"`

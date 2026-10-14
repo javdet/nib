@@ -158,7 +158,7 @@ function ContainerLogsBody({ dialogId, actionKey }: ContainerLogsBodyProps) {
 	}, [dialogId, actionKey])
 
 	return (
-		<div className="flex min-h-0 flex-col gap-3">
+		<div className="flex min-h-0 min-w-0 flex-col gap-3">
 			{error !== null && (
 				<p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
 					{error}
@@ -179,7 +179,7 @@ function ContainerLogsBody({ dialogId, actionKey }: ContainerLogsBodyProps) {
 						onScroll={handleScroll}
 						className="max-h-[60vh] min-h-[8rem] overflow-auto rounded-md border bg-muted/40 p-3"
 					>
-						<pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+						<pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-xs leading-relaxed">
 							{logs === '' ? 'The container has written nothing yet.' : logs}
 						</pre>
 					</div>

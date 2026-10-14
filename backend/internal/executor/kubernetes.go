@@ -33,6 +33,13 @@ func (s *Service) runActionKubernetes(ctx context.Context, cfg Config, req Actio
 	}
 	setAgentEnv(job, webhookAuthHeaderEnv, webhookAuthHeader(s.secrets, values.ChatID, jobName))
 
+	// Resolved before any cluster call, so a missing password secret fails the
+	// launch without leaving anything behind in the namespace.
+	creds, err := s.resolveRegistryCredentials(ctx, cfg)
+	if err != nil {
+		return ActionRunResult{}, err
+	}
+
 	restCfg, err := s.loadKubernetesConfig(ctx, cfg)
 	if err != nil {
 		return ActionRunResult{}, err
@@ -44,9 +51,24 @@ func (s *Service) runActionKubernetes(ctx context.Context, cfg Config, req Actio
 	}
 
 	namespace := cfg.Namespace
+	secrets := clientset.CoreV1().Secrets(namespace)
+	pullSecret := ""
+	if creds != nil {
+		if pullSecret, err = createPullSecret(ctx, secrets, jobName, creds); err != nil {
+			return ActionRunResult{}, err
+		}
+		setImagePullSecret(job, pullSecret)
+	}
+
 	created, err := clientset.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
+		if pullSecret != "" {
+			deletePullSecret(context.WithoutCancel(ctx), secrets, pullSecret)
+		}
 		return ActionRunResult{}, fmt.Errorf("%w: %v", ErrKubernetesJobCreate, err)
+	}
+	if pullSecret != "" {
+		adoptPullSecret(ctx, secrets, pullSecret, created)
 	}
 
 	return ActionRunResult{

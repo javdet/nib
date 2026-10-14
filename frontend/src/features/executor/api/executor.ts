@@ -36,6 +36,8 @@ export interface ExecutorConfig {
 	baseURL: string
 	webhookBaseURL: string
 	image: string
+	registryUsername: string
+	registryPasswordSecretName: string
 	llmModel: string
 	typeOptions: ExecutorOption<ExecutorType>[]
 	platformOptions: ExecutorOption<ExecutorPlatform>[]
@@ -69,6 +71,8 @@ export interface ExecutorConfigUpdate {
 	baseURL: string
 	webhookBaseURL: string
 	image: string
+	registryUsername: string
+	registryPasswordSecretName: string
 	llmModel: string
 }
 

@@ -131,6 +131,12 @@ func ValidateConfig(cfg Config) error {
 		return ErrInvalidType
 	}
 
+	// Only the pairing is checked here: whether the named secret exists is a
+	// launch-time question, so the executor can be set up before its secrets.
+	if (cfg.RegistryUsername == "") != (cfg.RegistryPasswordSecretName == "") {
+		return ErrRegistryAuthIncomplete
+	}
+
 	return validateAgentConfig(cfg)
 }
 
@@ -210,6 +216,8 @@ func NormalizeConfig(cfg Config) Config {
 	if cfg.Type != TypeDisabled && cfg.Image == "" {
 		cfg.Image = DefaultAgentImage
 	}
+	cfg.RegistryUsername = strings.TrimSpace(cfg.RegistryUsername)
+	cfg.RegistryPasswordSecretName = strings.TrimSpace(cfg.RegistryPasswordSecretName)
 	cfg.LLMModel = strings.TrimSpace(cfg.LLMModel)
 	cfg.Agent = Agent(strings.ToLower(strings.TrimSpace(string(cfg.Agent))))
 	cfg.AuthType = AuthType(strings.ToLower(strings.TrimSpace(string(cfg.AuthType))))
@@ -324,6 +332,8 @@ type rawConfig struct {
 	GitTokenSecretName              string             `json:"gitTokenSecretName"`
 	BaseURL                         string             `json:"baseURL"`
 	Image                           string             `json:"image"`
+	RegistryUsername                string             `json:"registryUsername"`
+	RegistryPasswordSecretName      string             `json:"registryPasswordSecretName"`
 	LLMModel                        string             `json:"llmModel"`
 	WebhookBaseURL                  string             `json:"webhookBaseURL"`
 }
@@ -357,6 +367,8 @@ func parseConfig(content string) (Config, error) {
 		GitTokenSecretName:              raw.GitTokenSecretName,
 		BaseURL:                         raw.BaseURL,
 		Image:                           raw.Image,
+		RegistryUsername:                raw.RegistryUsername,
+		RegistryPasswordSecretName:      raw.RegistryPasswordSecretName,
 		LLMModel:                        raw.LLMModel,
 		WebhookBaseURL:                  raw.WebhookBaseURL,
 	}

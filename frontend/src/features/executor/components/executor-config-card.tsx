@@ -84,6 +84,8 @@ export function ExecutorConfigCard() {
 	const baseURLId = useId()
 	const webhookBaseURLId = useId()
 	const imageId = useId()
+	const registryUsernameId = useId()
+	const registryPasswordSecretId = useId()
 	const llmModelId = useId()
 	const serviceAccountId = useId()
 	const namespaceId = useId()
@@ -96,6 +98,7 @@ export function ExecutorConfigCard() {
 	const jobTTLSecondsId = useId()
 	const [expanded, setExpanded] = useState(true)
 	const [advancedExpanded, setAdvancedExpanded] = useState(false)
+	const [registryExpanded, setRegistryExpanded] = useState(false)
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -128,6 +131,9 @@ export function ExecutorConfigCard() {
 	const [baseURL, setBaseURL] = useState('')
 	const [webhookBaseURL, setWebhookBaseURL] = useState('')
 	const [image, setImage] = useState('')
+	const [registryUsername, setRegistryUsername] = useState('')
+	const [registryPasswordSecretName, setRegistryPasswordSecretName] =
+		useState('')
 	const [llmModel, setLlmModel] = useState('')
 	const [secrets, setSecrets] = useState<Secret[]>([])
 
@@ -169,6 +175,9 @@ export function ExecutorConfigCard() {
 			baseURL !== saved.baseURL ||
 			webhookBaseURL !== saved.webhookBaseURL ||
 			image !== saved.image ||
+			registryUsername !== (saved.registryUsername ?? '') ||
+			registryPasswordSecretName !==
+				(saved.registryPasswordSecretName ?? '') ||
 			llmModel !== saved.llmModel)
 
 	const applyConfig = useCallback((cfg: ExecutorConfig) => {
@@ -199,6 +208,8 @@ export function ExecutorConfigCard() {
 		setBaseURL(cfg.baseURL ?? '')
 		setWebhookBaseURL(cfg.webhookBaseURL ?? '')
 		setImage(cfg.image)
+		setRegistryUsername(cfg.registryUsername ?? '')
+		setRegistryPasswordSecretName(cfg.registryPasswordSecretName ?? '')
 		setLlmModel(cfg.llmModel ?? '')
 	}, [])
 
@@ -261,6 +272,10 @@ export function ExecutorConfigCard() {
 					baseURL: showApiKeySettings ? baseURL : '',
 					webhookBaseURL,
 					image,
+					// Sent unconditionally for the same reason as the git token: the
+					// image is pulled on every platform.
+					registryUsername,
+					registryPasswordSecretName,
 					llmModel,
 				}),
 			)
@@ -704,6 +719,81 @@ export function ExecutorConfigCard() {
 									automatically.
 								</p>
 							</div>
+						</div>
+					)}
+
+					{!loading && saved && !isDisabled && showDetails && (
+						<div className="border-t pt-4">
+							<div
+								role="button"
+								tabIndex={0}
+								aria-expanded={registryExpanded}
+								className="flex min-w-0 cursor-pointer items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								onClick={() => setRegistryExpanded((prev) => !prev)}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault()
+										setRegistryExpanded((prev) => !prev)
+									}
+								}}
+							>
+								{registryExpanded ? (
+									<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+								) : (
+									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+								)}
+								<span className="text-sm font-medium">
+									Private registry
+								</span>
+								{/* Collapsed by default, so say whether a login is in use. */}
+								{!registryExpanded && registryUsername && (
+									<span className="truncate text-xs text-muted-foreground">
+										as {registryUsername}
+									</span>
+								)}
+							</div>
+							{registryExpanded && (
+								<div className="mt-4 grid gap-4 sm:grid-cols-2">
+									<p className="text-xs text-muted-foreground sm:col-span-2">
+										Credentials for pulling the agent image. Leave both
+										empty for a public image.
+										{showKubernetes &&
+											' Each Job gets its own pull secret, so the Kubernetes identity nib uses needs to create, update and delete Secrets in the namespace.'}
+									</p>
+									<div className="space-y-2">
+										<Label htmlFor={registryUsernameId}>Username</Label>
+										<Input
+											id={registryUsernameId}
+											value={registryUsername}
+											onChange={(e) =>
+												setRegistryUsername(e.target.value)
+											}
+											autoComplete="off"
+											disabled={saving}
+										/>
+									</div>
+									<div className="space-y-2">
+										<Label htmlFor={registryPasswordSecretId}>
+											Password
+										</Label>
+										<Select
+											id={registryPasswordSecretId}
+											value={registryPasswordSecretName}
+											onChange={(e) =>
+												setRegistryPasswordSecretName(e.target.value)
+											}
+											disabled={saving}
+										>
+											<option value="">Select a secret…</option>
+											{secrets.map((secret) => (
+												<option key={secret.id} value={secret.name}>
+													{secret.name}
+												</option>
+											))}
+										</Select>
+									</div>
+								</div>
+							)}
 						</div>
 					)}
 

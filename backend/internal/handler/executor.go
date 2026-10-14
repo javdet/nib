@@ -41,6 +41,8 @@ type executorConfigPayload struct {
 	BaseURL                         string                      `json:"baseURL"`
 	WebhookBaseURL                  string                      `json:"webhookBaseURL"`
 	Image                           string                      `json:"image"`
+	RegistryUsername                string                      `json:"registryUsername"`
+	RegistryPasswordSecretName      string                      `json:"registryPasswordSecretName"`
 	LLMModel                        string                      `json:"llmModel"`
 }
 
@@ -69,6 +71,8 @@ type executorConfigResponse struct {
 	BaseURL                         string                              `json:"baseURL"`
 	WebhookBaseURL                  string                              `json:"webhookBaseURL"`
 	Image                           string                              `json:"image"`
+	RegistryUsername                string                              `json:"registryUsername"`
+	RegistryPasswordSecretName      string                              `json:"registryPasswordSecretName"`
 	LLMModel                        string                              `json:"llmModel"`
 	TypeOptions                     []executor.TypeOption               `json:"typeOptions"`
 	PlatformOptions                 []executor.PlatformOption           `json:"platformOptions"`
@@ -103,6 +107,8 @@ func newExecutorConfigResponse(cfg executor.Config) executorConfigResponse {
 		BaseURL:                         cfg.BaseURL,
 		WebhookBaseURL:                  cfg.WebhookBaseURL,
 		Image:                           cfg.Image,
+		RegistryUsername:                cfg.RegistryUsername,
+		RegistryPasswordSecretName:      cfg.RegistryPasswordSecretName,
 		LLMModel:                        cfg.LLMModel,
 		TypeOptions:                     executor.TypeOptions,
 		PlatformOptions:                 executor.PlatformOptions,
@@ -154,6 +160,8 @@ func (h *ExecutorHandler) UpdateConfig() http.HandlerFunc {
 			BaseURL:                         req.BaseURL,
 			WebhookBaseURL:                  req.WebhookBaseURL,
 			Image:                           req.Image,
+			RegistryUsername:                req.RegistryUsername,
+			RegistryPasswordSecretName:      req.RegistryPasswordSecretName,
 			LLMModel:                        req.LLMModel,
 		}); err != nil {
 			handleServiceError(w, err)

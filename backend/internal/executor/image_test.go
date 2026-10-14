@@ -21,6 +21,7 @@ type fakeImageClient struct {
 
 	inspected []string
 	pulled    []string
+	pullOpts  []image.PullOptions
 	closed    bool
 }
 
@@ -29,8 +30,9 @@ func (f *fakeImageClient) ImageInspect(_ context.Context, ref string, _ ...clien
 	return image.InspectResponse{}, f.inspectErr
 }
 
-func (f *fakeImageClient) ImagePull(_ context.Context, ref string, _ image.PullOptions) (io.ReadCloser, error) {
+func (f *fakeImageClient) ImagePull(_ context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error) {
 	f.pulled = append(f.pulled, ref)
+	f.pullOpts = append(f.pullOpts, opts)
 	if f.pullErr != nil {
 		return nil, f.pullErr
 	}
@@ -51,7 +53,7 @@ func TestEnsureImagePresentSkipsPull(t *testing.T) {
 	t.Parallel()
 
 	cli := &fakeImageClient{}
-	if err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0"); err != nil {
+	if err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0", nil); err != nil {
 		t.Fatalf("ensureImage() error = %v, want nil", err)
 	}
 	if len(cli.pulled) != 0 {
@@ -69,7 +71,7 @@ func TestEnsureImageMissingPulls(t *testing.T) {
 		inspectErr: errdefs.NotFound(errors.New("No such image: javdet/nib-agent:v0.8.0")),
 		pullBody:   `{"status":"Pulling from javdet/nib-agent"}` + "\n" + `{"status":"Status: Downloaded newer image"}`,
 	}
-	if err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0"); err != nil {
+	if err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0", nil); err != nil {
 		t.Fatalf("ensureImage() error = %v, want nil", err)
 	}
 	if len(cli.pulled) != 1 || cli.pulled[0] != "javdet/nib-agent:v0.8.0" {
@@ -84,7 +86,7 @@ func TestEnsureImageInspectFailureIsNotAPull(t *testing.T) {
 	t.Parallel()
 
 	cli := &fakeImageClient{inspectErr: errors.New("Cannot connect to the Docker daemon")}
-	err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0")
+	err := ensureImage(context.Background(), cli, "javdet/nib-agent:v0.8.0", nil)
 	if !errors.Is(err, ErrImagePull) {
 		t.Fatalf("ensureImage() error = %v, want ErrImagePull", err)
 	}
@@ -131,7 +133,7 @@ func TestEnsureImagePullError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ensureImage(context.Background(), tt.cli, "javdet/nib-agent:v0.8.0")
+			err := ensureImage(context.Background(), tt.cli, "javdet/nib-agent:v0.8.0", nil)
 			if !errors.Is(err, ErrImagePull) {
 				t.Fatalf("ensureImage() error = %v, want ErrImagePull", err)
 			}

@@ -25,17 +25,28 @@ type imageClient interface {
 // image" — so a host that has never run the configured agent image could not
 // start an action at all. The pull is skipped when the image is present, which
 // keeps a mutable tag pinned to whatever was pulled first, exactly like
-// `docker run`.
-func ensureImage(ctx context.Context, cli imageClient, ref string) error {
+// `docker run`. registryAuth yields the encoded X-Registry-Auth value, empty for
+// an anonymous pull; it is called only when a pull happens, so a cached image
+// never depends on the registry password secret still being readable.
+func ensureImage(ctx context.Context, cli imageClient, ref string, registryAuth func() (string, error)) error {
 	if _, err := cli.ImageInspect(ctx, ref); err == nil {
 		return nil
 	} else if !client.IsErrNotFound(err) {
 		return fmt.Errorf("%w: inspect %s: %w", ErrImagePull, ref, err)
 	}
 
-	slog.Info("pulling executor image", "image", ref)
+	opts := image.PullOptions{}
+	if registryAuth != nil {
+		auth, err := registryAuth()
+		if err != nil {
+			return err
+		}
+		opts.RegistryAuth = auth
+	}
 
-	rc, err := cli.ImagePull(ctx, ref, image.PullOptions{})
+	slog.Info("pulling executor image", "image", ref, "authenticated", opts.RegistryAuth != "")
+
+	rc, err := cli.ImagePull(ctx, ref, opts)
 	if err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrImagePull, ref, err)
 	}
@@ -47,6 +58,18 @@ func ensureImage(ctx context.Context, cli imageClient, ref string) error {
 
 	slog.Info("pulled executor image", "image", ref)
 	return nil
+}
+
+// pullImage makes cfg.Image available on the local daemon, logging in to its
+// registry when the executor carries credentials for it.
+func (s *Service) pullImage(ctx context.Context, cli imageClient, cfg Config) error {
+	return ensureImage(ctx, cli, cfg.Image, func() (string, error) {
+		creds, err := s.resolveRegistryCredentials(ctx, cfg)
+		if err != nil {
+			return "", err
+		}
+		return creds.dockerRegistryAuth()
+	})
 }
 
 // drainPullProgress reads the pull to completion. Reading the stream is what

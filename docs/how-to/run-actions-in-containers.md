@@ -34,7 +34,9 @@ run, and the reverse.
 3. **Image** — leave the default `javdet/nib-agent:latest` unless you publish
    your own. It is pulled on the first action if the host does not have it
    yet, and reused from then on — see [Refresh the agent
-   image](#refresh-the-agent-image).
+   image](#refresh-the-agent-image). For an image in a private registry, open
+   **Private registry** and enter the username and the secret holding the
+   password.
 4. **Agent** — `claude-code` or `codex`.
 5. Set `EXECUTOR_LLM_API_KEY` and `EXECUTOR_LLM_MODEL` in `.env`, and restart
    the backend. These are the agent's own credentials, not the backend's: the
@@ -86,7 +88,10 @@ Each `code` action becomes a Kubernetes Job.
      target cluster.
    - *Token* — set **Host** to the API server URL and store a bearer token in
      Variables → Secrets, then select it.
-3. **Image** — the agent image, pullable from the cluster.
+3. **Image** — the agent image, pullable from the cluster. For a private
+   registry, fill in **Private registry**: nib creates a pull secret per Job,
+   so its Kubernetes identity needs `create`, `update` and `delete` on Secrets
+   in the namespace.
 4. **Agent Secret Name** — an existing Secret in the target namespace, mounted
    with `envFrom`. It must carry:
    - `GITHUB_TOKEN`, or equivalently `GITLAB_TOKEN` or `GIT_TOKEN` — supply any
@@ -166,9 +171,10 @@ docker pull javdet/nib-agent:latest
 ```
 
 A registry that refuses the pull fails the action with `failed to pull executor
-image: …` followed by the registry's own reason — usually a missing `docker
-login` for a private image. On Kubernetes, the kubelet pulls under the Job's
-`imagePullPolicy`.
+image: …` followed by the registry's own reason — for a private image, usually
+missing or wrong credentials under Tools → Executor → **Private registry**. On
+Kubernetes, the kubelet pulls under the Job's `imagePullPolicy`, with the same
+credentials as a per-Job pull secret.
 
 ## When an action will not start
 
@@ -179,6 +185,7 @@ login` for a private image. On Kubernetes, the kubelet pulls under the Job's
 | `executor secrets are not fully configured…` | One of `EXECUTOR_LLM_API_KEY`, the git token selection, or the model is missing. |
 | `executor image is required` | Set an image. |
 | `failed to pull executor image: …` | The host's Docker daemon could not pull it; the rest of the message is the registry's reason. |
+| `failed to resolve executor registry credentials: …` | The password secret selected under **Private registry** is missing or empty. |
 | `… is already running (…, started … ago). Only one execution runs at a time…` | Something else holds the execution slot, and the message names it. Wait, or force-stop it. |
 | `kubernetes host is required` / `kubernetes token secret is required` | Token auth needs both. |
 | `repository URL is required` / `base branch is required` | The action itself is incomplete; fix it in the plan. |

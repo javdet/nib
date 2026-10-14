@@ -36,7 +36,7 @@ func (s *Service) runLocal(ctx context.Context, cfg Config, req RunRequest) (Run
 	}
 	defer cli.Close()
 
-	if err := ensureImage(ctx, cli, cfg.Image); err != nil {
+	if err := s.pullImage(ctx, cli, cfg); err != nil {
 		return RunResult{}, err
 	}
 

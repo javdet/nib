@@ -263,6 +263,12 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   and `docker pull` is still the way to refresh one. Remote Kubernetes leaves the pull to the
   kubelet's `imagePullPolicy`. A registry that refuses the pull fails the launch with the
   registry's own reason rather than a bare "No such image".
+- A private registry is reached with **Private registry** on the Executor page:
+  `registryUsername` plus `registryPasswordSecretName`, both or neither. On `local` the login
+  goes with the pull and the secret is read only when a pull happens. On remote Kubernetes each
+  Job gets its own `{job}-registry` dockerconfigjson Secret in `imagePullSecrets`, owned by the
+  Job so it goes with it, which needs nib's cluster identity to create, update and delete
+  Secrets in the namespace.
 - Credentials are **selected by secret name**, never fixed: the LLM key is `tokenSecretName`, the
   git API token is `gitTokenSecretName`, both picked in the Executor page from **Variables →
   Secrets**. There is no `EXECUTOR_GIT_API_TOKEN` fallback — a blank selection is refused at launch

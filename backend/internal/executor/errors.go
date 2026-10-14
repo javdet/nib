@@ -13,6 +13,8 @@ var (
 	ErrInvalidJSON                   = errors.New("invalid executor json")
 	ErrImageRequired                 = errors.New("executor image is required")
 	ErrImagePull                     = errors.New("failed to pull executor image")
+	ErrRegistryAuthIncomplete        = errors.New("registry username and password secret must be set together")
+	ErrRegistryAuth                  = errors.New("failed to resolve executor registry credentials")
 	ErrRepoURLRequired               = errors.New("repository URL is required")
 	ErrBranchRequired                = errors.New("base branch is required")
 	ErrTaskPromptRequired            = errors.New("task prompt is required")
