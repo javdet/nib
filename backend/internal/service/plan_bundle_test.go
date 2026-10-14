@@ -328,6 +328,43 @@ func TestImportPlanRoundTrip(t *testing.T) {
 	}
 }
 
+// A result message links its row through the plan's id, so an imported copy has
+// to point at itself rather than at the exporter's plan.
+func TestImportPlanRepointsActionLinks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	srcRepo := newMultiDialogRepo()
+	src := newBundleTestService(t, srcRepo, nil)
+	oldRoot, _, _ := seedExportablePlan(t, src, srcRepo)
+	if _, err := srcRepo.AppendMessage(ctx, oldRoot, domain.DialogMessage{
+		Role:    "assistant",
+		Content: formatActionResultMessage(oldRoot, "s0.step0", uuid.Nil, ActionExecDone, ""),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := src.ExportPlan(ctx, oldRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dstRepo := newMultiDialogRepo()
+	dst := newBundleTestService(t, dstRepo, nil)
+	d, err := dst.ImportPlan(ctx, b)
+	if err != nil {
+		t.Fatalf("ImportPlan() error = %v", err)
+	}
+
+	msgs, _ := dstRepo.ListMessages(ctx, d.ID)
+	last := msgs[len(msgs)-1].Content
+	if want := "#action:" + d.ID.String() + ":s0.step0"; !strings.Contains(last, want) {
+		t.Errorf("result message = %q, want it to link %q", last, want)
+	}
+	if strings.Contains(last, oldRoot.String()) {
+		t.Errorf("result message = %q still names the exporter's plan", last)
+	}
+}
+
 func TestImportPlanCarriesAttachments(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

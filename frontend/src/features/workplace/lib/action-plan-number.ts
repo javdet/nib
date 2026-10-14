@@ -10,6 +10,8 @@
 // numbering existed carry no label, and deriving is the only way the gutter and
 // the Markdown export can never disagree with each other or with such a file.
 
+import { ROLLBACK_KEY_RE, STAGE_ITEM_KEY_RE } from '@/lib/action-anchor'
+
 export type ActionPlanItemKind = 'step' | 'check' | 'rollback'
 
 export function actionPlanStageNumber(stageIdx: number): string {
@@ -34,12 +36,12 @@ export function actionPlanItemNumber(
 // actionPlanNumberForKey labels an item addressed by its storage key, for the
 // callers that already hold a key rather than a pair of indices.
 export function actionPlanNumberForKey(key: string): string {
-	const rollbackMatch = /^rollback\.(\d+)$/.exec(key)
+	const rollbackMatch = ROLLBACK_KEY_RE.exec(key)
 	if (rollbackMatch) {
 		return actionPlanItemNumber('rollback', 0, Number(rollbackMatch[1]))
 	}
 
-	const itemMatch = /^s(\d+)\.(step|check)(\d+)$/.exec(key)
+	const itemMatch = STAGE_ITEM_KEY_RE.exec(key)
 	if (itemMatch) {
 		const kind = itemMatch[2] === 'check' ? 'check' : 'step'
 		return actionPlanItemNumber(kind, Number(itemMatch[1]), Number(itemMatch[3]))

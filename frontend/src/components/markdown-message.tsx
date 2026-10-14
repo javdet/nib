@@ -11,6 +11,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { actionLinkFromHref } from '@/lib/action-anchor'
 import { dialogIdFromHref } from '@/lib/dialog-link'
 
 const markdownComponents: Components = {
@@ -121,10 +122,28 @@ const markdownComponents: Components = {
 
 function buildMarkdownComponents(
 	onDialogLink?: (dialogId: string) => void,
+	onActionLink?: (planId: string, key: string) => void,
 ): Components {
 	return {
 	...markdownComponents,
 	a: ({ href, children }) => {
+		// A link to a plan row navigates inside the app; followed as an href it
+		// would open a new tab on the current page.
+		const action = actionLinkFromHref(href)
+		if (action && onActionLink) {
+			return (
+				<button
+					type="button"
+					onClick={() => onActionLink(action.planId, action.key)}
+					className="cursor-pointer underline underline-offset-2"
+				>
+					{children}
+				</button>
+			)
+		}
+		if (action) {
+			return <span>{children}</span>
+		}
 		// There is no route to a dialog by id -- the app switches dialogs through
 		// context -- so a link to one has to be intercepted rather than followed.
 		const dialogId = dialogIdFromHref(href)
@@ -166,15 +185,18 @@ interface MarkdownMessageProps {
 	 * renders such a link as plain text rather than a link that goes nowhere.
 	 */
 	onDialogLink?: (dialogId: string) => void
+	/** Called when the message links to a row of a plan, rendered like onDialogLink. */
+	onActionLink?: (planId: string, key: string) => void
 }
 
 export function MarkdownMessage({
 	content,
 	onDialogLink,
+	onActionLink,
 }: MarkdownMessageProps) {
 	const components = useMemo(
-		() => buildMarkdownComponents(onDialogLink),
-		[onDialogLink],
+		() => buildMarkdownComponents(onDialogLink, onActionLink),
+		[onDialogLink, onActionLink],
 	)
 
 	return (

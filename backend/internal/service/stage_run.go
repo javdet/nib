@@ -551,21 +551,21 @@ func (s *ChatService) announceStageRun(ctx context.Context, planID uuid.UUID, ru
 	}
 	if _, err := s.appendMessageLocked(ctx, planID, domain.DialogMessage{
 		Role:    "assistant",
-		Content: formatStageRunMessage(run),
+		Content: formatStageRunMessage(planID, run),
 		Name:    name,
 	}); err != nil {
 		slog.Warn("stage run: append", "plan_id", planID, "error", err)
 	}
 }
 
-func formatStageRunMessage(run StageRun) string {
+func formatStageRunMessage(planID uuid.UUID, run StageRun) string {
 	subject := stageRunSubject(run)
 	if run.Status == StageRunDone {
 		return fmt.Sprintf("**%s ran to the end** ✅\n\nTick its items once you have checked the results.", subject)
 	}
 	msg := fmt.Sprintf("**%s run stopped** ⏹", subject)
 	if run.Current != "" {
-		msg += " at " + stageRunNumber(run.Current)
+		msg += " at " + actionPlanLink(planID, run.Current)
 	}
 	if reason := strings.TrimSpace(run.Reason); reason != "" {
 		msg += "\n\n" + reason

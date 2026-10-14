@@ -5,7 +5,7 @@ import {
 	useState,
 	type KeyboardEvent,
 } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import {
 	ArrowDown,
 	ArrowDownUp,
@@ -42,6 +42,7 @@ import { PlanOriginLink } from '@/features/incidents/components/plan-origin-link
 import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
 import { extractErrorMessage } from '@/lib/api-client'
+import { actionKeyFromHash } from '@/lib/action-anchor'
 import {
 	getActionPlanExecRuns,
 	type ActionExecRuns,
@@ -223,6 +224,14 @@ export function WorkplaceDetail() {
 	const [reportExpanded, setReportExpanded] = useState(false)
 	const [dagExpanded, setDagExpanded] = useState(true)
 	const [actionListExpanded, setActionListExpanded] = useState(true)
+	// A link to one action (#action-s3.step1) opens the plan with that row on
+	// screen. The location key changes on every navigation, so following the
+	// same link twice focuses the row again.
+	const location = useLocation()
+	const focusKey = actionKeyFromHash(location.hash)
+	useEffect(() => {
+		if (focusKey) setActionListExpanded(true)
+	}, [focusKey, location.key])
 	const [processingPlan, setProcessingPlan] = useState(false)
 	const [isEditingTitle, setIsEditingTitle] = useState(false)
 	const [titleDraft, setTitleDraft] = useState('')
@@ -1642,6 +1651,8 @@ export function WorkplaceDetail() {
 							onReplanRollback={handleReplanRollback}
 							onRunStage={(scope, stage) => void handleRunStage(scope, stage)}
 							onStopStageRun={() => void handleStopStageRun()}
+							focusKey={focusKey}
+							focusToken={location.key}
 						/>
 					) : fanoutRun ? (
 						<p className="text-sm text-muted-foreground">

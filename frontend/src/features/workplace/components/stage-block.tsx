@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
 	ChevronDown,
 	ChevronRight,
@@ -69,6 +69,11 @@ interface StageBlockProps {
 	onStop: () => void
 	/** A line under the header, for why the last run stopped. */
 	note?: ReactNode
+	/**
+	 * Opens the stage whenever it changes to a new value, so a link to one of
+	 * its rows finds the row mounted. The stage stays the operator's to close.
+	 */
+	revealToken?: string
 	children?: ReactNode
 }
 
@@ -89,9 +94,13 @@ export function StageBlock({
 	onRun,
 	onStop,
 	note,
+	revealToken,
 	children,
 }: StageBlockProps) {
 	const [expanded, setExpanded] = useState(defaultExpanded)
+	useEffect(() => {
+		if (revealToken) setExpanded(true)
+	}, [revealToken])
 	const hasBody = Boolean(children) || Boolean(note)
 	const toggle = () => setExpanded((prev) => !prev)
 

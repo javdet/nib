@@ -15,6 +15,7 @@ func TestFormatActionResultMessage(t *testing.T) {
 
 	const body = "created vpc-0a91f3 in eu-central-1"
 	dialogID := uuid.New()
+	planID := uuid.New()
 
 	tests := []struct {
 		name     string
@@ -27,35 +28,35 @@ func TestFormatActionResultMessage(t *testing.T) {
 			name:     "a successful run keeps its result to itself",
 			status:   ActionExecDone,
 			body:     body,
-			heading:  "**1.1 executed** ✅",
+			heading:  "**[1.1](#action:" + planID.String() + ":s0.step0) executed** ✅",
 			wantBody: false,
 		},
 		{
 			name:     "a blocked run shows what it needs",
 			status:   ActionExecBlocked,
 			body:     body,
-			heading:  "**1.1 needs a decision** ⏸",
+			heading:  "**[1.1](#action:" + planID.String() + ":s0.step0) needs a decision** ⏸",
 			wantBody: true,
 		},
 		{
 			name:     "a failed run shows why",
 			status:   ActionExecFailed,
 			body:     body,
-			heading:  "**1.1 failed** ❌",
+			heading:  "**[1.1](#action:" + planID.String() + ":s0.step0) failed** ❌",
 			wantBody: true,
 		},
 		{
 			name:     "a cancelled run shows what stopped it",
 			status:   ActionExecCancelled,
 			body:     body,
-			heading:  "**1.1 cancelled** ⏹",
+			heading:  "**[1.1](#action:" + planID.String() + ":s0.step0) cancelled** ⏹",
 			wantBody: true,
 		},
 		{
 			name:     "a run with no text is just its heading",
 			status:   ActionExecFailed,
 			body:     "",
-			heading:  "**1.1 failed** ❌",
+			heading:  "**[1.1](#action:" + planID.String() + ":s0.step0) failed** ❌",
 			wantBody: false,
 		},
 	}
@@ -64,7 +65,7 @@ func TestFormatActionResultMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := formatActionResultMessage("s0.step0", dialogID, tt.status, tt.body)
+			got := formatActionResultMessage(planID, "s0.step0", dialogID, tt.status, tt.body)
 
 			if !strings.Contains(got, tt.heading) {
 				t.Errorf("message = %q, want heading %q", got, tt.heading)
@@ -87,7 +88,7 @@ func TestFormatActionResultMessage(t *testing.T) {
 func TestFormatActionResultMessageWithoutADialog(t *testing.T) {
 	t.Parallel()
 
-	got := formatActionResultMessage("rollback.0", uuid.Nil, ActionExecDone, "reverted")
+	got := formatActionResultMessage(uuid.Nil, "rollback.0", uuid.Nil, ActionExecDone, "reverted")
 	if strings.Contains(got, "#dialog:") {
 		t.Errorf("message = %q, want no transcript link", got)
 	}
@@ -104,7 +105,7 @@ func TestFormatActionResultMessage_keepsACheckFinding(t *testing.T) {
 
 	const finding = "2/3 replicas ready, expected 3/3"
 
-	got := formatActionResultMessage("s0.check0", uuid.Nil, ActionExecDone, finding)
+	got := formatActionResultMessage(uuid.Nil, "s0.check0", uuid.Nil, ActionExecDone, finding)
 	if !strings.Contains(got, "**1.C1 checked** 🔍") {
 		t.Errorf("message = %q, want the check heading", got)
 	}
@@ -114,7 +115,7 @@ func TestFormatActionResultMessage_keepsACheckFinding(t *testing.T) {
 
 	// An action still reports as a tick alone: its text is working memory for the
 	// agents that follow, not something the operator has to read.
-	action := formatActionResultMessage("s0.step0", uuid.Nil, ActionExecDone, "created vpc-123")
+	action := formatActionResultMessage(uuid.Nil, "s0.step0", uuid.Nil, ActionExecDone, "created vpc-123")
 	if strings.Contains(action, "created vpc-123") {
 		t.Errorf("message = %q, want a finished action to hold its notes back", action)
 	}
@@ -193,6 +194,35 @@ func TestBuildActionSeed_carriesTheDeclaredImpact(t *testing.T) {
 			}
 			if tt.name == "both set" && strings.Contains(seed, "Degradation:") {
 				t.Fatalf("seed = %q, downtime supersedes degraded", seed)
+			}
+		})
+	}
+}
+
+// The number links to the row it names, with the plan in the link so the chat
+// panel can open the right plan from any page.
+func TestActionPlanLink(t *testing.T) {
+	t.Parallel()
+
+	planID := uuid.MustParse("0199c0de-0000-7000-8000-000000000001")
+
+	tests := []struct {
+		name   string
+		planID uuid.UUID
+		key    string
+		want   string
+	}{
+		{"step", planID, "s3.step1", "[4.2](#action:" + planID.String() + ":s3.step1)"},
+		{"check", planID, "s0.check0", "[1.C1](#action:" + planID.String() + ":s0.check0)"},
+		{"rollback", planID, "rollback.2", "[R3](#action:" + planID.String() + ":rollback.2)"},
+		{"no plan leaves the bare number", uuid.Nil, "s0.step4", "1.5"},
+		{"an unknown key is not linked", planID, "nonsense", "nonsense"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := actionPlanLink(tt.planID, tt.key); got != tt.want {
+				t.Errorf("actionPlanLink(%s, %q) = %q, want %q", tt.planID, tt.key, got, tt.want)
 			}
 		})
 	}

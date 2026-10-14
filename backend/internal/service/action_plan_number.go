@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // The operator-facing numbering of a plan. Every label is derived from the
@@ -186,4 +188,20 @@ func actionPlanNumberForKey(key string) string {
 		return actionPlanRollbackNumber(index)
 	}
 	return ""
+}
+
+// actionPlanLink renders a row's label as a link the chat panel follows to the
+// row in the plan view. The plan id travels in the link because the chat panel
+// can show the plan chat from any page, and an import's id rewrite then carries
+// the link over to the copy. A key with no label, or no plan to point into,
+// falls back to plain text rather than a link that goes nowhere.
+func actionPlanLink(planID uuid.UUID, key string) string {
+	number := actionPlanNumberForKey(key)
+	if number == "" {
+		return key
+	}
+	if planID == uuid.Nil {
+		return number
+	}
+	return fmt.Sprintf("[%s](#action:%s:%s)", number, planID, key)
 }

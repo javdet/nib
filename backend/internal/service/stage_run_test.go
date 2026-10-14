@@ -281,6 +281,9 @@ func TestStageRunStopsOnUnsuccessfulItem(t *testing.T) {
 			if len(msgs) != 1 || !strings.Contains(msgs[0].Content, tt.want) {
 				t.Fatalf("chat messages = %+v, want one carrying %q", msgs, tt.want)
 			}
+			if link := "at [1.1](#action:" + planID.String() + ":s0.step0)"; !strings.Contains(msgs[0].Content, link) {
+				t.Fatalf("chat message = %q, want it to link the item with %q", msgs[0].Content, link)
+			}
 		})
 	}
 }

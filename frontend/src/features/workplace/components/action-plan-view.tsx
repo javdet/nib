@@ -7,6 +7,7 @@ import {
 	type DragEvent,
 	type ReactNode,
 } from 'react'
+import { Link } from 'react-router'
 import {
 	AlertTriangle,
 	ChevronDown,
@@ -32,6 +33,11 @@ import {
 } from '@/components/ui/tooltip'
 import { MarkdownMessage } from '@/components/markdown-message'
 import { cn } from '@/lib/utils'
+import {
+	actionAnchorId,
+	ROLLBACK_KEY_RE,
+	STAGE_ITEM_KEY_RE,
+} from '@/lib/action-anchor'
 import type {
 	ActionExecRun,
 	ActionExecRuns,
@@ -162,7 +168,25 @@ interface ActionPlanViewProps {
 	onReplanRollback?: () => void
 	onRunStage?: (scope: StageRunScope, stage: number) => void
 	onStopStageRun?: () => void
+	// focusKey is the row a link points at. focusToken changes on every
+	// navigation, so following the same link again brings the row back.
+	focusKey?: string | null
+	focusToken?: string
 }
+
+// The stage a row key belongs to, so a link can open it before looking for
+// the row: a collapsed stage does not mount its rows.
+function focusStage(key: string | null | undefined): number | 'rollback' | null {
+	if (!key) return null
+	if (ROLLBACK_KEY_RE.test(key)) return 'rollback'
+	const m = STAGE_ITEM_KEY_RE.exec(key)
+	return m ? Number(m[1]) : null
+}
+
+// How long a linked row stays highlighted, and how many frames the view waits
+// for it to mount once its stage has been asked to open.
+const FOCUS_HIGHLIGHT_MS = 2000
+const FOCUS_MAX_FRAMES = 30
 
 function isCodeStep(step: ActionStep): boolean {
 	return step.type?.trim().toLowerCase() === 'code'
@@ -230,16 +254,18 @@ function RowGutter({
 }: RowGutterProps) {
 	return (
 		<div className="flex w-10 shrink-0 flex-col self-stretch border-r">
-			<div
+			<Link
 				id={`${id}-number`}
+				to={{ hash: `#${actionAnchorId(id)}` }}
+				title="Link to this action"
 				className={cn(
 					'flex h-9 shrink-0 select-none items-center justify-center',
-					'font-mono text-xs tabular-nums',
+					'font-mono text-xs tabular-nums hover:underline',
 					checked ? 'text-success' : 'text-muted-foreground',
 				)}
 			>
 				{number}
-			</div>
+			</Link>
 			<div className="flex flex-1 items-start justify-center py-2">
 				<Checkbox
 					checked={checked}
@@ -796,6 +822,8 @@ interface SortableListItemProps {
 	onDragEnd: () => void
 	onDragOver: (e: DragEvent<HTMLLIElement>) => void
 	onDrop: (e: DragEvent<HTMLLIElement>) => void
+	rowKey: string
+	highlighted: boolean
 	children: ReactNode
 }
 
@@ -810,6 +838,8 @@ function SortableListItem({
 	onDragEnd,
 	onDragOver,
 	onDrop,
+	rowKey,
+	highlighted,
 	children,
 }: SortableListItemProps) {
 	const isDragging =
@@ -825,6 +855,7 @@ function SortableListItem({
 
 	return (
 		<li
+			id={actionAnchorId(rowKey)}
 			draggable={dragEnabled}
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
@@ -832,7 +863,7 @@ function SortableListItem({
 			onDrop={onDrop}
 			className={cn(
 				isDragging && 'opacity-50',
-				isDropTarget && 'rounded-md ring-2 ring-primary ring-offset-1',
+				(isDropTarget || highlighted) && 'rounded-md ring-2 ring-primary ring-offset-1',
 			)}
 		>
 			{children}
@@ -866,6 +897,8 @@ export function ActionPlanView({
 	onReplanRollback,
 	onRunStage,
 	onStopStageRun,
+	focusKey = null,
+	focusToken,
 }: ActionPlanViewProps) {
 	const gripEnabledRef = useRef(false)
 	const [gripActive, setGripActive] = useState(false)
@@ -1001,6 +1034,41 @@ export function ActionPlanView({
 		[dragState, onReorder, clearDrag],
 	)
 
+	// Following a link scrolls its row into view once the row exists: the plan
+	// may still be loading and the stage only just asked to open, so the row is
+	// looked for over a few frames. Each navigation is handled once, which keeps
+	// a live refresh of the plan from scrolling the operator back.
+	const handledFocusRef = useRef<string | null>(null)
+	const [highlight, setHighlight] = useState<{ key: string; token: string } | null>(null)
+	const planLoaded = plan !== null
+	useEffect(() => {
+		if (!focusKey || !focusToken || !planLoaded) return
+		const marker = `${focusToken}:${focusKey}`
+		if (handledFocusRef.current === marker) return
+
+		let frames = 0
+		let frame = requestAnimationFrame(function seek() {
+			const row = document.getElementById(actionAnchorId(focusKey))
+			if (row) {
+				handledFocusRef.current = marker
+				row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+				setHighlight({ key: focusKey, token: focusToken })
+				return
+			}
+			if (++frames < FOCUS_MAX_FRAMES) frame = requestAnimationFrame(seek)
+		})
+		return () => cancelAnimationFrame(frame)
+	}, [focusKey, focusToken, planLoaded])
+
+	useEffect(() => {
+		if (!highlight) return
+		const timer = setTimeout(() => setHighlight(null), FOCUS_HIGHLIGHT_MS)
+		return () => clearTimeout(timer)
+	}, [highlight])
+
+	const focusedStage = focusStage(focusKey)
+	const isHighlighted = (key: string) => highlight?.key === key
+
 	const checkedSet = new Set(checked)
 	const stages = plan?.stages ?? []
 	const runningElsewhere = (scope: StageRunScope, idx: number) =>
@@ -1087,6 +1155,9 @@ export function ActionPlanView({
 						onRun={() => stageIdx !== null && onRunStage?.('stage', stageIdx)}
 						onStop={() => onStopStageRun?.()}
 						note={stageIdx === null ? null : stopNote('stage', stageIdx)}
+						revealToken={
+							stageIdx !== null && focusedStage === stageIdx ? focusToken : undefined
+						}
 					>
 						{stage &&
 						stageIdx !== null &&
@@ -1115,6 +1186,8 @@ export function ActionPlanView({
 													onDrop={(e) =>
 														handleDrop(e, 'steps', stageIdx, stepIdx)
 													}
+													rowKey={key}
+													highlighted={isHighlighted(key)}
 												>
 													<ExecutableActionRow
 														id={key}
@@ -1175,6 +1248,8 @@ export function ActionPlanView({
 														onDrop={(e) =>
 															handleDrop(e, 'checks', stageIdx, checkIdx)
 														}
+														rowKey={key}
+														highlighted={isHighlighted(key)}
 													>
 														<CheckableRow
 															id={key}
@@ -1257,13 +1332,20 @@ export function ActionPlanView({
 					onRun={() => onRunStage?.('rollback', 0)}
 					onStop={() => onStopStageRun?.()}
 					note={stopNote('rollback', 0)}
+					revealToken={focusedStage === 'rollback' ? focusToken : undefined}
 				>
 					{plan && plan.rollback.length > 0 ? (
 					<ul className="space-y-2">
 						{plan.rollback.map((step, idx) => {
 							const key = `rollback.${idx}`
 							return (
-								<li key={key}>
+								<li
+									key={key}
+									id={actionAnchorId(key)}
+									className={cn(
+										isHighlighted(key) && 'rounded-md ring-2 ring-primary ring-offset-1',
+									)}
+								>
 									<ExecutableActionRow
 										id={key}
 										number={actionPlanItemNumber('rollback', 0, idx)}

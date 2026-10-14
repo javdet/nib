@@ -182,7 +182,7 @@ func (s *ChatService) reportActionResult(
 
 	if _, err := s.appendMessageLocked(ctx, planID, domain.DialogMessage{
 		Role:    "assistant",
-		Content: formatActionResultMessage(key, dialogID, status, body),
+		Content: formatActionResultMessage(planID, key, dialogID, status, body),
 		Name:    name,
 	}); err != nil {
 		slog.Warn("action result: append", "plan_id", planID, "key", key, "error", err)
@@ -197,9 +197,10 @@ func actionExecMessageName(key string, attempt int) string {
 	return fmt.Sprintf("action-exec:%s#%d", key, attempt)
 }
 
-// formatActionResultMessage renders the outcome. The link is a fragment the chat
-// panel intercepts to open the subagent's dialog: there is no route to a dialog
-// by id, so a plain URL would go nowhere.
+// formatActionResultMessage renders the outcome. The number links to the row in
+// the plan view and the transcript link is a fragment the chat panel intercepts
+// to open the subagent's dialog: there is no route to a dialog by id, so a plain
+// URL would go nowhere.
 //
 // A successful action reports only that it is done. Its text is working notes for
 // the actions that follow -- recorded on the action and read back through
@@ -214,11 +215,8 @@ func actionExecMessageName(key string, attempt int) string {
 // after. "Done" here says the sub-agent finished, never that the check passed --
 // a check that found the wrong thing finishes just as successfully -- so the
 // heading says it was checked and the finding is kept.
-func formatActionResultMessage(key string, dialogID uuid.UUID, status ActionExecStatus, body string) string {
-	number := actionPlanNumberForKey(key)
-	if number == "" {
-		number = key
-	}
+func formatActionResultMessage(planID uuid.UUID, key string, dialogID uuid.UUID, status ActionExecStatus, body string) string {
+	number := actionPlanLink(planID, key)
 	isCheck := isActionPlanCheckKey(key)
 
 	var b strings.Builder

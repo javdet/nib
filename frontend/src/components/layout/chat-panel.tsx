@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import {
 	Send,
 	Square,
@@ -20,6 +21,7 @@ import {
 	TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn, findLastIndex } from '@/lib/utils'
+import { actionPagePath } from '@/lib/action-anchor'
 import { extractErrorMessage, isTransportError } from '@/lib/api-client'
 import { useMode } from '@/features/modes/mode-context'
 import { useDialog } from '@/features/dialogs/dialog-context'
@@ -429,6 +431,17 @@ export function ChatPanel() {
 			setActiveDialogId(dialogId)
 		},
 		[setActiveDialogId],
+	)
+
+	// A result links to the row it ran. Navigating rather than scrolling in
+	// place, since the plan chat can be open on a page that is not the plan;
+	// each click is a fresh history entry, so a second click focuses it again.
+	const navigate = useNavigate()
+	const handleOpenActionLink = useCallback(
+		(planId: string, key: string) => {
+			void navigate(actionPagePath(planId, key))
+		},
+		[navigate],
 	)
 
 	const callingTool = useToolActivity(
@@ -1120,6 +1133,7 @@ export function ChatPanel() {
 										<MarkdownMessage
 											content={msg.content}
 											onDialogLink={handleOpenDialogLink}
+											onActionLink={handleOpenActionLink}
 										/>
 									) : (
 										msg.content
