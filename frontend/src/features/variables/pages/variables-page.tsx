@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router'
 import { Braces, KeyRound, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -35,6 +36,12 @@ function formatScopeLabel(scope: string, scopeName?: string): string {
 }
 
 export function VariablesPage() {
+	// ?tab=secrets&new=1 is how other pages (the Executor's secret pickers)
+	// send the operator straight to adding a secret.
+	const [searchParams, setSearchParams] = useSearchParams()
+	const [initialTab] = useState(() =>
+		searchParams.get('tab') === 'secrets' ? 'secrets' : 'variables',
+	)
 	const [variables, setVariables] = useState<Variable[]>([])
 	const [variablesLoading, setVariablesLoading] = useState(true)
 	const [variableDialogOpen, setVariableDialogOpen] = useState(false)
@@ -44,10 +51,20 @@ export function VariablesPage() {
 
 	const [secrets, setSecrets] = useState<Secret[]>([])
 	const [secretsLoading, setSecretsLoading] = useState(true)
-	const [secretDialogOpen, setSecretDialogOpen] = useState(false)
+	const [secretDialogOpen, setSecretDialogOpen] = useState(
+		() => searchParams.get('new') === '1',
+	)
 	const [editingSecret, setEditingSecret] = useState<Secret | null>(null)
 
 	const [error, setError] = useState<string | null>(null)
+
+	// Drop `new` once consumed, so a reload does not reopen the dialog.
+	useEffect(() => {
+		if (!searchParams.has('new')) return
+		const params = new URLSearchParams(searchParams)
+		params.delete('new')
+		setSearchParams(params, { replace: true })
+	}, [searchParams, setSearchParams])
 
 	useEffect(() => {
 		listVariables()
@@ -170,7 +187,7 @@ export function VariablesPage() {
 				</div>
 			)}
 
-			<Tabs defaultValue="variables">
+			<Tabs defaultValue={initialTab}>
 				<TabsList>
 					<TabsTrigger value="variables">Variables</TabsTrigger>
 					<TabsTrigger value="secrets">Secrets</TabsTrigger>

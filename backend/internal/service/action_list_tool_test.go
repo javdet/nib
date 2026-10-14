@@ -260,7 +260,7 @@ func TestBuildActionListResponse(t *testing.T) {
 				Title:  "Stage",
 				Steps: []storedActionStep{
 					{Type: "shell", Action: "run", Command: "kubectl -n prod get pods", Degraded: "api reads are slower while the query runs"},
-					{Type: "code", Action: "edit chart", PRTitle: "chore: bump chart version"},
+					{Type: "code", Action: "edit chart", Repository: "my-org/charts", PRTitle: "chore: bump chart version"},
 				},
 				Checks: []storedActionCheck{
 					{Check: "ok", Expectation: "yes"},
@@ -268,7 +268,7 @@ func TestBuildActionListResponse(t *testing.T) {
 			},
 		},
 		Rollback: []storedActionStep{
-			{Type: "code", Action: "revert", PRTitle: "chore: revert chart bump"},
+			{Type: "code", Action: "revert", Repository: "my-org/charts", PRTitle: "chore: revert chart bump"},
 			{Type: "shell", Action: "restart", Command: "kubectl -n prod rollout undo deployment/api", Downtime: "api serves nothing for the ~30s the restart takes"},
 		},
 	}
@@ -285,6 +285,21 @@ func TestBuildActionListResponse(t *testing.T) {
 	}
 	if resp.Stages[0].Actions[1].PRTitle != "chore: bump chart version" {
 		t.Fatalf("code step pr_title = %q", resp.Stages[0].Actions[1].PRTitle)
+	}
+	// The repository is what an operator naming a code action by what it changes
+	// gets matched against, so it has to survive both loops.
+	if got := resp.Stages[0].Actions[1].Repository; got != "my-org/charts" {
+		t.Fatalf("code step repository = %q, want my-org/charts", got)
+	}
+	if got := resp.Rollback[0].Repository; got != "my-org/charts" {
+		t.Fatalf("rollback code entry repository = %q, want my-org/charts", got)
+	}
+	shell, err := json.Marshal(resp.Stages[0].Actions[0])
+	if err != nil {
+		t.Fatalf("marshal shell step: %v", err)
+	}
+	if strings.Contains(string(shell), "repository") {
+		t.Fatalf("shell step serialised a repository: %s", shell)
 	}
 	if resp.Stages[0].Actions[0].Command != "kubectl -n prod get pods" {
 		t.Fatalf("shell step command = %q", resp.Stages[0].Actions[0].Command)

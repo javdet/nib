@@ -62,7 +62,8 @@ func RunSubagentToolDef() llm.ToolDef {
 			"item": map[string]any{
 				"type": "string",
 				"description": "execute only. The item's number as the web interface shows it: \"1.1\" for an " +
-					"action, \"R1\" for a rollback entry.",
+					"action, \"1.C1\" for a verification check, \"R1\" for a rollback entry. Never a description: " +
+					"when the operator names the item by what it does, resolve it to its number with get_action_list first.",
 			},
 			"rerun": map[string]any{
 				"type": "boolean",

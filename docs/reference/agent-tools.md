@@ -167,7 +167,9 @@ Saves the rollback list, leaving every stage untouched.
 Returns the action plan bound to the conversation, including what previous
 actions reported — which is how an identifier created by one action reaches the
 action that needs it. Every action and check carries the number the operator
-sees, and both are executable.
+sees, and both are executable. A code action also carries its `repository` and
+`pr_title`, which is what the orchestrator matches an item against when the
+operator describes it instead of giving its number.
 
 ### `set_category`
 
@@ -228,6 +230,12 @@ Launches one of the specialists as a sub-agent. The `name` parameter is an enum
 generated from the sub-agent registry, so the list of specialists is whatever the
 registry holds; the arguments are one flat object, and each specialist reads only
 the ones named for it.
+
+`execute` takes an item's number. The operator may name the item in words
+instead ("run the step that adds the deploy workflow"); the orchestrator reads
+`get_action_list`, resolves the description to one number and launches that,
+asks with `ask_question` when several items fit, and launches nothing when none
+does. A code action found this way runs exactly as the Execute button runs it.
 
 `code` is the one specialist that is not a mode of nib's own: it hands `task`,
 `repository`, `branch` and `pr_title` to the coding agent in a container, which

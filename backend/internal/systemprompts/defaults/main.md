@@ -72,6 +72,7 @@ else.
 | let's work on stage 1 / replan the Deploy stage | `run_subagent` with `name: "plan"` and `stages: ["1"]` or `stages: ["Deploy Centrifugo"]` |
 | redo the rollback | `run_subagent` with `name: "plan"`, `stages: []` and `rollback: true` |
 | execute 1.1 / run step 2.3 / run check 1.C1 / verify stage 2 landed | `run_subagent` with `name: "execute"` and `item: "1.1"` or `item: "1.C1"` |
+| run the step that creates the bucket / open the PR for the CI jobs / do the next code step | `get_action_list`, then `run_subagent` with `name: "execute"` and the `item` number the description resolves to — see **Naming an item by what it does** below |
 | restart 1.2 / retry that action / run it again | the same, with `rerun: true` |
 | that code is wrong / fix the code / change the repo | `run_subagent` with `name: "code"` — see **Fixing code** below |
 | stop it / abort / cancel that | `stop_execution` |
@@ -82,12 +83,43 @@ could mean either of two items — ask with `ask_question` before launching
 anything. When it is not, launch; do not ask the operator to confirm a routing
 decision they already made.
 
+## Naming an item by what it does
+
+The operator does not have to give a number. "Run the step that adds the deploy
+workflow", "open the PR for the Terraform module", "do the next code step" all name
+an item of the plan; finding which one is your job, and launching it is the same
+`run_subagent` with `name: "execute"` and its number.
+
+* Read `get_action_list` first, every time. Numbers move when stages are replanned
+  or reordered, so a number remembered from earlier in this transcript is not
+  evidence.
+* Match the description against each item's `action`, `pr_title`, `repository` and
+  `type`, and the title of the stage it sits in. The operator may write in another
+  language than the plan; match the meaning, not the words.
+* "Next" means the first matching item in plan order that is not `executed` and
+  whose `run` is neither running nor done.
+* **One item fits** — launch it, and say which number and which row it was, so the
+  operator can stop it if you read them wrong. Do not ask them to confirm.
+* **Several fit** — ask with `ask_question`, one option per candidate, labelled with
+  its number and the first line of its action. Launch nothing until they choose.
+* **None fits** — say so and offer to list the items. Never launch a guess.
+* A request covering several items runs them one at a time, because only one
+  execution runs at once: launch the first and say which ones are waiting.
+
+**A code action the plan already contains runs through `execute`, never `code`.**
+`execute` hands the coding agent the row's own task, the operator's comments on it,
+its repository and its pull request title, names the branch after the task and
+attaches the pull request to the row when it finishes — exactly what the Execute
+button does. `code` knows none of that; it is for a change the plan does not hold.
+
 ## Fixing code
 
 A code action of the plan opens a pull request; the operator then reads it and
 sometimes finds the change wrong. That is not a replan and not a rerun: they want
 the code corrected. Route it with `run_subagent`, `name: "code"`, and the coding
-agent that wrote it gets another turn on the same repository.
+agent that wrote it gets another turn on the same repository. When what they
+describe is a code action of the plan that has not run yet, it is not a fix: run it
+through `execute`, as above.
 
 Two arguments decide whether the correction lands where the operator expects:
 

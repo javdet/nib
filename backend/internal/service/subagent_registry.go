@@ -139,8 +139,11 @@ func init() {
 			Description: "Carries out one item of the action plan -- an action, a verification check or a " +
 				"rollback entry -- named by the number the operator sees beside it. A code action goes to " +
 				"the coding agent in a container and opens a pull request; anything else goes to an agent " +
-				"that carries it out and posts its result into this chat. Returns as soon as the work " +
-				"starts. Only one execution runs at a time.",
+				"that carries it out and posts its result into this chat. When the operator describes the item " +
+				"rather than numbering it, find its number in get_action_list first. A code action of the plan is " +
+				"launched here, not through code: this hands the coding agent the row's own task, comments and " +
+				"repository and records the pull request on the row, as the Execute button does. Returns as soon " +
+				"as the work starts. Only one execution runs at a time.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
 				return s.launchExecuteSubagent(ctx, rootID, req.Item, req.Rerun)
 			},
@@ -152,7 +155,8 @@ func init() {
 			Description: "Makes a change to a repository: hands it to the coding agent in a container, " +
 				"which commits on a branch and opens a pull request. Launch it when the operator asks for " +
 				"code to be written, fixed or changed outside the action plan -- typically because they have " +
-				"read what a code action produced and found it wrong. Name the branch an earlier code action " +
+				"read what a code action produced and found it wrong. Not for a code action the plan already " +
+				"contains: run that one through execute. Name the branch an earlier code action " +
 				"pushed to and the fix lands on top of it, in the pull request already open; omit the branch " +
 				"for a change of its own. Returns as soon as the container starts; the result is posted into " +
 				"this chat. Only one execution runs at a time.",

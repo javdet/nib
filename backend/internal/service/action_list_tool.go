@@ -23,7 +23,9 @@ func GetActionListToolDef() llm.ToolDef {
 			"Each action and check carries the `number` the operator sees next to it in the web interface, and both are executable. " +
 			"`executed` is the operator's checkbox; `run` is the last sub-agent attempt, which is a weaker claim. " +
 			"`notes` is what the last run of that action reported: the concrete values it produced -- an id, a name, " +
-			"an address, a branch -- which is where to look for anything an earlier action created.",
+			"an address, a branch -- which is where to look for anything an earlier action created. " +
+			"A code action also carries its `repository` and `pr_title`, so an item the operator describes in words " +
+			"rather than by number can be matched to the number it runs under.",
 		Parameters: getActionListParameters,
 	}
 }
@@ -45,14 +47,17 @@ type actionListAction struct {
 	Type    string `json:"type"`
 	Action  string `json:"action"`
 	Command string `json:"command,omitempty"`
-	PRTitle string `json:"pr_title,omitempty"`
-	PRURL   string `json:"pr_url,omitempty"`
+	// Repository is what tells two code actions apart when the operator names
+	// one by what it changes rather than by its number.
+	Repository string `json:"repository,omitempty"`
+	PRTitle    string `json:"pr_title,omitempty"`
+	PRURL      string `json:"pr_url,omitempty"`
 	// Executed is the operator's checkbox: their judgement that the action is
 	// genuinely done. Nothing sets it automatically.
 	Executed bool `json:"executed"`
 	// Downtime and Degraded carry the impact the planner declared for this
-	// action. Unlike categories and repository, which this projection drops as
-	// planning detail, an agent about to carry an action out has to know that
+	// action. Unlike categories, which this projection drops as planning
+	// detail, an agent about to carry an action out has to know that
 	// running it takes the system down.
 	Downtime string `json:"downtime,omitempty"`
 	Degraded string `json:"degraded,omitempty"`
@@ -283,17 +288,18 @@ func buildActionListResponse(
 			key := actionPlanItemKey(stageIdx, ActionPlanScopeSteps, stepIdx)
 			_, executed := checked[key]
 			stageResp.Actions = append(stageResp.Actions, actionListAction{
-				Number:   actionPlanItemNumber(stageIdx, ActionPlanScopeSteps, stepIdx),
-				Type:     step.Type,
-				Action:   step.Action,
-				Command:  step.Command,
-				PRTitle:  step.PRTitle,
-				PRURL:    step.PRURL,
-				Downtime: step.Downtime,
-				Degraded: step.Degraded,
-				Executed: executed,
-				Run:      actionListRunFor(execRuns, key),
-				Notes:    notes[key],
+				Number:     actionPlanItemNumber(stageIdx, ActionPlanScopeSteps, stepIdx),
+				Type:       step.Type,
+				Action:     step.Action,
+				Command:    step.Command,
+				Repository: step.Repository,
+				PRTitle:    step.PRTitle,
+				PRURL:      step.PRURL,
+				Downtime:   step.Downtime,
+				Degraded:   step.Degraded,
+				Executed:   executed,
+				Run:        actionListRunFor(execRuns, key),
+				Notes:      notes[key],
 			})
 		}
 		for checkIdx, check := range stage.Checks {
@@ -314,17 +320,18 @@ func buildActionListResponse(
 		key := fmt.Sprintf("rollback.%d", idx)
 		_, executed := checked[key]
 		resp.Rollback = append(resp.Rollback, actionListAction{
-			Number:   actionPlanRollbackNumber(idx),
-			Type:     step.Type,
-			Action:   step.Action,
-			Command:  step.Command,
-			PRTitle:  step.PRTitle,
-			PRURL:    step.PRURL,
-			Downtime: step.Downtime,
-			Degraded: step.Degraded,
-			Executed: executed,
-			Run:      actionListRunFor(execRuns, key),
-			Notes:    notes[key],
+			Number:     actionPlanRollbackNumber(idx),
+			Type:       step.Type,
+			Action:     step.Action,
+			Command:    step.Command,
+			Repository: step.Repository,
+			PRTitle:    step.PRTitle,
+			PRURL:      step.PRURL,
+			Downtime:   step.Downtime,
+			Degraded:   step.Degraded,
+			Executed:   executed,
+			Run:        actionListRunFor(execRuns, key),
+			Notes:      notes[key],
 		})
 	}
 	return resp

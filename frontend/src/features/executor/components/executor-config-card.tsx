@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react'
-import { Box, ChevronDown, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router'
+import { Box, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -67,6 +68,20 @@ function firstEnabled<T extends string>(
 }
 
 type SaveStatus = 'idle' | 'saved' | 'failed'
+
+// Shown under a secret picker with nothing selected: credentials are picked
+// from Variables → Secrets, so an operator without one yet needs a way there.
+function CreateSecretLink() {
+	return (
+		<Link
+			to="/variables?tab=secrets&new=1"
+			className="inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+		>
+			<Plus className="h-3 w-3" />
+			Create secret
+		</Link>
+	)
+}
 
 export function ExecutorConfigCard() {
 	const typeId = useId()
@@ -520,6 +535,7 @@ export function ExecutorConfigCard() {
 												</option>
 											))}
 										</Select>
+										{!kubernetesTokenSecretName && <CreateSecretLink />}
 									</div>
 									<div className="space-y-2 sm:col-span-2">
 										<Label htmlFor={kubernetesCACertId}>
@@ -645,6 +661,7 @@ export function ExecutorConfigCard() {
 												</option>
 											))}
 										</Select>
+										{!tokenSecretName && <CreateSecretLink />}
 									</div>
 									<div className="space-y-2">
 										<Label htmlFor={baseURLId}>Base URL</Label>
@@ -676,6 +693,7 @@ export function ExecutorConfigCard() {
 											</option>
 										))}
 									</Select>
+									{!tokenSecretName && <CreateSecretLink />}
 								</div>
 							)}
 						</div>
@@ -700,6 +718,7 @@ export function ExecutorConfigCard() {
 										</option>
 									))}
 								</Select>
+								{!gitTokenSecretName && <CreateSecretLink />}
 								<p className="text-xs text-muted-foreground">
 									{showKubernetes
 										? 'Optional here: an agent Job reads its credentials from the Agent Secret instead.'
@@ -825,6 +844,9 @@ export function ExecutorConfigCard() {
 												</option>
 											))}
 										</Select>
+										{registryUsername && !registryPasswordSecretName && (
+											<CreateSecretLink />
+										)}
 									</div>
 								</div>
 							)}
