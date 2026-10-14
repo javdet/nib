@@ -16,6 +16,7 @@ import {
 	FormMessage,
 } from '@/components/ui/form'
 import { extractErrorMessage } from '@/lib/api-client'
+import { useUnsavedChanges } from '@/lib/unsaved-changes'
 import {
 	type CompanyInfo,
 	getCompany,
@@ -100,6 +101,7 @@ export function CompanyInfoCard() {
 		() => savedValues !== null && !formValuesEqual(watchedValues, savedValues),
 		[savedValues, watchedValues],
 	)
+	useUnsavedChanges(dirty)
 
 	useEffect(() => {
 		async function load() {

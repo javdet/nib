@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { extractErrorMessage } from '@/lib/api-client'
+import { useUnsavedChanges } from '@/lib/unsaved-changes'
 import { getDiscussPrompt, updateDiscussPrompt } from '../api/knowledge'
 
 export function DiscussPromptCard() {
@@ -14,6 +15,7 @@ export function DiscussPromptCard() {
 	const [error, setError] = useState<string | null>(null)
 
 	const isDirty = content !== savedContent
+	useUnsavedChanges(isDirty)
 
 	useEffect(() => {
 		let cancelled = false

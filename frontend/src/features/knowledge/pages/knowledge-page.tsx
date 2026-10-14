@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { extractErrorMessage } from '@/lib/api-client'
+import { useUnsavedChanges } from '@/lib/unsaved-changes'
 import {
 	type KnowledgeCollection,
 	DEFAULT_COLLECTION,
@@ -30,6 +31,9 @@ export function KnowledgePage() {
 	const [collections, setCollections] = useState<KnowledgeCollection[]>([])
 	const [collection, setCollection] = useState(projectCollection)
 	const [repositories, setRepositories] = useState('')
+	// The list last handed to the agent: once sent it is in the chat, so leaving
+	// the page loses nothing until it is edited again.
+	const [sentRepositories, setSentRepositories] = useState('')
 	const [loading, setLoading] = useState(true)
 	const [uploading, setUploading] = useState(false)
 	const [generating, setGenerating] = useState(false)
@@ -73,6 +77,11 @@ export function KnowledgePage() {
 		setRepositories('')
 	}, [collection])
 
+	useUnsavedChanges(
+		parseRepositoryList(repositories).length > 0 &&
+			repositories !== sentRepositories,
+	)
+
 	const handleUpload = useCallback(
 		async (file: File) => {
 			setUploading(true)
@@ -113,6 +122,7 @@ export function KnowledgePage() {
 			})
 			setActiveDialogId(dialog.id)
 			bumpDialogsVersion()
+			setSentRepositories(repositories)
 		} catch (err) {
 			setError(extractErrorMessage(err))
 		} finally {

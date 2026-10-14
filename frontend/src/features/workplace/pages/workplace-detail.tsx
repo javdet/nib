@@ -38,6 +38,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { MarkdownMessage } from '@/components/markdown-message'
+import { ScrollToTopButton } from '@/components/scroll-to-top-button'
 import { PlanOriginLink } from '@/features/incidents/components/plan-origin-link'
 import { cn } from '@/lib/utils'
 import { downloadTextFile } from '@/lib/download'
@@ -1809,6 +1810,9 @@ export function WorkplaceDetail() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* -mt-6 cancels the space-y gap this last child adds to the card above. */}
+			<ScrollToTopButton className="-mt-6" />
 		</div>
 	)
 }

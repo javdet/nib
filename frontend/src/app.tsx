@@ -1,7 +1,16 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router'
+import {
+	Navigate,
+	Outlet,
+	Route,
+	RouterProvider,
+	createBrowserRouter,
+	createRoutesFromElements,
+	useLocation,
+} from 'react-router'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppLayout } from '@/components/layout/app-layout'
+import { UnsavedChangesGuard } from '@/components/unsaved-changes-guard'
 import { AuthGate } from '@/features/auth/components/auth-gate'
 
 const KnowledgePage = lazy(() =>
@@ -78,38 +87,52 @@ function PageFallback() {
 	)
 }
 
+function Root() {
+	return (
+		<AuthGate>
+			<UnsavedChangesGuard>
+				<Suspense fallback={<PageFallback />}>
+					<Outlet />
+				</Suspense>
+			</UnsavedChangesGuard>
+		</AuthGate>
+	)
+}
+
+// A data router rather than <BrowserRouter>: useBlocker, which the unsaved
+// changes guard needs to stop in-app navigation, works only under one.
+const router = createBrowserRouter(
+	createRoutesFromElements(
+		<Route element={<Root />}>
+			<Route element={<AppLayout />}>
+				<Route path="/" element={<Navigate to="/workplace" replace />} />
+				<Route path="/workplace" element={<WorkplacePage />} />
+				<Route path="/workplace/:id" element={<WorkplaceDetail />} />
+				<Route path="/incidents" element={<IncidentsPage />} />
+				<Route path="/incidents/:id" element={<IncidentDetail />} />
+				<Route path="/projects" element={<Navigate to="/workplace" replace />} />
+				<Route path="/projects/:id" element={<Navigate to="/workplace" replace />} />
+				<Route path="/dialogs" element={<Navigate to="/workplace" replace />} />
+				<Route path="/knowledge" element={<KnowledgePage />} />
+				<Route path="/plans" element={<PlansPage />} />
+				<Route path="/rules" element={<RulesPage />} />
+				<Route path="/tools" element={<ToolsPage />} />
+				<Route path="/skills" element={<SkillsPage />} />
+				<Route path="/variables" element={<VariablesPage />} />
+				<Route path="/statistics" element={<StatisticsPage />} />
+				<Route path="/system-tools" element={<SystemToolsPage />} />
+				<Route path="/task-tracker" element={<RedirectToTools />} />
+				<Route path="/mcp-connections" element={<RedirectToTools />} />
+				<Route path="/base" element={<RedirectToTools />} />
+			</Route>
+		</Route>,
+	),
+)
+
 export function App() {
 	return (
 		<TooltipProvider delayDuration={400} skipDelayDuration={300}>
-			<BrowserRouter>
-				<AuthGate>
-					<Suspense fallback={<PageFallback />}>
-						<Routes>
-							<Route element={<AppLayout />}>
-								<Route path="/" element={<Navigate to="/workplace" replace />} />
-								<Route path="/workplace" element={<WorkplacePage />} />
-								<Route path="/workplace/:id" element={<WorkplaceDetail />} />
-								<Route path="/incidents" element={<IncidentsPage />} />
-								<Route path="/incidents/:id" element={<IncidentDetail />} />
-								<Route path="/projects" element={<Navigate to="/workplace" replace />} />
-								<Route path="/projects/:id" element={<Navigate to="/workplace" replace />} />
-								<Route path="/dialogs" element={<Navigate to="/workplace" replace />} />
-								<Route path="/knowledge" element={<KnowledgePage />} />
-								<Route path="/plans" element={<PlansPage />} />
-								<Route path="/rules" element={<RulesPage />} />
-								<Route path="/tools" element={<ToolsPage />} />
-								<Route path="/skills" element={<SkillsPage />} />
-								<Route path="/variables" element={<VariablesPage />} />
-								<Route path="/statistics" element={<StatisticsPage />} />
-								<Route path="/system-tools" element={<SystemToolsPage />} />
-								<Route path="/task-tracker" element={<RedirectToTools />} />
-								<Route path="/mcp-connections" element={<RedirectToTools />} />
-								<Route path="/base" element={<RedirectToTools />} />
-							</Route>
-						</Routes>
-					</Suspense>
-				</AuthGate>
-			</BrowserRouter>
+			<RouterProvider router={router} />
 		</TooltipProvider>
 	)
 }
