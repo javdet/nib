@@ -53,6 +53,10 @@ type SubagentRequest struct {
 	Branch string
 	// PRTitle titles the pull request a code change opens.
 	PRTitle string
+	// OperatorRequest is the operator's own words asking for the DAG or the
+	// action plan to change. Required once the plan has the artifact the launch
+	// would rewrite; see guardPlanChange.
+	OperatorRequest string
 }
 
 // SubagentStatus is how a launch ended, from the orchestrator's point of view.
@@ -109,26 +113,33 @@ func init() {
 	subagentSpecs = []SubagentSpec{
 		{
 			Name:     SubagentDecompose,
-			Params:   []string{"task"},
+			Params:   []string{"task", "operator_request"},
 			Required: []string{"task"},
 			Description: "Works a task out into stages: finds it in the task tracker, decides the " +
 				"action and the location, writes the summary, the DAG and the " +
 				"cross-stage contract, and picks the tool categories the plan will need. Launch it " +
-				"when the operator asks to plan a task or to work on one, and again for every " +
-				"change to the DAG afterwards. It runs to completion inside this call, and may come " +
-				"back asking for a decision you relay.",
+				"when the operator asks to plan a task or to work on one, and again only when the operator " +
+				"asks to change the DAG -- never to work around a failed action. It runs to completion " +
+				"inside this call, and may come back asking for a decision you relay.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
+				if refusal, refused, err := s.guardPlanChange(ctx, rootID, req); err != nil || refused {
+					return refusal, err
+				}
 				return s.launchDecomposeSubagent(ctx, rootID, req.Task)
 			},
 		},
 		{
 			Name:   SubagentPlan,
-			Params: []string{"stages", "rollback"},
+			Params: []string{"stages", "rollback", "operator_request"},
 			Description: "Works the DAG out into an action plan: one planning agent per stage, running " +
 				"in parallel wave by wave, then one more that derives the rollback from every stage " +
-				"once they are written. Name stages to replan only those. Returns as soon as the run " +
-				"starts; each stage reports into this chat as it lands.",
+				"once they are written. Name stages to replan only those. Replanning a stage discards the " +
+				"checks, runs and notes of its rows, so once a plan exists launch it only when the operator " +
+				"asks to replan. Returns as soon as the run starts; each stage reports into this chat as it lands.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
+				if refusal, refused, err := s.guardPlanChange(ctx, rootID, req); err != nil || refused {
+					return refusal, err
+				}
 				return s.launchPlanSubagent(ctx, rootID, req.Stages, req.Rollback)
 			},
 		},

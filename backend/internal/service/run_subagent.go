@@ -81,6 +81,14 @@ func RunSubagentToolDef() llm.ToolDef {
 					"pushed to -- get_action_list reports it -- and the change lands on top of that work, in " +
 					"the pull request already open on it. Omit it for a change of its own on a fresh branch.",
 			},
+			"operator_request": map[string]any{
+				"type": "string",
+				"description": "decompose and plan, once the plan already has a DAG (decompose) or an action plan " +
+					"(plan). The operator's words asking for that change, quoted exactly from their latest message " +
+					"or their answer to your ask_question -- for example \"add a monitoring stage\" or \"yes, replan " +
+					"stage 2\". A report of a failure or a request to fix one is not a request to change the plan. " +
+					"Omit it for the first DAG and the first plan.",
+			},
 			"pr_title": map[string]any{
 				"type": "string",
 				"description": "code only. Title for the pull request. Omit it to let the agent derive one " +
@@ -172,6 +180,9 @@ func parseSubagentRequest(spec SubagentSpec, args map[string]any) (SubagentReque
 	}
 	if _, ok := reads["pr_title"]; ok {
 		req.PRTitle = strings.TrimSpace(argString(args["pr_title"]))
+	}
+	if _, ok := reads["operator_request"]; ok {
+		req.OperatorRequest = strings.TrimSpace(argString(args["operator_request"]))
 	}
 
 	for _, needed := range spec.Required {

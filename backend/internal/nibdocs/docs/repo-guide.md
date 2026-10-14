@@ -523,6 +523,16 @@ generated from the registry in
   `nib/fix-{dialog}`. `run_executor` cannot serve this — its request carries no chat id, so its
   result has nowhere to land, which is also why `actionAgentAllowSet` withdraws it.
 
+Once a plan has a DAG, relaunching **decompose** is guarded, and once it has an action plan,
+relaunching **plan** is guarded too ([subagent_plan_guard.go](backend/internal/service/subagent_plan_guard.go)).
+The orchestrator has to pass `operator_request`, the operator's words asking for the change, and
+the guard refuses a launch whose quote is not in the operator's latest input. That input is their
+last message or their answers to an `ask_question`, never the question's own wording. It exists
+because the model tends to treat a failed action as proof the plan is wrong, and replanning a stage
+throws away the checks, runs and notes recorded on its rows. The plan page's buttons call
+`StartPlanFanout` directly and never pass through this guard. Relaying an answer to a suspended
+decompose is let through.
+
 A stage planner cannot suspend the way decompose does — its turn holds state that is not on disk,
 and the wave it belongs to is waiting on its goroutine — so `report_blocker`
 ([plan_fanout_question.go](backend/internal/service/plan_fanout_question.go)) **blocks inside the
