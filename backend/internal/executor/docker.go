@@ -69,8 +69,9 @@ func (s *Service) runLocal(ctx context.Context, cfg Config, req RunRequest) (Run
 
 	resp, err := cli.ContainerCreate(ctx,
 		&container.Config{
-			Image: cfg.Image,
-			Env:   env,
+			Image:  cfg.Image,
+			Env:    env,
+			Labels: agentContainerLabels(req.PlanID),
 		},
 		&container.HostConfig{
 			AutoRemove: true,

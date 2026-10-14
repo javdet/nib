@@ -96,6 +96,7 @@ export function ExecutorConfigCard() {
 	const agentRequestMemoryId = useId()
 	const agentMCPConfigId = useId()
 	const jobTTLSecondsId = useId()
+	const removeContainersOnPlanCancelId = useId()
 	const [expanded, setExpanded] = useState(true)
 	const [advancedExpanded, setAdvancedExpanded] = useState(false)
 	const [registryExpanded, setRegistryExpanded] = useState(false)
@@ -135,6 +136,8 @@ export function ExecutorConfigCard() {
 	const [registryPasswordSecretName, setRegistryPasswordSecretName] =
 		useState('')
 	const [llmModel, setLlmModel] = useState('')
+	const [removeContainersOnPlanCancel, setRemoveContainersOnPlanCancel] =
+		useState(true)
 	const [secrets, setSecrets] = useState<Secret[]>([])
 
 	// "disabled" turns the executor off entirely, so it is the only setting shown.
@@ -178,7 +181,9 @@ export function ExecutorConfigCard() {
 			registryUsername !== (saved.registryUsername ?? '') ||
 			registryPasswordSecretName !==
 				(saved.registryPasswordSecretName ?? '') ||
-			llmModel !== saved.llmModel)
+			llmModel !== saved.llmModel ||
+			removeContainersOnPlanCancel !==
+				(saved.removeContainersOnPlanCancel ?? true))
 
 	const applyConfig = useCallback((cfg: ExecutorConfig) => {
 		setSaved(cfg)
@@ -211,6 +216,7 @@ export function ExecutorConfigCard() {
 		setRegistryUsername(cfg.registryUsername ?? '')
 		setRegistryPasswordSecretName(cfg.registryPasswordSecretName ?? '')
 		setLlmModel(cfg.llmModel ?? '')
+		setRemoveContainersOnPlanCancel(cfg.removeContainersOnPlanCancel ?? true)
 	}, [])
 
 	const load = useCallback(async () => {
@@ -277,6 +283,9 @@ export function ExecutorConfigCard() {
 					registryUsername,
 					registryPasswordSecretName,
 					llmModel,
+					// Sent unconditionally so switching to another type and back
+					// does not reset the operator's choice; only local acts on it.
+					removeContainersOnPlanCancel,
 				}),
 			)
 			setSaveStatus('saved')
@@ -400,6 +409,31 @@ export function ExecutorConfigCard() {
 									</Select>
 								</div>
 							)}
+						</div>
+					)}
+
+					{!loading && saved && type === 'local' && (
+						<div className="space-y-1 border-t pt-4">
+							<div className="flex items-center gap-2">
+								<Checkbox
+									id={removeContainersOnPlanCancelId}
+									checked={removeContainersOnPlanCancel}
+									onCheckedChange={(value) =>
+										setRemoveContainersOnPlanCancel(value === true)
+									}
+									disabled={saving}
+								/>
+								<Label
+									htmlFor={removeContainersOnPlanCancelId}
+									className="cursor-pointer"
+								>
+									Delete agent containers when a plan is cancelled
+								</Label>
+							</div>
+							<p className="text-xs text-muted-foreground">
+								Cancelling a plan stops its running agent and removes every
+								container it launched, running or finished, with their logs.
+							</p>
 						</div>
 					)}
 

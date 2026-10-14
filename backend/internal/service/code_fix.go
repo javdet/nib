@@ -189,6 +189,7 @@ func (s *ChatService) StartCodeFix(
 		LLMToken:     llmToken,
 		GitUsername:  gitSettings.Username,
 		GitEmail:     gitSettings.Email,
+		PlanID:       rootID.String(),
 	})
 	if err != nil {
 		return dialog, executor.ActionRunResult{}, fmt.Errorf("start code fix: %w", err)

@@ -39,6 +39,7 @@ export interface ExecutorConfig {
 	registryUsername: string
 	registryPasswordSecretName: string
 	llmModel: string
+	removeContainersOnPlanCancel: boolean
 	typeOptions: ExecutorOption<ExecutorType>[]
 	platformOptions: ExecutorOption<ExecutorPlatform>[]
 	kubernetesAuthModeOptions: ExecutorOption<ExecutorKubernetesAuthMode>[]
@@ -74,6 +75,7 @@ export interface ExecutorConfigUpdate {
 	registryUsername: string
 	registryPasswordSecretName: string
 	llmModel: string
+	removeContainersOnPlanCancel: boolean
 }
 
 export function getExecutorConfig(): Promise<ExecutorConfig> {

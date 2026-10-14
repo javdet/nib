@@ -943,10 +943,18 @@ export function WorkplaceDetail() {
 		setPlanAction('cancel')
 		setPlanActionError(null)
 		try {
-			const { status } = await updatePlanStatus(id, 'cancelled')
+			const { status, containerCleanupError } = await updatePlanStatus(
+				id,
+				'cancelled',
+			)
 			setPlanStatus(status)
 			setConfirmCancelOpen(false)
 			bumpDialogsVersion()
+			if (containerCleanupError) {
+				setPlanActionError(
+					`Plan cancelled, but its agent containers could not all be removed: ${containerCleanupError}`,
+				)
+			}
 		} catch (err) {
 			setPlanStatus(prevStatus)
 			setPlanActionError(
@@ -1683,7 +1691,9 @@ export function WorkplaceDetail() {
 						<DialogDescription>
 							The plan is marked CANCELLED and stops there — ticking actions
 							afterwards will not move it on. Nothing already executed is
-							undone.
+							undone. With the local executor set to delete agent containers on
+							cancel, the plan's running agent is stopped and its containers
+							are removed.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

@@ -47,6 +47,8 @@ type ActionRunRequest struct {
 	LLMToken    string
 	GitUsername string
 	GitEmail    string
+	// PlanID is the root dialog the action or fix belongs to; see RunRequest.
+	PlanID string
 }
 
 // ActionRunResult describes the container started for an action run.
@@ -139,8 +141,9 @@ func (s *Service) runActionLocal(ctx context.Context, cfg Config, req ActionRunR
 
 	resp, err := cli.ContainerCreate(ctx,
 		&container.Config{
-			Image: cfg.Image,
-			Env:   buildActionRunEnv(cfg, s.secrets, req, jobName),
+			Image:  cfg.Image,
+			Env:    buildActionRunEnv(cfg, s.secrets, req, jobName),
+			Labels: agentContainerLabels(req.PlanID),
 		},
 		// AutoRemove stays off: nothing is reported back to the chat yet, so the
 		// container logs are the only record of what the agent did.

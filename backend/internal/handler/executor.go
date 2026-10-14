@@ -44,6 +44,9 @@ type executorConfigPayload struct {
 	RegistryUsername                string                      `json:"registryUsername"`
 	RegistryPasswordSecretName      string                      `json:"registryPasswordSecretName"`
 	LLMModel                        string                      `json:"llmModel"`
+	// A pointer so a client that predates the setting leaves it on rather
+	// than turning it off by omission.
+	RemoveContainersOnPlanCancel *bool `json:"removeContainersOnPlanCancel"`
 }
 
 type executorConfigResponse struct {
@@ -74,6 +77,7 @@ type executorConfigResponse struct {
 	RegistryUsername                string                              `json:"registryUsername"`
 	RegistryPasswordSecretName      string                              `json:"registryPasswordSecretName"`
 	LLMModel                        string                              `json:"llmModel"`
+	RemoveContainersOnPlanCancel    bool                                `json:"removeContainersOnPlanCancel"`
 	TypeOptions                     []executor.TypeOption               `json:"typeOptions"`
 	PlatformOptions                 []executor.PlatformOption           `json:"platformOptions"`
 	KubernetesAuthModeOptions       []executor.KubernetesAuthModeOption `json:"kubernetesAuthModeOptions"`
@@ -110,6 +114,7 @@ func newExecutorConfigResponse(cfg executor.Config) executorConfigResponse {
 		RegistryUsername:                cfg.RegistryUsername,
 		RegistryPasswordSecretName:      cfg.RegistryPasswordSecretName,
 		LLMModel:                        cfg.LLMModel,
+		RemoveContainersOnPlanCancel:    cfg.RemoveContainersOnPlanCancel,
 		TypeOptions:                     executor.TypeOptions,
 		PlatformOptions:                 executor.PlatformOptions,
 		KubernetesAuthModeOptions:       executor.KubernetesAuthModeOptions,
@@ -163,6 +168,7 @@ func (h *ExecutorHandler) UpdateConfig() http.HandlerFunc {
 			RegistryUsername:                req.RegistryUsername,
 			RegistryPasswordSecretName:      req.RegistryPasswordSecretName,
 			LLMModel:                        req.LLMModel,
+			RemoveContainersOnPlanCancel:    req.RemoveContainersOnPlanCancel == nil || *req.RemoveContainersOnPlanCancel,
 		}); err != nil {
 			handleServiceError(w, err)
 			return

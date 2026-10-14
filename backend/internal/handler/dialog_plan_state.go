@@ -94,15 +94,8 @@ func (h *DialogHandler) SetPlanStatus() http.HandlerFunc {
 			return
 		}
 
-		status := service.ActionPlanStatus(req.Status)
-		state, err := h.chatSvc.ReadPlanState(id)
+		change, err := h.chatSvc.SetPlanStatus(r.Context(), id, service.ActionPlanStatus(req.Status))
 		if err != nil {
-			handleServiceError(w, err)
-			return
-		}
-
-		state.Status = status
-		if err := h.chatSvc.WritePlanState(id, state); err != nil {
 			if strings.Contains(err.Error(), "invalid action plan status") {
 				writeError(w, http.StatusBadRequest, err.Error())
 				return
@@ -111,8 +104,17 @@ func (h *DialogHandler) SetPlanStatus() http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status": state.Status,
-		})
+		resp := map[string]any{
+			"status": change.Status,
+		}
+		if change.ContainersRemoved > 0 {
+			resp["containersRemoved"] = change.ContainersRemoved
+		}
+		// The status is saved either way, so a failed cleanup is reported
+		// beside it rather than as the request failing.
+		if change.CleanupErr != nil {
+			resp["containerCleanupError"] = change.CleanupErr.Error()
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }

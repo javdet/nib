@@ -248,6 +248,10 @@ type Config struct {
 	// WebhookBaseURL is the backend origin the agent container calls back on
 	// (scheme + host + port, no path). WEBHOOK_URL is derived from it at launch.
 	WebhookBaseURL string `json:"webhookBaseURL"`
+	// RemoveContainersOnPlanCancel removes a plan's agent containers, running or
+	// exited, when the operator cancels the plan. Local Docker only; on by
+	// default, so a file written before the setting existed reads as true.
+	RemoveContainersOnPlanCancel bool `json:"removeContainersOnPlanCancel"`
 }
 
 // Secrets holds executor credentials loaded from environment variables. The git
@@ -276,6 +280,10 @@ type RunRequest struct {
 	LLMBaseURL  string
 	GitUsername string
 	GitEmail    string
+	// PlanID is the root dialog the run belongs to, stamped on a local
+	// container as a label so cancelling the plan can find it. Empty outside
+	// a plan.
+	PlanID string
 }
 
 // RunResult is returned after a container has been created and started.

@@ -332,7 +332,7 @@ export function CompanyInfoCard() {
 								control={form.control}
 								name="messenger"
 								render={({ field }) => (
-									<FormItem className="sm:col-span-2">
+									<FormItem>
 										<FormLabel>Command messenger</FormLabel>
 										<FormControl>
 											<Input placeholder="Slack" {...field} />

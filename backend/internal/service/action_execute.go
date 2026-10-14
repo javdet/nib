@@ -165,6 +165,7 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 		LLMToken:     llmToken,
 		GitUsername:  gitSettings.Username,
 		GitEmail:     gitSettings.Email,
+		PlanID:       planDialogID.String(),
 	})
 	if err != nil {
 		return dialog, executor.ActionRunResult{}, fmt.Errorf("execute code action: %w", err)

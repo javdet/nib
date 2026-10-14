@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/llm"
 )
@@ -56,12 +57,23 @@ func RunExecutorToolDef() llm.ToolDef {
 	}
 }
 
+// runExecutorHandler binds run_executor to the plan the calling turn works for,
+// stamped on the container so cancelling that plan can remove it.
+func (s *ChatService) runExecutorHandler(planID uuid.UUID) localToolHandler {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		return s.ExecuteRunExecutor(ctx, args, planID)
+	}
+}
+
 // ExecuteRunExecutor resolves configuration and starts an agent-runner task.
 // Validation and resolution failures are returned as tool output so the agent loop can continue.
-func (s *ChatService) ExecuteRunExecutor(ctx context.Context, args map[string]any) (string, error) {
+func (s *ChatService) ExecuteRunExecutor(ctx context.Context, args map[string]any, planID uuid.UUID) (string, error) {
 	req, err := s.resolveRunExecutorRequest(ctx, args)
 	if err != nil {
 		return err.Error(), nil
+	}
+	if planID != uuid.Nil {
+		req.PlanID = planID.String()
 	}
 	if s.executorSvc == nil {
 		return "executor service is not configured", nil

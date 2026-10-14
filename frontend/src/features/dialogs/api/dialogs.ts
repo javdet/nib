@@ -633,11 +633,22 @@ export function updatePlanSchedule(
  * checkbox progress on the server; this is the operator overriding that, which
  * is what finishing and cancelling a plan by hand need.
  */
+export interface PlanStatusUpdate {
+	status: PlanStatus
+	/** Agent containers removed because the plan was cancelled. */
+	containersRemoved?: number
+	/**
+	 * Set when cancelling could not remove every agent container. The status
+	 * is saved regardless, so this is a warning rather than a failure.
+	 */
+	containerCleanupError?: string
+}
+
 export function updatePlanStatus(
 	id: string,
 	status: PlanStatus,
-): Promise<{ status: PlanStatus }> {
-	return api.put<{ status: PlanStatus }>(
+): Promise<PlanStatusUpdate> {
+	return api.put<PlanStatusUpdate>(
 		`/dialogs/${encodeURIComponent(id)}/plan-state/status`,
 		{ status },
 	)

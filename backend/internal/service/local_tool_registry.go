@@ -194,11 +194,11 @@ func registerListVariablesTool(s *ChatService, catalog *toolCatalog, _ toolBindi
 	catalog.tools = append(catalog.tools, ListVariablesToolDef())
 }
 
-func registerRunExecutorTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {
+func registerRunExecutorTool(s *ChatService, catalog *toolCatalog, b toolBinding, allow map[string]struct{}) {
 	if s.executorSvc == nil || !localToolAllowed(allow, RunExecutorToolName) {
 		return
 	}
-	catalog.localHandlers[RunExecutorToolName] = s.ExecuteRunExecutor
+	catalog.localHandlers[RunExecutorToolName] = s.runExecutorHandler(b.planID)
 	catalog.tools = append(catalog.tools, RunExecutorToolDef())
 }
 

@@ -68,7 +68,7 @@ func (s *ConfigStore) initialize() error {
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("stat executor config file: %w", err)
 		}
-		return s.writeConfigLocked(Config{Type: TypeDisabled, Image: ""})
+		return s.writeConfigLocked(Config{Type: TypeDisabled, Image: "", RemoveContainersOnPlanCancel: true})
 	}
 	return nil
 }
@@ -336,6 +336,8 @@ type rawConfig struct {
 	RegistryPasswordSecretName      string             `json:"registryPasswordSecretName"`
 	LLMModel                        string             `json:"llmModel"`
 	WebhookBaseURL                  string             `json:"webhookBaseURL"`
+	// A pointer so a missing key can default to true rather than to false.
+	RemoveContainersOnPlanCancel *bool `json:"removeContainersOnPlanCancel"`
 }
 
 func parseConfig(content string) (Config, error) {
@@ -371,6 +373,7 @@ func parseConfig(content string) (Config, error) {
 		RegistryPasswordSecretName:      raw.RegistryPasswordSecretName,
 		LLMModel:                        raw.LLMModel,
 		WebhookBaseURL:                  raw.WebhookBaseURL,
+		RemoveContainersOnPlanCancel:    raw.RemoveContainersOnPlanCancel == nil || *raw.RemoveContainersOnPlanCancel,
 	}
 	if cfg.Platform == "" && raw.System != "" {
 		cfg.Platform = raw.System

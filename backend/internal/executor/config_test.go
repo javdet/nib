@@ -22,6 +22,9 @@ func TestConfigStoreGetSet(t *testing.T) {
 	if cfg.WebhookBaseURL != "http://localhost:8080" {
 		t.Fatalf("default webhookBaseURL = %q, want http://localhost:8080", cfg.WebhookBaseURL)
 	}
+	if !cfg.RemoveContainersOnPlanCancel {
+		t.Fatal("default removeContainersOnPlanCancel = false, want true")
+	}
 
 	want := Config{
 		Type:           TypeLocal,
@@ -256,5 +259,34 @@ func TestParseConfigGitTokenSecretName(t *testing.T) {
 	}
 	if cfg.GitTokenSecretName != "" {
 		t.Fatalf("parseConfig() gitTokenSecretName = %q, want empty", cfg.GitTokenSecretName)
+	}
+}
+
+func TestParseConfigRemoveContainersOnPlanCancel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		// A file written before the setting existed has to read as on: it is on
+		// by default, and an upgrade must not quietly turn it off.
+		{name: "missing", content: `{"type":"local"}`, want: true},
+		{name: "on", content: `{"type":"local","removeContainersOnPlanCancel":true}`, want: true},
+		{name: "off", content: `{"type":"local","removeContainersOnPlanCancel":false}`, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := parseConfig(tt.content)
+			if err != nil {
+				t.Fatalf("parseConfig() error = %v", err)
+			}
+			if cfg.RemoveContainersOnPlanCancel != tt.want {
+				t.Fatalf("removeContainersOnPlanCancel = %v, want %v", cfg.RemoveContainersOnPlanCancel, tt.want)
+			}
+		})
 	}
 }

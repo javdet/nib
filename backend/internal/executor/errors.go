@@ -38,4 +38,5 @@ var (
 	ErrLogTargetRequired    = errors.New("a job name or a container id is required to read action logs")
 	ErrActionContainerGone  = errors.New("the action container is no longer available; its logs were removed with it")
 	ErrLogsUnsupported      = errors.New("container logs are only available for the local docker executor")
+	ErrPlanIDRequired       = errors.New("a plan id is required to remove a plan's containers")
 )

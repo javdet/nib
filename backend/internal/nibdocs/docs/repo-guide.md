@@ -284,6 +284,14 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   running** and **only on `local`**: remote Kubernetes answers that logs are local-only, and a
   finished run's account is in its execute chat instead. A force stop removes the container, so its
   logs go with it.
+- On `local`, **Delete agent containers when a plan is cancelled** (`removeContainersOnPlanCancel`,
+  on by default, including for an `executor.json` written before it existed) makes **Cancel plan**
+  stop the plan's running container through the execution lease (its row or fix closes as
+  cancelled) and force-remove every container the plan launched, running or exited. Containers
+  are found by the `io.nib.plan` label stamped at launch, plus the ids the plan's `.exec.json` and
+  `code_fixes` records hold for ones launched before the label existed. A failed removal leaves
+  the plan cancelled and is reported beside the status; cancelling again retries it. Remote
+  Kubernetes ignores the setting.
 
 Before the agent starts, the container checks that the git token can push with a
 `git push --dry-run` to the target branch. A token that cannot push fails the run then, not
