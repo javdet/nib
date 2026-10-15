@@ -46,6 +46,19 @@ func (s *ChatService) createDAGHandler(dialogID uuid.UUID) localToolHandler {
 		content := formatDAGMarkdown(raw)
 		relPath := filepath.Join("dags", dialogID.String()+".md")
 
+		previous, hadDAG, err := s.ReadDAG(dialogID)
+		if err != nil {
+			return "", fmt.Errorf("read dag: %w", err)
+		}
+		// Marked before the write, so a failure to mark leaves the old DAG in
+		// place rather than a new one with an action plan nobody will rebuild.
+		stale := false
+		if hadDAG && !sameDAG(previous, content) {
+			if stale, err = s.markActionPlanForRebuild(dialogID); err != nil {
+				return "", err
+			}
+		}
+
 		if err := os.MkdirAll(s.dagsDir, 0o755); err != nil {
 			return "", fmt.Errorf("create dags directory: %w", err)
 		}
@@ -55,8 +68,29 @@ func (s *ChatService) createDAGHandler(dialogID uuid.UUID) localToolHandler {
 			return "", err
 		}
 
+		if stale {
+			return "DAG saved to " + relPath + ". The plan's action list was built for the previous DAG, so it " +
+				"will be discarded and planned again from scratch when you finish; do not ask for it to be replanned.", nil
+		}
 		return "DAG saved to " + relPath, nil
 	}
+}
+
+// sameDAG reports whether two diagrams differ only in layout. A rebuilt action
+// plan costs every check and run recorded on it, so a model re-saving the
+// diagram it already wrote must not trigger one.
+func sameDAG(a, b string) bool {
+	return canonicalDAG(a) == canonicalDAG(b)
+}
+
+func canonicalDAG(markdown string) string {
+	var lines []string
+	for _, line := range strings.Split(formatDAGMarkdown(markdown), "\n") {
+		if line = strings.Join(strings.Fields(line), " "); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // formatDAGMarkdown normalizes mermaid input into a single fenced markdown block.

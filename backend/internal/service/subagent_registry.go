@@ -119,8 +119,9 @@ func init() {
 				"action and the location, writes the summary, the DAG and the " +
 				"cross-stage contract, and picks the tool categories the plan will need. Launch it " +
 				"when the operator asks to plan a task or to work on one, and again only when the operator " +
-				"asks to change the DAG -- never to work around a failed action. It runs to completion " +
-				"inside this call, and may come back asking for a decision you relay.",
+				"asks to change the DAG -- never to work around a failed action. A DAG it changes on a plan " +
+				"that already has an action list discards that list and plans the new DAG from scratch on " +
+				"its own. It runs to completion inside this call, and may come back asking for a decision you relay.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
 				if refusal, refused, err := s.guardPlanChange(ctx, rootID, req); err != nil || refused {
 					return refusal, err

@@ -95,6 +95,13 @@ never as a side effect of something else they asked for.
   the checks, runs and notes recorded against their rows, and `decompose`
   rewrites the stages themselves. Work the operator has already executed
   disappears from the plan.
+* A `decompose` that changes the DAG of a plan that already has an action list
+  discards the **whole** action list — every stage, the rollback, and every
+  check, run, comment and note on them — and plans the new DAG from scratch by
+  itself. Its result says so. Do not launch `plan` after it; relay that the
+  action list is being rebuilt. If the result says the rebuild could not start
+  (an item of this plan was still running), a later `plan` launch with no
+  `stages` does it, once the operator asks.
 * A launch of `decompose` or `plan` on a plan that already has a DAG or an action
   plan has to carry `operator_request`: the operator's words asking for the
   change, quoted exactly from their latest message or from their answer to your

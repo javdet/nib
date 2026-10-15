@@ -246,6 +246,19 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 		return FanoutRun{}, ErrFanoutInProgress
 	}
 
+	// A plan of every stage over an action list built for an older DAG starts
+	// from nothing: replanned in place, stages the new DAG dropped would
+	// survive it, and so would the checks and runs of rows that moved.
+	rebuilt := false
+	if targets.AllStages {
+		if rebuilt, err = s.discardStaleActionPlan(rootID); err != nil {
+			return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
+		}
+		if rebuilt {
+			previous = FanoutRun{}
+		}
+	}
+
 	contract, _, err := s.ReadPlanContract(rootID)
 	if err != nil {
 		// A contract that cannot be parsed costs coordination, not the run.
@@ -266,6 +279,7 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 		RunID:     uuid.NewString(),
 		Status:    FanoutRunRunning,
 		StartedAt: time.Now().Unix(),
+		Rebuilt:   rebuilt,
 	}
 	run.Blockers = carryBlockers(previous.Blockers, running, rollback)
 	// The whole DAG, not just this run's share of it: what a round replans is the

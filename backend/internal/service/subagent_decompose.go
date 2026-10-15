@@ -184,10 +184,17 @@ func (s *ChatService) runDecomposeSubagentTurn(ctx context.Context, rootID, deco
 
 	s.adoptDecomposeTitle(ctx, rootID, decomposeID)
 
-	return SubagentResult{
+	res := SubagentResult{
 		Status:  SubagentCompleted,
 		Summary: resp.Response,
-	}, nil
+	}
+	// Here rather than in create_dag, so a decompose still asking the operator
+	// never has the plan discarded under a DAG it has not settled yet.
+	if notice, next := s.rebuildActionPlanAfterDAGChange(ctx, rootID); notice != "" {
+		res.Summary = strings.TrimSpace(res.Summary + "\n\n" + notice)
+		res.Next = next
+	}
+	return res, nil
 }
 
 // decomposeSubagentAllowSet is the decompose allow set narrowed for a sub-agent.

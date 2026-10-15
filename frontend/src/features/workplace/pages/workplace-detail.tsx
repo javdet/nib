@@ -350,6 +350,9 @@ export function WorkplaceDetail() {
 		const close = openDialogActivity(id, (ev) => {
 			if (ev.kind === 'action_plan_updated') {
 				setLiveActionPlanVersion((v) => v + 1)
+				// A DAG change discards the plan with its run records, which
+				// would otherwise keep their badges until a reload.
+				void getActionPlanExecRuns(id).then(setExecRuns).catch(() => {})
 				return
 			}
 			// The report is written by a sub-agent minutes after Finish, so this

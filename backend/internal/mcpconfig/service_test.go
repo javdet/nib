@@ -188,7 +188,13 @@ func TestStructuredEditsPreserveUnmodelledContent(t *testing.T) {
 
 	t.Run("clearing a field removes it", func(t *testing.T) {
 		svc := seededService(t, original)
-		if err := svc.UpdateServer("gw", "gw", ServerEntry{Command: "npx", Args: []string{"-y", "gw"}}); err != nil {
+		if err := svc.UpdateServer("gw", "gw", ServerEntry{
+			URL:         "https://gw.example.com/mcp",
+			Description: "gateway",
+		}); err != nil {
+			t.Fatalf("UpdateServer: %v", err)
+		}
+		if err := svc.UpdateServer("gw", "gw", ServerEntry{URL: "https://gw.example.com/mcp"}); err != nil {
 			t.Fatalf("UpdateServer: %v", err)
 		}
 
@@ -196,8 +202,8 @@ func TestStructuredEditsPreserveUnmodelledContent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetServer: %v", err)
 		}
-		if server.URL != "" {
-			t.Errorf("URL = %q, want it cleared", server.URL)
+		if server.Description != "" {
+			t.Errorf("Description = %q, want it cleared", server.Description)
 		}
 	})
 
@@ -207,6 +213,35 @@ func TestStructuredEditsPreserveUnmodelledContent(t *testing.T) {
 			t.Fatalf("DeleteServer error = %v, want ErrNotFound", err)
 		}
 	})
+}
+
+// The dialog may only save servers nib can reach: mcpclient has no stdio
+// transport, so a command-only entry would save and then never be contacted.
+func TestStructuredSaveRequiresURL(t *testing.T) {
+	const original = `{"mcpServers": {"gw": {"url": "https://gw.example.com/mcp"}}}`
+	stdio := ServerEntry{Command: "npx", Args: []string{"-y", "gw"}}
+
+	tests := []struct {
+		name string
+		save func(*Service) error
+	}{
+		{"add", func(svc *Service) error { return svc.AddServer("kb", stdio) }},
+		{"update", func(svc *Service) error { return svc.UpdateServer("gw", "gw", stdio) }},
+		{"blank url", func(svc *Service) error {
+			return svc.UpdateServer("gw", "gw", ServerEntry{URL: "  "})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := seededService(t, original)
+			if err := tt.save(svc); !errors.Is(err, ErrStdioNotSupported) {
+				t.Fatalf("error = %v, want ErrStdioNotSupported", err)
+			}
+			if got := readFile(t, svc); got != original {
+				t.Errorf("file content = %s, want it untouched", got)
+			}
+		})
+	}
 }
 
 // Discovery failures reach the handler as ErrDiscoveryFailed carrying the

@@ -44,6 +44,11 @@ type SubagentPause struct {
 // SubagentState is every pause outstanding on one plan.
 type SubagentState struct {
 	Pauses []SubagentPause `json:"pauses,omitempty"`
+	// RebuildActionPlan marks a DAG rewritten under an action plan built for the
+	// one before it. create_dag sets it and the end of the decompose turn acts
+	// on it, not the write itself: decompose may still be asking the operator,
+	// and the first DAG it saves is not necessarily its last.
+	RebuildActionPlan bool `json:"rebuildActionPlan,omitempty"`
 }
 
 func (s *ChatService) subagentMutex(rootID uuid.UUID) *sync.Mutex {

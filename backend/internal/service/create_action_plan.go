@@ -253,29 +253,27 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 		if _, err := s.WriteActionPlan(dialogID, data); err != nil {
 			return "", err
 		}
-
-		checksPath := actionPlanChecksPath(s.actionPlansDir, dialogID)
-		_ = os.Remove(checksPath)
-
-		commentsPath := actionPlanCommentsPath(s.actionPlansDir, dialogID)
-		_ = os.Remove(commentsPath)
-
-		runsPath := actionPlanRunsPath(s.actionPlansDir, dialogID)
-		_ = os.Remove(runsPath)
-
-		execPath := actionPlanExecPath(s.actionPlansDir, dialogID)
-		_ = os.Remove(execPath)
-
-		notesPath := actionPlanNotesPath(s.actionPlansDir, dialogID)
-		_ = os.Remove(notesPath)
-
-		// Stopped before the record goes, so the slot it held is released and the
-		// chat says why the run did not finish.
-		s.stopStageRunForPlanEdit(dialogID, nil)
-		_ = os.Remove(stageRunPath(s.actionPlansDir, dialogID))
+		s.clearActionPlanItemState(dialogID)
 
 		return "Action plan saved to " + relPath + unknownCategoryNote(unknown, valid), nil
 	}
+}
+
+// clearActionPlanItemState removes everything recorded against the rows of a
+// plan that has just been replaced as a whole: checks, comments, runs, exec
+// records, notes and the stage run. They are keyed by position, and the rows at
+// those positions are different work now.
+func (s *ChatService) clearActionPlanItemState(dialogID uuid.UUID) {
+	_ = os.Remove(actionPlanChecksPath(s.actionPlansDir, dialogID))
+	_ = os.Remove(actionPlanCommentsPath(s.actionPlansDir, dialogID))
+	_ = os.Remove(actionPlanRunsPath(s.actionPlansDir, dialogID))
+	_ = os.Remove(actionPlanExecPath(s.actionPlansDir, dialogID))
+	_ = os.Remove(actionPlanNotesPath(s.actionPlansDir, dialogID))
+
+	// Stopped before the record goes, so the slot it held is released and the
+	// chat says why the run did not finish.
+	s.stopStageRunForPlanEdit(dialogID, nil)
+	_ = os.Remove(stageRunPath(s.actionPlansDir, dialogID))
 }
 
 func writeActionPlanFile(path string, content []byte) error {

@@ -96,6 +96,9 @@ type FanoutRun struct {
 	Stages     []FanoutStage   `json:"stages"`
 	Blockers   []PlanBlocker   `json:"blockers,omitempty"`
 	Error      string          `json:"error,omitempty"`
+	// Rebuilt marks a run that discarded an action plan built for an older DAG
+	// before it started, so it plans over nothing rather than over that plan.
+	Rebuilt bool `json:"rebuilt,omitempty"`
 }
 
 // Active reports whether a run still owns the plan, so a second fan-out over the

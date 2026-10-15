@@ -356,7 +356,7 @@ export function ToolsPage() {
 															title={
 																server.url
 																	? 'Discover tools from this server'
-																	: 'Tool discovery requires an HTTP URL; stdio/command servers are not supported in the UI.'
+																	: 'Tool discovery requires an HTTP URL; stdio (command) servers are not supported.'
 															}
 														>
 															<Wrench className="mr-1 h-4 w-4" />

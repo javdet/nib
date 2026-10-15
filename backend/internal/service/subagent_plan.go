@@ -164,16 +164,22 @@ func plannedStagesSummary(run FanoutRun) string {
 		stages = append(stages, st.Title)
 	}
 
+	var what string
 	switch {
 	case len(stages) == 0 && rollback:
-		return "redoing the rollback plan"
+		what = "redoing the rollback plan"
 	case rollback:
-		return fmt.Sprintf("planning %s, then redoing the rollback", strings.Join(stages, ", "))
+		what = fmt.Sprintf("planning %s, then redoing the rollback", strings.Join(stages, ", "))
 	case len(stages) > 0:
-		return fmt.Sprintf("planning %s", strings.Join(stages, ", "))
+		what = fmt.Sprintf("planning %s", strings.Join(stages, ", "))
 	default:
-		return "planning started"
+		what = "planning started"
 	}
+	if run.Rebuilt {
+		return "the DAG changed since the action list was built, so it was discarded together with its checks, " +
+			"runs, comments and notes and is being built again from scratch: " + what
+	}
+	return what
 }
 
 // planningInProgressMessage says how far the run that holds the plan has got, so

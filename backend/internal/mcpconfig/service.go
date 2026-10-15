@@ -165,6 +165,9 @@ func (s *Service) AddServer(name string, entry ServerEntry) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
+	if err := requireURL(entry); err != nil {
+		return err
+	}
 
 	doc, err := s.readRawDocLocked()
 	if err != nil {
@@ -198,6 +201,9 @@ func (s *Service) UpdateServer(oldName, newName string, entry ServerEntry) error
 	if err := ValidateName(newName); err != nil {
 		return err
 	}
+	if err := requireURL(entry); err != nil {
+		return err
+	}
 
 	doc, err := s.readRawDocLocked()
 	if err != nil {
@@ -224,6 +230,16 @@ func (s *Service) UpdateServer(oldName, newName string, entry ServerEntry) error
 		return err
 	}
 	s.notifyChange()
+	return nil
+}
+
+// requireURL refuses a structured save without a URL. Only the dialog path is
+// guarded: SetRaw keeps storing whatever valid JSON it is given, so a file
+// shared with another MCP client may still carry its stdio entries.
+func requireURL(entry ServerEntry) error {
+	if strings.TrimSpace(entry.URL) == "" {
+		return ErrStdioNotSupported
+	}
 	return nil
 }
 

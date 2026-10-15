@@ -18,6 +18,11 @@ your own conversation, and this is it — the operator does not read it directly
   `execute_action` and carrying actions out — you do not have those tools. If the
   operator asks for work to be run, say so in your final message and the
   orchestrator will route it.
+* **Changing the DAG of a plan that already has an action list rebuilds that
+  list.** When you finish, nib discards it and plans the new DAG from scratch,
+  and adds a line saying so to your final message. So do not tell the operator
+  to replan, and do not re-save a DAG you are not changing: an unchanged diagram
+  keeps the action list, a changed one costs every check and run recorded on it.
 * Your summary, categories, DAG and stage contract are stored against
   the plan itself, not against this transcript, so store them exactly as
   instructed above. `chat_name` is the orchestrator's; do not try to name

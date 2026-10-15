@@ -12,18 +12,10 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { MCPServer, MCPServerEntry } from '../api/mcp-config'
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
-
-const TRANSPORT_OPTIONS = [
-	{ value: '', label: '(default)' },
-	{ value: 'http', label: 'http' },
-	{ value: 'sse', label: 'sse' },
-	{ value: 'stdio', label: 'stdio' },
-] as const
 
 interface KeyValueRow {
 	id: string
@@ -34,12 +26,8 @@ interface KeyValueRow {
 interface ServerDraft {
 	name: string
 	url: string
-	transport: string
-	command: string
 	description: string
-	args: string[]
 	headers: KeyValueRow[]
-	env: KeyValueRow[]
 }
 
 interface MCPServerDialogProps {
@@ -80,46 +68,27 @@ function serverToDraft(server: MCPServer): ServerDraft {
 	return {
 		name: server.name,
 		url: server.url ?? '',
-		transport: server.transport ?? '',
-		command: server.command ?? '',
 		description: server.description ?? '',
-		args: server.args?.length ? [...server.args] : [''],
 		headers: mapToRows(server.headers),
-		env: mapToRows(server.env),
 	}
 }
 
 const emptyDraft: ServerDraft = {
 	name: '',
 	url: '',
-	transport: '',
-	command: '',
 	description: '',
-	args: [''],
 	headers: [newRow()],
-	env: [newRow()],
 }
 
+// Only streamable HTTP is supported, so the form has no command, args, env or
+// transport: saving an entry that carried them (from the raw editor) drops them.
 function draftToServer(draft: ServerDraft): MCPServer {
-	const entry: MCPServerEntry = {}
-	const url = draft.url.trim()
-	const command = draft.command.trim()
-	const transport = draft.transport.trim()
+	const entry: MCPServerEntry = { url: draft.url.trim() }
 	const description = draft.description.trim()
-
-	if (url) entry.url = url
-	if (transport) entry.transport = transport
-	if (command) entry.command = command
 	if (description) entry.description = description
 
 	const headers = rowsToRecord(draft.headers)
 	if (headers) entry.headers = headers
-
-	const env = rowsToRecord(draft.env)
-	if (env) entry.env = env
-
-	const args = draft.args.map((a) => a.trim()).filter(Boolean)
-	if (args.length > 0) entry.args = args
 
 	return { name: draft.name.trim(), ...entry }
 }
@@ -149,54 +118,24 @@ export function MCPServerDialog({
 		setValidationError(null)
 	}
 
-	function updateKeyValueRows(
-		field: 'headers' | 'env',
-		id: string,
-		patch: Partial<KeyValueRow>,
-	) {
+	function updateHeader(id: string, patch: Partial<KeyValueRow>) {
 		setDraft((prev) => ({
 			...prev,
-			[field]: prev[field].map((row) =>
+			headers: prev.headers.map((row) =>
 				row.id === id ? { ...row, ...patch } : row,
 			),
 		}))
 		setValidationError(null)
 	}
 
-	function addKeyValueRow(field: 'headers' | 'env') {
-		setDraft((prev) => ({
-			...prev,
-			[field]: [...prev[field], newRow()],
-		}))
+	function addHeader() {
+		setDraft((prev) => ({ ...prev, headers: [...prev.headers, newRow()] }))
 	}
 
-	function removeKeyValueRow(field: 'headers' | 'env', id: string) {
+	function removeHeader(id: string) {
 		setDraft((prev) => {
-			const rows = prev[field].filter((row) => row.id !== id)
-			return {
-				...prev,
-				[field]: rows.length > 0 ? rows : [newRow()],
-			}
-		})
-	}
-
-	function updateArg(index: number, value: string) {
-		setDraft((prev) => {
-			const args = [...prev.args]
-			args[index] = value
-			return { ...prev, args }
-		})
-		setValidationError(null)
-	}
-
-	function addArg() {
-		setDraft((prev) => ({ ...prev, args: [...prev.args, ''] }))
-	}
-
-	function removeArg(index: number) {
-		setDraft((prev) => {
-			const args = prev.args.filter((_, i) => i !== index)
-			return { ...prev, args: args.length > 0 ? args : [''] }
+			const headers = prev.headers.filter((row) => row.id !== id)
+			return { ...prev, headers: headers.length > 0 ? headers : [newRow()] }
 		})
 	}
 
@@ -219,74 +158,13 @@ export function MCPServerDialog({
 			setValidationError('A server with this name already exists')
 			return
 		}
-		if (!draft.url.trim() && !draft.command.trim()) {
-			setValidationError('Provide either a URL or a command')
+		if (!draft.url.trim()) {
+			setValidationError('URL is required')
 			return
 		}
 
 		const server = draftToServer(draft)
 		onSave(server, isEditing ? initialServer?.name : undefined)
-	}
-
-	function renderKeyValueSection(
-		field: 'headers' | 'env',
-		label: string,
-		description: string,
-	) {
-		return (
-			<div className="space-y-2">
-				<div>
-					<Label>{label}</Label>
-					<p className="text-xs text-muted-foreground">{description}</p>
-				</div>
-				<div className="space-y-2">
-					{draft[field].map((row) => (
-						<div key={row.id} className="flex gap-2">
-							<Input
-								value={row.key}
-								onChange={(e) =>
-									updateKeyValueRows(field, row.id, {
-										key: e.target.value,
-									})
-								}
-								placeholder="Key"
-								disabled={saving}
-								className="font-mono"
-							/>
-							<Input
-								value={row.value}
-								onChange={(e) =>
-									updateKeyValueRows(field, row.id, {
-										value: e.target.value,
-									})
-								}
-								placeholder="Value"
-								disabled={saving}
-							/>
-							<IconButton
-								type="button"
-								variant="outline"
-								onClick={() => removeKeyValueRow(field, row.id)}
-								disabled={saving}
-								tooltip={`Remove ${label.toLowerCase()} row`}
-							>
-								<Trash2 className="h-4 w-4" />
-							</IconButton>
-						</div>
-					))}
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => addKeyValueRow(field)}
-						disabled={saving}
-					>
-						<Plus className="mr-2 h-4 w-4" />
-						Add row
-					</Button>
-				</div>
-			</div>
-		)
 	}
 
 	return (
@@ -304,8 +182,9 @@ export function MCPServerDialog({
 					<DialogDescription>
 						Configure a server entry in{' '}
 						<span className="font-mono">mcp.json</span>. Use URL for
-						remote servers or command for stdio processes. Any
-						value may reference a secret from Variables → Secrets
+						Nib connects over streamable HTTP only, so register
+						the server&apos;s HTTP endpoint; a stdio server needs an
+						HTTP bridge in front of it. Any value may reference a secret from Variables → Secrets
 						as <span className="font-mono">{'${SECRET_NAME}'}</span>.
 					</DialogDescription>
 				</DialogHeader>
@@ -335,61 +214,45 @@ export function MCPServerDialog({
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor={`${formId}-transport`}>Transport</Label>
-						<Select
-							id={`${formId}-transport`}
-							value={draft.transport}
-							onChange={(e) =>
-								updateDraft({ transport: e.target.value })
-							}
-							disabled={saving}
-						>
-							{TRANSPORT_OPTIONS.map((opt) => (
-								<option key={opt.value || 'default'} value={opt.value}>
-									{opt.label}
-								</option>
-							))}
-						</Select>
-					</div>
-
-					{renderKeyValueSection(
-						'headers',
-						'Headers',
-						'Optional HTTP headers for remote servers. Reference a secret from Variables → Secrets with ${SECRET_NAME}, e.g. Bearer ${MCP_GITHUB_TOKEN}.',
-					)}
-
-					<div className="space-y-2">
-						<Label htmlFor={`${formId}-command`}>Command</Label>
-						<Input
-							id={`${formId}-command`}
-							value={draft.command}
-							onChange={(e) =>
-								updateDraft({ command: e.target.value })
-							}
-							placeholder="npx"
-							disabled={saving}
-							className="font-mono"
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label>Args</Label>
+						<div>
+							<Label>Headers</Label>
+							<p className="text-xs text-muted-foreground">
+								Optional HTTP headers. Reference a secret from
+								Variables → Secrets with{' '}
+								<span className="font-mono">{'${SECRET_NAME}'}</span>,
+								e.g.{' '}
+								<span className="font-mono">
+									{'Bearer ${MCP_GITHUB_TOKEN}'}
+								</span>
+								.
+							</p>
+						</div>
 						<div className="space-y-2">
-							{draft.args.map((arg, index) => (
-								<div key={index} className="flex gap-2">
+							{draft.headers.map((row) => (
+								<div key={row.id} className="flex gap-2">
 									<Input
-										value={arg}
-										onChange={(e) => updateArg(index, e.target.value)}
-										placeholder="-y @upstash/context7-mcp"
+										value={row.key}
+										onChange={(e) =>
+											updateHeader(row.id, { key: e.target.value })
+										}
+										placeholder="Key"
 										disabled={saving}
 										className="font-mono"
+									/>
+									<Input
+										value={row.value}
+										onChange={(e) =>
+											updateHeader(row.id, { value: e.target.value })
+										}
+										placeholder="Value"
+										disabled={saving}
 									/>
 									<IconButton
 										type="button"
 										variant="outline"
-										onClick={() => removeArg(index)}
+										onClick={() => removeHeader(row.id)}
 										disabled={saving}
-										tooltip="Remove argument"
+										tooltip="Remove header row"
 									>
 										<Trash2 className="h-4 w-4" />
 									</IconButton>
@@ -399,20 +262,14 @@ export function MCPServerDialog({
 								type="button"
 								variant="outline"
 								size="sm"
-								onClick={addArg}
+								onClick={addHeader}
 								disabled={saving}
 							>
 								<Plus className="mr-2 h-4 w-4" />
-								Add argument
+								Add row
 							</Button>
 						</div>
 					</div>
-
-					{renderKeyValueSection(
-						'env',
-						'Environment',
-						'Optional environment variables for stdio commands.',
-					)}
 
 					<div className="space-y-2">
 						<Label htmlFor={`${formId}-description`}>Description</Label>

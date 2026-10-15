@@ -533,6 +533,19 @@ throws away the checks, runs and notes recorded on its rows. The plan page's but
 `StartPlanFanout` directly and never pass through this guard. Relaying an answer to a suspended
 decompose is let through.
 
+A DAG that changes under an existing action plan rebuilds that plan from scratch
+([action_plan_rebuild.go](backend/internal/service/action_plan_rebuild.go)). `create_dag` only marks
+it (`rebuildActionPlan` in `data/subagents/{root}.json`) when the new diagram differs from the stored
+one in more than layout and an action plan exists; the rebuild runs when the decompose turn
+*finishes*, so a decompose still asking the operator never loses the plan under a DAG it has not
+settled. Any fan-out of every stage that finds the mark — that one, the plan page's button, or a
+`plan` launch with no stages — first deletes the action plan with its rollback, every positional side
+file, the stage run and the fan-out record (its answered blockers were about the old DAG), puts an
+`in_progress`/`done`/`reopened` plan back to `draft`, and records `rebuilt` on the new run. A stage
+replan does not consume the mark. An item of the plan holding the execution lease holds the discard
+off, since its result would land on whatever row took its position; the mark then stays until a
+later full fan-out finds the plan idle. A code fix does not count, being tied to a branch, not a row.
+
 A stage planner cannot suspend the way decompose does — its turn holds state that is not on disk,
 and the wave it belongs to is waiting on its goroutine — so `report_blocker`
 ([plan_fanout_question.go](backend/internal/service/plan_fanout_question.go)) **blocks inside the

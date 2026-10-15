@@ -2,8 +2,10 @@ package mcpconfig
 
 import "errors"
 
-// ErrStdioNotSupported is returned when tool discovery is requested for a server without an HTTP URL.
-var ErrStdioNotSupported = errors.New("Tool discovery requires an HTTP URL; stdio/command servers are not supported in the UI.")
+// ErrStdioNotSupported is returned when a server without an HTTP URL is saved
+// through the dialog or has its tools listed: mcpclient speaks streamable HTTP
+// only, so a command-only entry would be stored and then never contacted.
+var ErrStdioNotSupported = errors.New("MCP servers need an HTTP URL; stdio (command) servers are not supported")
 
 // ErrInvalidHeader is returned when a header, after ${NAME} substitution, is
 // one net/http would refuse to send. The message names the header and its
