@@ -121,9 +121,20 @@ setup_auth_claude() {
     unset ANTHROPIC_BASE_URL
     unset ANTHROPIC_AUTH_TOKEN
     unset ANTHROPIC_API_KEY
+    # A subscription talks to Anthropic directly, which does not know OpenRouter
+    # ids. Translate one (anthropic/claude-opus-4.5 -> claude-opus-4-5) rather than
+    # dropping it: an unset model silently falls back to the plan's default.
     case "${ANTHROPIC_MODEL:-}" in
-      */*) unset ANTHROPIC_MODEL ;;
+      anthropic/*)
+        ANTHROPIC_MODEL="${ANTHROPIC_MODEL#anthropic/}"
+        export ANTHROPIC_MODEL="${ANTHROPIC_MODEL//./-}"
+        ;;
+      */*)
+        log "WARN: ANTHROPIC_MODEL=${ANTHROPIC_MODEL} is not an Anthropic model; using the subscription default"
+        unset ANTHROPIC_MODEL
+        ;;
     esac
+    log "Model: ${ANTHROPIC_MODEL:-subscription default}"
     return
   fi
 

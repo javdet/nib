@@ -79,7 +79,7 @@ These variables work identically for both agents:
 | `ANTHROPIC_API_KEY` | API key (mapped to `ANTHROPIC_AUTH_TOKEN` for OpenRouter) |
 | `ANTHROPIC_BASE_URL` | Default `https://openrouter.ai/api` |
 | `ANTHROPIC_MODEL` | Default `anthropic/claude-opus-5` |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Anthropic subscription auth (clears OpenRouter defaults) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Anthropic subscription auth (clears OpenRouter defaults; an `anthropic/…` model id is translated to the Anthropic one, any other `provider/…` id falls back to the subscription default) |
 
 ## Codex auth (`AGENT_TYPE=codex`)
 

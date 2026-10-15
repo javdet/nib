@@ -37,12 +37,14 @@ export function PlanProgressBar({ plan, checked }: PlanProgressBarProps) {
 				)}
 			>
 				{keys.length > 0 ? (
-					keys.map((key) => (
+					// Fill from the left by count, not by position: ticking a later step
+					// first must still read as progress from the start of the bar.
+					keys.map((key, index) => (
 						<div
 							key={key}
 							className={cn(
 								'h-full min-w-0 flex-1 rounded-full bg-transparent transition-colors duration-300',
-								checkedSet.has(key) && 'progress-glass-fill',
+								index < done && 'progress-glass-fill',
 							)}
 						/>
 					))
