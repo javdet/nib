@@ -114,3 +114,28 @@ func TestTruncateBytes(t *testing.T) {
 		}
 	})
 }
+
+func TestSanitizeJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "no escape", in: `{"a":"b"}`, want: `{"a":"b"}`},
+		{name: "nul escape", in: `{"a":"x\u0000y"}`, want: `{"a":"xy"}`},
+		{name: "several", in: `["\u0000","\u0000\u0000z"]`, want: `["","z"]`},
+		{name: "escaped backslash", in: `{"a":"\\u0000"}`, want: `{"a":"\\u0000"}`},
+		{name: "escaped quote", in: `{"a":"\"\u0000"}`, want: `{"a":"\""}`},
+		{name: "other escape", in: `{"a":"\u0001"}`, want: `{"a":"\u0001"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := string(SanitizeJSON([]byte(tt.in))); got != tt.want {
+				t.Fatalf("SanitizeJSON(%s) = %s, want %s", tt.in, got, tt.want)
+			}
+		})
+	}
+}

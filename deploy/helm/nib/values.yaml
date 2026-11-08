@@ -33,7 +33,15 @@ secrets:
 ## Backend — Go API server (javdet/nib-backend)
 backend:
   enabled: true
+  ## Keep at 1. The execution lease, run state, locks and the SSE stream are
+  ## shared through Postgres, but the data volume below is ReadWriteOnce and the
+  ## header selection and project tree edits are still held per process.
   replicaCount: 1
+
+  ## Postgres connections the backend holds for advisory locks and its
+  ## LISTEN/NOTIFY listener, on top of its ordinary pool. Each backend process
+  ## adds this many to the server's max_connections budget.
+  coordinationPoolSize: 24
 
   image:
     repository: javdet/nib-backend

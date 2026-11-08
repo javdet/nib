@@ -250,33 +250,12 @@ func (s *ChatService) subagentSystemPrompt(ctx context.Context, modeName, overla
 // dialog and name. Two run_subagent calls in a single round already run in
 // order, since the loop executes tool calls sequentially, so this guards two
 // concurrent turns on the same plan.
-func (s *ChatService) subagentClaim(rootID uuid.UUID, name SubagentName) *tryMutex {
-	key := rootID.String() + "|" + string(name)
-	mu, _ := s.subagentClaims.LoadOrStore(key, &tryMutex{ch: make(chan struct{}, 1)})
-	return mu.(*tryMutex)
-}
-
-// tryMutex is a lock that can be tested rather than waited on. A launch blocked
-// on a claim would hold the whole orchestrator turn, so a busy claim is reported
-// to the model as a refusal instead.
-type tryMutex struct {
-	ch chan struct{}
-}
-
-func (m *tryMutex) tryLock() bool {
-	select {
-	case m.ch <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
-
-func (m *tryMutex) unlock() {
-	select {
-	case <-m.ch:
-	default:
-	}
+//
+// It is tested rather than waited on: a launch blocked on a claim would hold the
+// whole orchestrator turn, so a busy claim is reported to the model as a
+// refusal instead.
+func (s *ChatService) subagentClaim(rootID uuid.UUID, name SubagentName) *namedLock {
+	return s.lockFor("claim:" + rootID.String() + "|" + string(name))
 }
 
 // resolveOrchestratorRoot checks that rootID really is an orchestrator root and

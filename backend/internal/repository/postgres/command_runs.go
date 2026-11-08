@@ -30,15 +30,16 @@ func NewCommandRunRepo(pool *pgxpool.Pool) *CommandRunRepo {
 }
 
 const commandRunColumns = `id, plan_id, dialog_id, action_key, mode, kind, script, isolated, uid,
-	status, exit_code, reason, output_bytes, output_capped, started_at, finished_at, duration_ms`
+	status, exit_code, reason, output_bytes, output_capped, started_at, finished_at, duration_ms, owner`
 
 func (r *CommandRunRepo) InsertCommandRun(ctx context.Context, run domain.CommandRun) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO command_runs (`+commandRunColumns+`)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		run.ID, nullUUID(run.PlanID), nullUUID(run.DialogID), run.ActionKey, run.Mode, string(run.Kind),
 		storedScript(run.Script), run.Isolated, run.UID, string(run.Status), run.ExitCode,
-		textutil.Sanitize(run.Reason), run.OutputBytes, run.OutputCapped, run.StartedAt, run.FinishedAt, run.DurationMS)
+		textutil.Sanitize(run.Reason), run.OutputBytes, run.OutputCapped, run.StartedAt, run.FinishedAt, run.DurationMS,
+		run.Owner)
 	if err != nil {
 		return fmt.Errorf("insert command run: %w", err)
 	}
@@ -96,12 +97,15 @@ func (r *CommandRunRepo) GetCommandRun(ctx context.Context, id uuid.UUID) (domai
 	return run, nil
 }
 
-func (r *CommandRunRepo) MarkRunningCommandRunsLost(ctx context.Context, reason string) (int64, error) {
+func (r *CommandRunRepo) MarkRunningCommandRunsLost(ctx context.Context, reason string, liveOwners []string) (int64, error) {
+	if liveOwners == nil {
+		liveOwners = []string{}
+	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE command_runs
 		    SET status = 'lost', reason = $1, finished_at = now(),
 		        duration_ms = (extract(epoch FROM now() - started_at) * 1000)::bigint
-		  WHERE status = 'running'`, reason)
+		  WHERE status = 'running' AND NOT (owner = ANY($2))`, reason, liveOwners)
 	if err != nil {
 		return 0, fmt.Errorf("mark command runs lost: %w", err)
 	}
@@ -116,7 +120,7 @@ func scanCommandRun(row pgx.Row) (domain.CommandRun, error) {
 	)
 	err := row.Scan(&run.ID, &planID, &dialogID, &run.ActionKey, &run.Mode, &kind, &run.Script,
 		&run.Isolated, &run.UID, &status, &run.ExitCode, &run.Reason, &run.OutputBytes,
-		&run.OutputCapped, &run.StartedAt, &run.FinishedAt, &run.DurationMS)
+		&run.OutputCapped, &run.StartedAt, &run.FinishedAt, &run.DurationMS, &run.Owner)
 	if err != nil {
 		return domain.CommandRun{}, err
 	}

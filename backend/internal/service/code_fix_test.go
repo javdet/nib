@@ -315,7 +315,7 @@ func TestReconcileStuckCodeFixRuns(t *testing.T) {
 		t.Fatalf("recordCodeFixRun: %v", err)
 	}
 
-	closed, err := svc.reconcileStuckCodeFixRuns()
+	closed, err := svc.reconcileStuckCodeFixRuns(func(string) bool { return true })
 	if err != nil {
 		t.Fatalf("reconcileStuckCodeFixRuns: %v", err)
 	}

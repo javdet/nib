@@ -1,16 +1,11 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // SubagentPause records a sub-agent suspended on a question the operator answers
@@ -18,8 +13,8 @@ import (
 //
 // It is persisted rather than held in memory for the same reason a fan-out run
 // is: the operator may answer after a page reload or a restart, and the answer
-// has to find its way back to the transcript waiting for it. Being a file, it
-// needs no database migration.
+// has to find its way back to the transcript waiting for it. It is run state,
+// stored as the plan's "subagents" document.
 type SubagentPause struct {
 	// Subagent names the paused agent, so a later kind that can ask is routed to
 	// its own resume path rather than to decompose's.
@@ -51,42 +46,23 @@ type SubagentState struct {
 	RebuildActionPlan bool `json:"rebuildActionPlan,omitempty"`
 }
 
-func (s *ChatService) subagentMutex(rootID uuid.UUID) *sync.Mutex {
-	mu, _ := s.subagentClaims.LoadOrStore("state|"+rootID.String(), &sync.Mutex{})
-	return mu.(*sync.Mutex)
+func (s *ChatService) subagentMutex(rootID uuid.UUID) *namedLock {
+	return s.lockFor("subagent-state:" + rootID.String())
 }
 
-func (s *ChatService) subagentStatePath(rootID uuid.UUID) string {
-	return filepath.Join(s.subagentsDir, rootID.String()+".json")
-}
-
-// ReadSubagentState returns the pauses recorded for a plan. A missing file is
+// ReadSubagentState returns the pauses recorded for a plan. A missing record is
 // not an error: most plans never suspend a sub-agent.
 func (s *ChatService) ReadSubagentState(rootID uuid.UUID) (SubagentState, bool, error) {
-	b, err := os.ReadFile(s.subagentStatePath(rootID))
-	if errors.Is(err, os.ErrNotExist) {
-		return SubagentState{}, false, nil
-	}
+	var state SubagentState
+	found, err := s.loadRunState(repository.RunStateSubagents, rootID, &state)
 	if err != nil {
 		return SubagentState{}, false, fmt.Errorf("read subagent state: %w", err)
 	}
-
-	var state SubagentState
-	if err := json.Unmarshal(b, &state); err != nil {
-		return SubagentState{}, false, fmt.Errorf("unmarshal subagent state: %w", err)
-	}
-	return state, true, nil
+	return state, found, nil
 }
 
 func (s *ChatService) writeSubagentState(rootID uuid.UUID, state SubagentState) error {
-	if err := os.MkdirAll(s.subagentsDir, 0o755); err != nil {
-		return fmt.Errorf("create subagents directory: %w", err)
-	}
-	data, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("marshal subagent state: %w", err)
-	}
-	if err := atomicfile.Write(s.subagentStatePath(rootID), data); err != nil {
+	if err := s.saveRunState(repository.RunStateSubagents, rootID, state); err != nil {
 		return fmt.Errorf("write subagent state: %w", err)
 	}
 	return nil

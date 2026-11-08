@@ -68,7 +68,7 @@ func (s *ChatService) StartReportAgent(ctx context.Context, planID uuid.UUID) er
 	}
 
 	claim := s.subagentClaim(rootID, reportSubagentName)
-	if !claim.tryLock() {
+	if !claim.TryLock() {
 		// A run is already in flight for this plan. Nobody is waiting on its
 		// result, so there is nothing to report back.
 		return nil
@@ -81,7 +81,7 @@ func (s *ChatService) StartReportAgent(ctx context.Context, planID uuid.UUID) er
 	go func() {
 		defer tracked()
 		defer cancel()
-		defer claim.unlock()
+		defer claim.Unlock()
 		s.runReportAgent(runCtx, rootID)
 	}()
 

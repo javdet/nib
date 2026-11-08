@@ -84,6 +84,7 @@ services:
     environment:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
+      NIB_COORDINATION_POOL_SIZE: ${NIB_COORDINATION_POOL_SIZE:-24}
       METRICS_PORT: 9090
       DB_HOST: postgres
       DB_PORT: 5432

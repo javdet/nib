@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -57,7 +56,7 @@ const (
 // StageRun is the "run all" of one stage: its items executed one after another,
 // each started only once the one before it has finished.
 //
-// It lives in {plan}.stagerun.json, the latest run only. It is deliberately not
+// It is the plan's "stage_run" document, the latest run only. It is deliberately not
 // remapped when a stage is rewritten or reordered: the items are addressed by
 // position, so a structural edit stops the run instead.
 type StageRun struct {
@@ -79,6 +78,10 @@ type StageRun struct {
 	Reason      string         `json:"reason,omitempty"`
 	StartedAt   int64          `json:"startedAt"`
 	FinishedAt  int64          `json:"finishedAt,omitempty"`
+	// Owner is the process that launched Current. A stage run has no goroutine
+	// of its own -- it moves on when an item closes -- so the process that
+	// launched the item is the one whose death strands it.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Active reports whether the run is still going.
@@ -101,29 +104,19 @@ func (s *ChatService) ReadStageRun(planID uuid.UUID) (*StageRun, error) {
 }
 
 func (s *ChatService) readStageRun(planID uuid.UUID) (StageRun, bool, error) {
-	b, err := os.ReadFile(stageRunPath(s.actionPlansDir, planID))
-	if errors.Is(err, os.ErrNotExist) {
-		return StageRun{}, false, nil
-	}
-	if err != nil {
-		return StageRun{}, false, err
-	}
 	var run StageRun
-	if err := json.Unmarshal(b, &run); err != nil {
-		return StageRun{}, false, fmt.Errorf("unmarshal stage run: %w", err)
+	found, err := s.loadRunState(repository.RunStateStageRun, planID, &run)
+	if err != nil {
+		return StageRun{}, false, fmt.Errorf("read stage run: %w", err)
 	}
-	return run, true, nil
+	return run, found, nil
 }
 
 func (s *ChatService) writeStageRun(planID uuid.UUID, run StageRun) error {
-	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
+	if err := s.saveRunState(repository.RunStateStageRun, planID, run); err != nil {
+		return fmt.Errorf("write stage run: %w", err)
 	}
-	data, err := json.Marshal(run)
-	if err != nil {
-		return fmt.Errorf("marshal stage run: %w", err)
-	}
-	return writeActionPlanFile(stageRunPath(s.actionPlansDir, planID), data)
+	return nil
 }
 
 // readStoredActionPlan parses the plan of planID.
@@ -265,9 +258,9 @@ func (s *ChatService) StartStageRun(ctx context.Context, planID uuid.UUID, scope
 		return StageRun{}, fmt.Errorf("start stage run: read exec runs: %w", err)
 	}
 
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	if err := s.stageRunSlotFreeLocked(); err != nil {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return StageRun{}, err
 	}
 	run := StageRun{
@@ -280,13 +273,13 @@ func (s *ChatService) StartStageRun(ctx context.Context, planID uuid.UUID, scope
 		BaseAttempt: execRuns[first].Attempt,
 		Status:      StageRunRunning,
 		StartedAt:   time.Now().Unix(),
+		Owner:       s.replicaID,
 	}
 	if err := s.writeStageRun(planID, run); err != nil {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return StageRun{}, fmt.Errorf("start stage run: %w", err)
 	}
-	s.stageRunActive = planID
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 
 	s.publishStageRun(planID, run)
 
@@ -300,35 +293,49 @@ func (s *ChatService) StartStageRun(ctx context.Context, planID uuid.UUID, scope
 	return run, nil
 }
 
-// stageRunSlotFreeLocked refuses a second run while one is going. The record on
-// disk is the authority: a plan whose files were reset or removed under a
-// running run would otherwise hold the slot for good.
+// stageRunSlotFreeLocked refuses a second run while one is going. The stored
+// records are the authority, every plan's rather than a remembered id: the run
+// may have been started by another process, and a plan whose state was reset
+// under a running run must not hold the slot for good.
 func (s *ChatService) stageRunSlotFreeLocked() error {
-	if s.stageRunActive == uuid.Nil {
-		return nil
+	entries, err := s.listRunningRunStates(repository.RunStateStageRun)
+	if err != nil {
+		return fmt.Errorf("check stage runs: %w", err)
 	}
-	held, found, err := s.readStageRun(s.stageRunActive)
-	if err == nil && found && held.Active() {
-		return fmt.Errorf("%w: %s", ErrStageRunActive, stageRunSubject(held))
+	for _, e := range entries {
+		var held StageRun
+		if err := json.Unmarshal(e.Data, &held); err != nil {
+			continue
+		}
+		if held.Active() {
+			return fmt.Errorf("%w: %s", ErrStageRunActive, stageRunSubject(held))
+		}
 	}
-	s.stageRunActive = uuid.Nil
 	return nil
+}
+
+// stageRunLock guards the "run all" record of every plan. It is one lock for
+// all of them because only one stage run may be going across every plan. It
+// is a leaf: nothing that launches work, appends a message or takes the
+// execution lease runs while it is held.
+func (s *ChatService) stageRunLock() *namedLock {
+	return s.lockFor("stage-runs")
 }
 
 // StopStageRun stops the plan's stage run, and the item it is on with it.
 func (s *ChatService) StopStageRun(ctx context.Context, planID uuid.UUID) (StageRun, error) {
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	run, found, err := s.readStageRun(planID)
 	if err != nil {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return StageRun{}, fmt.Errorf("stop stage run: %w", err)
 	}
 	if !found || !run.Active() {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return StageRun{}, ErrNoStageRunActive
 	}
 	run = s.closeStageRunLocked(planID, run, StageRunStopped, stageRunStoppedByOperator)
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 
 	s.announceStageRun(ctx, planID, run, true)
 
@@ -361,27 +368,27 @@ func (s *ChatService) onPlanItemClosed(planID uuid.UUID, key string) {
 // only the first report of a finished attempt newer than the one the run
 // launched from moves the run on.
 func (s *ChatService) advanceStageRun(planID uuid.UUID, key string) {
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	run, found, err := s.readStageRun(planID)
 	if err != nil || !found || !run.Active() || run.Current != key {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return
 	}
 	execRuns, err := s.ReadActionPlanExecRuns(planID)
 	if err != nil {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		slog.Warn("advance stage run: read exec runs", "plan_id", planID, "error", err)
 		return
 	}
 	rec := execRuns[key]
 	if rec.Active() || rec.Attempt <= run.BaseAttempt {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return
 	}
 
 	if ok, reason := stageRunOutcome(rec, stageRunNumber(key)); !ok {
 		run = s.closeStageRunLocked(planID, run, StageRunStopped, reason)
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		s.announceStageRun(context.Background(), planID, run, true)
 		return
 	}
@@ -389,7 +396,7 @@ func (s *ChatService) advanceStageRun(planID uuid.UUID, key string) {
 	next, status, reason := s.nextStageRunItem(planID, run, key)
 	if next == "" {
 		run = s.closeStageRunLocked(planID, run, status, reason)
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		s.announceStageRun(context.Background(), planID, run, true)
 		return
 	}
@@ -398,14 +405,15 @@ func (s *ChatService) advanceStageRun(planID uuid.UUID, key string) {
 	// the item just finished now names an item the run is no longer on.
 	run.Current = next
 	run.BaseAttempt = execRuns[next].Attempt
+	run.Owner = s.replicaID
 	if err := s.writeStageRun(planID, run); err != nil {
 		run = s.closeStageRunLocked(planID, run, StageRunStopped, "the run could not be recorded")
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		slog.Warn("advance stage run: write", "plan_id", planID, "error", err)
 		s.announceStageRun(context.Background(), planID, run, true)
 		return
 	}
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 
 	s.publishStageRun(planID, run)
 	if err := s.launchStageRunItem(context.Background(), planID, next); err != nil {
@@ -458,14 +466,14 @@ func stageRunLaunchReason(err error, key string) string {
 // is what separates "this launch failed" from a run that has since moved on or
 // been stopped by somebody else.
 func (s *ChatService) stopStageRunAt(planID, runID uuid.UUID, key, reason string, post bool) {
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	run, found, err := s.readStageRun(planID)
 	if err != nil || !found || !run.Active() || run.RunID != runID || run.Current != key {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return
 	}
 	run = s.closeStageRunLocked(planID, run, StageRunStopped, reason)
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 	s.announceStageRun(context.Background(), planID, run, post)
 }
 
@@ -473,14 +481,14 @@ func (s *ChatService) stopStageRunAt(planID, runID uuid.UUID, key, reason string
 // of that item is the operator saying stop, which the run moving on to its next
 // item a moment later would undo.
 func (s *ChatService) stopStageRunOnItem(planID uuid.UUID, key, reason string) {
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	run, found, err := s.readStageRun(planID)
 	if err != nil || !found || !run.Active() || run.Current != key {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return
 	}
 	run = s.closeStageRunLocked(planID, run, StageRunStopped, reason)
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 	s.announceStageRun(context.Background(), planID, run, true)
 }
 
@@ -489,19 +497,19 @@ func (s *ChatService) stopStageRunOnItem(planID uuid.UUID, key, reason string) {
 // nil stops any. The item already running is left to finish: the edit
 // invalidates what comes next, not what is under way.
 func (s *ChatService) stopStageRunForPlanEdit(planID uuid.UUID, match func(StageRun) bool) {
-	s.stageRunMu.Lock()
+	s.stageRunLock().Lock()
 	run, found, err := s.readStageRun(planID)
 	if err != nil || !found || !run.Active() || (match != nil && !match(run)) {
-		s.stageRunMu.Unlock()
+		s.stageRunLock().Unlock()
 		return
 	}
 	run = s.closeStageRunLocked(planID, run, StageRunStopped, stageRunPlanChanged)
-	s.stageRunMu.Unlock()
+	s.stageRunLock().Unlock()
 	s.announceStageRun(context.Background(), planID, run, true)
 }
 
 // closeStageRunLocked ends run and releases the slot. The caller holds
-// stageRunMu and announces the result once it has let go of it.
+// stageRunLock and announces the result once it has let go of it.
 func (s *ChatService) closeStageRunLocked(planID uuid.UUID, run StageRun, status StageRunStatus, reason string) StageRun {
 	run.Status = status
 	run.Reason = reason
@@ -510,9 +518,6 @@ func (s *ChatService) closeStageRunLocked(planID uuid.UUID, run StageRun, status
 		// The slot is released regardless: a record that cannot be written must
 		// not keep every other stage from running.
 		slog.Warn("close stage run", "plan_id", planID, "error", err)
-	}
-	if s.stageRunActive == planID {
-		s.stageRunActive = uuid.Nil
 	}
 	return run
 }

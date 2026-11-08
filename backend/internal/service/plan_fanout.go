@@ -226,6 +226,13 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	if err := s.work.refuse(); err != nil {
 		return FanoutRun{}, err
 	}
+	// Held from the in-progress check to the record that ends it, so two
+	// starts -- from two tabs, or two processes -- cannot both pass the check.
+	// Not the record's own lock: the start rewrites the action plan and the
+	// fan-out record under theirs.
+	start := s.lockFor("fanout-start:" + rootID.String())
+	start.Lock()
+	defer start.Unlock()
 	if _, err := s.dialogRepo.GetDialog(ctx, rootID); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
@@ -285,6 +292,7 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 		Status:    FanoutRunRunning,
 		StartedAt: time.Now().Unix(),
 		Rebuilt:   rebuilt,
+		Owner:     s.replicaID,
 	}
 	run.Blockers = carryBlockers(previous.Blockers, running, rollback)
 	// The whole DAG, not just this run's share of it: what a round replans is the
@@ -420,13 +428,18 @@ func (s *ChatService) runPlanFanout(ctx context.Context, rootID uuid.UUID, waves
 // was stopped.
 func (s *ChatService) CancelPlanFanout(rootID uuid.UUID) bool {
 	v, ok := s.fanoutRuns.LoadAndDelete(rootID)
-	if !ok {
+	if ok {
+		// Every wait selects on this context, so one cancel also unblocks the
+		// stages sitting on a question.
+		v.(*fanoutRunState).cancel()
+		return true
+	}
+	// Running in another process, which alone holds its cancel func.
+	run, found, err := s.ReadFanoutRun(rootID)
+	if err != nil || !found || !run.Active() || run.Owner == "" || run.Owner == s.replicaID {
 		return false
 	}
-	// Every wait selects on this context, so one cancel also unblocks the stages
-	// sitting on a question.
-	v.(*fanoutRunState).cancel()
-	return true
+	return s.relayControl(controlMessage{Op: controlCancelFanout, To: run.Owner, ID: rootID}) == nil
 }
 
 // runPlanStage plans a single stage in a dialog of its own. Every failure is

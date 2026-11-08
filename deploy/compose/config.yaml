@@ -99,8 +99,8 @@ metrics:
   host: "0.0.0.0"
   port: 9090
   path: /metrics
-  # Plans-by-status needs one Postgres query plus one plan_state file read per
-  # plan, so it is refreshed on this interval rather than on every scrape. The
+  # Plans-by-status needs a query for the plans and one for their statuses,
+  # so it is refreshed on this interval rather than on every scrape. The
   # database health probe behind nib_db_up rides along on the same tick.
   refreshSeconds: 30
 

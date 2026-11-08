@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // actionPlanRebuildNext is what the orchestrator is told once a rebuild has
@@ -192,9 +193,9 @@ func (s *ChatService) discardActionPlan(rootID uuid.UUID) error {
 
 	fmu := s.fanoutMutex(rootID)
 	fmu.Lock()
-	err = os.Remove(s.fanoutRunPath(rootID))
+	err = s.dropRunState(repository.RunStateFanout, rootID)
 	fmu.Unlock()
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err != nil {
 		return fmt.Errorf("remove fan-out record: %w", err)
 	}
 

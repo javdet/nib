@@ -20,6 +20,28 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # The database-backed tests (run state, the execution lease, advisory
+    # locks, LISTEN/NOTIFY, migrations) skip without a server. Each package
+    # resets the schema of the database it is given, and packages run in
+    # parallel, so each gets one of its own.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: nib
+          POSTGRES_PASSWORD: nib
+          POSTGRES_DB: nib
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nib"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NIB_POSTGRES_TEST_DSN: postgres://nib:nib@localhost:5432/nib_repo?sslmode=disable
+      NIB_SERVICE_TEST_DSN: postgres://nib:nib@localhost:5432/nib_service?sslmode=disable
+      NIB_MIGRATIONS_TEST_DSN: postgres://nib:nib@localhost:5432/nib_migrations?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -32,6 +54,14 @@ jobs:
 
       - name: Download modules
         run: go mod download
+
+      - name: Create test databases
+        env:
+          PGPASSWORD: nib
+        run: |
+          for db in nib_repo nib_service nib_migrations; do
+            psql -h localhost -U nib -d nib -c "CREATE DATABASE $db"
+          done
 
       - name: Vet
         run: go vet ./...

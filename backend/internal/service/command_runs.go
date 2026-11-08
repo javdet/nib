@@ -33,6 +33,9 @@ const (
 type CommandRunService struct {
 	repo repository.CommandRunRepository
 	jobs *cmdrun.Manager
+
+	self  string
+	relay func(owner string, runID uuid.UUID, reason string) error
 }
 
 func NewCommandRunService(repo repository.CommandRunRepository, jobs *cmdrun.Manager) *CommandRunService {
@@ -108,24 +111,39 @@ func (s *CommandRunService) Output(ctx context.Context, planID, runID uuid.UUID,
 // Cancel is the operator stopping a running command. The agent that started
 // it sees the job end "cancelled by the operator" and carries on.
 func (s *CommandRunService) Cancel(ctx context.Context, planID, runID uuid.UUID) error {
-	if _, err := s.run(ctx, planID, runID); err != nil {
+	run, err := s.run(ctx, planID, runID)
+	if err != nil {
 		return err
 	}
 	if err := s.jobs.CancelByID(runID, cmdrun.ReasonOperator); err != nil {
-		if errors.Is(err, cmdrun.ErrJobNotRunning) {
+		if !errors.Is(err, cmdrun.ErrJobNotRunning) {
+			return fmt.Errorf("cancel command run: %w", err)
+		}
+		// Not running here, but perhaps in the process that started it.
+		if run.Status != domain.CommandRunRunning || run.Owner == "" || run.Owner == s.self || s.relay == nil {
 			return ErrCommandRunNotRunning
 		}
-		return fmt.Errorf("cancel command run: %w", err)
+		if err := s.relay(run.Owner, runID, cmdrun.ReasonOperator); err != nil {
+			return fmt.Errorf("cancel command run: %w", err)
+		}
 	}
 	return nil
 }
 
-// ReconcileLost closes the rows a previous process left running.
-func (s *CommandRunService) ReconcileLost(ctx context.Context) (int64, error) {
+// ReconcileLost closes the rows left running by processes that are gone: every
+// one whose owner is not in liveOwners.
+func (s *CommandRunService) ReconcileLost(ctx context.Context, liveOwners []string) (int64, error) {
 	if s.repo == nil {
 		return 0, nil
 	}
-	return s.repo.MarkRunningCommandRunsLost(ctx, "the server restarted while this was running")
+	return s.repo.MarkRunningCommandRunsLost(ctx, "the server restarted while this was running", liveOwners)
+}
+
+// SetPeerRelay lets Cancel reach a job running in another backend process.
+// self is this process, so a run it owns is never relayed back to it.
+func (s *CommandRunService) SetPeerRelay(self string, relay func(owner string, runID uuid.UUID, reason string) error) {
+	s.self = self
+	s.relay = relay
 }
 
 // run loads one of the plan's runs, preferring the live job's state.

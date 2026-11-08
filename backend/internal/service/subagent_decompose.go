@@ -43,13 +43,13 @@ func (s *ChatService) launchDecomposeSubagent(ctx context.Context, rootID uuid.U
 	}
 
 	claim := s.subagentClaim(rootID, SubagentDecompose)
-	if !claim.tryLock() {
+	if !claim.TryLock() {
 		return SubagentResult{
 			Status:  SubagentRefused,
 			Summary: "the decompose sub-agent is already working on this plan; wait for it to come back",
 		}, nil
 	}
-	defer claim.unlock()
+	defer claim.Unlock()
 
 	decomposeID, err := s.decomposeSubagentDialog(ctx, rootID)
 	if err != nil {

@@ -53,6 +53,7 @@
       "properties": {
         "enabled": { "type": "boolean", "default": true },
         "replicaCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "coordinationPoolSize": { "type": "integer", "minimum": 2, "default": 24 },
         "auth": {
           "type": "object",
           "properties": {

@@ -162,6 +162,7 @@ func (s *ChatService) StartCodeFix(
 		Repository: strings.TrimSpace(req.Repository),
 		Branch:     branch,
 		StartedAt:  time.Now().Unix(),
+		Owner:      s.replicaID,
 	}); err != nil {
 		return dialog, executor.ActionRunResult{}, err
 	}

@@ -149,7 +149,7 @@ func (s *ChatService) StartKBUpdateAgent(ctx context.Context, planID uuid.UUID) 
 	}
 
 	claim := s.subagentClaim(rootID, kbSubagentName)
-	if !claim.tryLock() {
+	if !claim.TryLock() {
 		return nil
 	}
 
@@ -162,17 +162,16 @@ func (s *ChatService) StartKBUpdateAgent(ctx context.Context, planID uuid.UUID) 
 	go func() {
 		defer tracked()
 		defer cancel()
-		defer claim.unlock()
+		defer claim.Unlock()
 		s.runKBUpdateAgent(runCtx, rootID, collection)
 	}()
 
 	return nil
 }
 
-// kbCollectionLock returns the one-slot semaphore guarding a collection.
-func (s *ChatService) kbCollectionLock(collection string) chan struct{} {
-	v, _ := s.kbCollectionLocks.LoadOrStore(collection, make(chan struct{}, 1))
-	return v.(chan struct{})
+// kbCollectionLock returns the lock guarding a collection.
+func (s *ChatService) kbCollectionLock(collection string) *namedLock {
+	return s.lockFor("kb:" + collection)
 }
 
 // runKBUpdateAgent merges a finished plan into its collection in a dialog of its
@@ -184,15 +183,13 @@ func (s *ChatService) runKBUpdateAgent(ctx context.Context, rootID uuid.UUID, co
 	// project would otherwise each write a document built from the text before
 	// the other started. Waiting is free here -- no request is held open -- so
 	// this blocks rather than dropping the second update.
-	sem := s.kbCollectionLock(collection)
-	select {
-	case sem <- struct{}{}:
-		defer func() { <-sem }()
-	case <-ctx.Done():
+	lock := s.kbCollectionLock(collection)
+	if err := lock.LockContext(ctx); err != nil {
 		slog.Warn("kb update agent: gave up waiting for the collection",
 			"plan_id", rootID, "collection", collection)
 		return
 	}
+	defer lock.Unlock()
 
 	before, err := s.kbDocumentFingerprint(ctx, collection)
 	if err != nil {

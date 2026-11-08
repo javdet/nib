@@ -1,15 +1,10 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/atomicfile"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // CodeFixRun is the record of one ad-hoc code fix: a code change the operator
@@ -19,8 +14,8 @@ import (
 // agent-runner webhook needs something durable to recognise the run by: the
 // container outlives the process that started it, so a restart between the
 // launch and the callback must not turn the result into an orphan message in a
-// chat nobody is watching. It is a file rather than a table for the same reason
-// a sub-agent pause is: no migration.
+// chat nobody is watching. It is run state, stored as the chat's "code_fixes"
+// document.
 type CodeFixRun struct {
 	// Status reuses the action statuses -- running, done, failed, cancelled --
 	// because a fix ends in exactly the same ways a code action does.
@@ -41,6 +36,10 @@ type CodeFixRun struct {
 	StartedAt   int64  `json:"startedAt"`
 	FinishedAt  int64  `json:"finishedAt,omitempty"`
 	Error       string `json:"error,omitempty"`
+	// Owner is the backend process that started it. A sweep closes a running
+	// record only once its owner is gone, so one process restarting never
+	// closes what another is still running.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Active reports whether the container is still expected to report back.
@@ -53,29 +52,16 @@ func (r CodeFixRun) Active() bool {
 // the webhook.
 type CodeFixRuns map[string]CodeFixRun
 
-func (s *ChatService) codeFixMutex(rootID uuid.UUID) *sync.Mutex {
-	mu, _ := s.subagentClaims.LoadOrStore("codefix|"+rootID.String(), &sync.Mutex{})
-	return mu.(*sync.Mutex)
+func (s *ChatService) codeFixMutex(rootID uuid.UUID) *namedLock {
+	return s.lockFor("codefix:" + rootID.String())
 }
 
-func (s *ChatService) codeFixPath(rootID uuid.UUID) string {
-	return filepath.Join(s.codeFixesDir, rootID.String()+".json")
-}
-
-// ReadCodeFixRuns returns the fixes recorded against a chat. A missing file is
+// ReadCodeFixRuns returns the fixes recorded against a chat. A missing record is
 // not an error: most conversations never ask for one.
 func (s *ChatService) ReadCodeFixRuns(rootID uuid.UUID) (CodeFixRuns, error) {
-	b, err := os.ReadFile(s.codeFixPath(rootID))
-	if errors.Is(err, os.ErrNotExist) {
-		return CodeFixRuns{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read code fix runs: %w", err)
-	}
-
 	var runs CodeFixRuns
-	if err := json.Unmarshal(b, &runs); err != nil {
-		return nil, fmt.Errorf("unmarshal code fix runs: %w", err)
+	if _, err := s.loadRunState(repository.RunStateCodeFixes, rootID, &runs); err != nil {
+		return nil, fmt.Errorf("read code fix runs: %w", err)
 	}
 	if runs == nil {
 		return CodeFixRuns{}, nil
@@ -87,14 +73,7 @@ func (s *ChatService) writeCodeFixRuns(rootID uuid.UUID, runs CodeFixRuns) error
 	if runs == nil {
 		runs = CodeFixRuns{}
 	}
-	if err := os.MkdirAll(s.codeFixesDir, 0o755); err != nil {
-		return fmt.Errorf("create code_fixes directory: %w", err)
-	}
-	data, err := json.Marshal(runs)
-	if err != nil {
-		return fmt.Errorf("marshal code fix runs: %w", err)
-	}
-	if err := atomicfile.Write(s.codeFixPath(rootID), data); err != nil {
+	if err := s.saveRunState(repository.RunStateCodeFixes, rootID, runs); err != nil {
 		return fmt.Errorf("write code fix runs: %w", err)
 	}
 	return nil

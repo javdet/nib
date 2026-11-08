@@ -54,8 +54,8 @@ the subscription and its response size is every event delivered.
 Statuses are `draft`, `scheduled`, `in_progress`, `done`, `reopened`,
 `rolled_back` and `cancelled`. All seven are published, including zeroes.
 
-Plan status lives in `data/plan_state/{dialogID}.json`, defaulting to `draft`
-when the file is absent, so counting is one query plus one file read per plan.
+Plan status is the plan's `plan_state` document in the `run_state` table,
+defaulting to `draft` when there is none, so counting is two queries.
 It runs on a background refresh every `refreshSeconds`, not at scrape time.
 
 ## Database
@@ -220,14 +220,16 @@ Rows deliberately outlive the dialog they came from: there is no foreign key to
 
 Status history accumulates only from the release that introduced it; plans that
 existed before have no transitions. The current breakdown is still complete,
-because it is counted from the `plan_state` files.
+because it is counted from the `plan_state` documents.
 
 ## Multiple replicas
 
-`nib_execution_lease_held`, `nib_sse_subscribers` and `nib_plans` are
-process-local. They are unambiguous today because the chart pins one backend
-replica; with more they would become per-pod and must not be summed. See [One
-execution at a time](../explanation/one-execution-at-a-time.md).
+The lease is a database row shared by every backend process, and each one
+refreshes `nib_execution_lease_held` from it on its 10-second heartbeat, so every
+pod reports the same value: take `max`, never `sum`. `nib_sse_subscribers` counts
+the streams connected to that pod and does sum. `nib_plans` is counted from the
+database by every pod alike. The chart still runs one backend replica; see
+[Running more than one backend](../explanation/one-execution-at-a-time.md#more-than-one-backend).
 
 ## See also
 

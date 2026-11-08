@@ -57,4 +57,7 @@ type CommandRun struct {
 	StartedAt    time.Time        `json:"started_at"`
 	FinishedAt   *time.Time       `json:"finished_at,omitempty"`
 	DurationMS   int64            `json:"duration_ms"`
+	// Owner is the backend process running it, the only one that can cancel
+	// it or read its live state.
+	Owner string `json:"owner,omitempty"`
 }

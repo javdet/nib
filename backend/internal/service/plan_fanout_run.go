@@ -1,16 +1,11 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/metrics"
+	"github.com/javdet/nib/internal/repository"
 )
 
 type FanoutStageStatus string
@@ -99,6 +94,10 @@ type FanoutRun struct {
 	// Rebuilt marks a run that discarded an action plan built for an older DAG
 	// before it started, so it plans over nothing rather than over that plan.
 	Rebuilt bool `json:"rebuilt,omitempty"`
+	// Owner is the backend process that started it. A sweep closes a running
+	// record only once its owner is gone, so one process restarting never
+	// closes what another is still running.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Active reports whether a run still owns the plan, so a second fan-out over the
@@ -107,46 +106,30 @@ func (r FanoutRun) Active() bool {
 	return r.Status == FanoutRunRunning
 }
 
-func (s *ChatService) fanoutMutex(dialogID uuid.UUID) *sync.Mutex {
-	mu, _ := s.fanoutWriteMu.LoadOrStore(dialogID, &sync.Mutex{})
-	return mu.(*sync.Mutex)
-}
-
-func (s *ChatService) fanoutRunPath(dialogID uuid.UUID) string {
-	return filepath.Join(s.planFanoutDir, dialogID.String()+".json")
+func (s *ChatService) fanoutMutex(dialogID uuid.UUID) *namedLock {
+	return s.lockFor("fanout:" + dialogID.String())
 }
 
 // ReadFanoutRun returns the stored run for a dialog, or false when none exists.
 func (s *ChatService) ReadFanoutRun(dialogID uuid.UUID) (FanoutRun, bool, error) {
-	b, err := os.ReadFile(s.fanoutRunPath(dialogID))
-	if errors.Is(err, os.ErrNotExist) {
-		return FanoutRun{}, false, nil
-	}
-	if err != nil {
-		return FanoutRun{}, false, err
-	}
-
 	var run FanoutRun
-	if err := json.Unmarshal(b, &run); err != nil {
-		return FanoutRun{}, false, fmt.Errorf("unmarshal fanout run: %w", err)
+	found, err := s.loadRunState(repository.RunStateFanout, dialogID, &run)
+	if err != nil {
+		return FanoutRun{}, false, fmt.Errorf("read fanout run: %w", err)
 	}
-	return run, true, nil
+	return run, found, nil
 }
 
 func (s *ChatService) writeFanoutRun(dialogID uuid.UUID, run FanoutRun) error {
-	if err := os.MkdirAll(s.planFanoutDir, 0o755); err != nil {
-		return fmt.Errorf("create plan_fanout directory: %w", err)
+	if err := s.saveRunState(repository.RunStateFanout, dialogID, run); err != nil {
+		return fmt.Errorf("write fanout run: %w", err)
 	}
-	data, err := json.Marshal(run)
-	if err != nil {
-		return fmt.Errorf("marshal fanout run: %w", err)
-	}
-	return atomicfile.Write(s.fanoutRunPath(dialogID), data)
+	return nil
 }
 
 // updateFanoutRun applies mutate to the stored run under the dialog's lock.
 // Stage subagents report blockers while the runner marks stages done, so every
-// read-modify-write of this file goes through here.
+// read-modify-write of the record goes through here.
 func (s *ChatService) updateFanoutRun(dialogID uuid.UUID, mutate func(*FanoutRun)) (FanoutRun, error) {
 	mu := s.fanoutMutex(dialogID)
 	mu.Lock()

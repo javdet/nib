@@ -102,12 +102,11 @@ stayed open.
 ## If the plan gauges go stale
 
 `nib_plans` is refreshed by a background goroutine every `refreshSeconds`, not
-at scrape time: plan status lives in `data/plan_state/{id}.json`, so counting is
-one query plus one file read per plan.
+at scrape time: counting is one query for the plans and one for their status
+documents in the `run_state` table.
 
-Watch `nib_plans_refresh_duration_seconds` if you accumulate a lot of plans. The
-real fix in that case is a status column in `chat_dialogs`, which does not exist
-yet — raising `refreshSeconds` is the available lever.
+Watch `nib_plans_refresh_duration_seconds` if you accumulate a lot of plans;
+raising `refreshSeconds` is the available lever.
 
 ## Use the Statistics page instead for cost
 

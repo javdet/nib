@@ -168,12 +168,29 @@ func (s *ChatService) awaitBlockerAnswer(ctx context.Context, planID uuid.UUID, 
 // deliverFanoutAnswer hands an operator's answer to the stage subagent blocked
 // on it. It reports handled for every fan-out question, answered or not, so a
 // stale one cannot fall through and set the orchestrator narrating it back.
-func (s *ChatService) deliverFanoutAnswer(toolCallID string, answers []string) (domain.ChatResponse, bool) {
+//
+// planID is the dialog the question was asked in, whose fan-out record says
+// which process the waiting stage runs in when it is not this one.
+func (s *ChatService) deliverFanoutAnswer(planID uuid.UUID, toolCallID string, answers []string) (domain.ChatResponse, bool) {
 	if !strings.HasPrefix(toolCallID, fanoutAskIDPrefix) || len(answers) == 0 {
 		return domain.ChatResponse{}, false
 	}
 
 	v, ok := s.fanoutWaits.LoadAndDelete(toolCallID)
+	if !ok {
+		// The stage may be waiting in another process: the one running the
+		// fan-out, which alone holds the wait.
+		if run, found, err := s.ReadFanoutRun(planID); err == nil && found && run.Active() &&
+			run.Owner != "" && run.Owner != s.replicaID {
+			if err := s.relayControl(controlMessage{
+				Op: controlFanoutAnswer, To: run.Owner, CallID: toolCallID, Answer: answers[0],
+			}); err == nil {
+				// Sent, not confirmed: the stage may have stopped waiting in the
+				// meantime, in which case its plan says what it assumed.
+				return domain.ChatResponse{Response: "Answer sent to the planner."}, true
+			}
+		}
+	}
 	if !ok {
 		// The run ended, the wait timed out, or the process restarted under it.
 		return domain.ChatResponse{Response: "Nothing is waiting on that question any more — " +

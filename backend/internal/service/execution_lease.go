@@ -2,16 +2,19 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/metrics"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // ExecutionKind says what holds the lease, because the two are stopped in
@@ -62,6 +65,10 @@ type ExecutionLease struct {
 	ContainerID string `json:"containerId,omitempty"`
 	Namespace   string `json:"namespace,omitempty"`
 	StartedAt   int64  `json:"startedAt"`
+	// Owner is the backend process that took the lease. Only that process
+	// holds a sub-agent's cancel func, so a force stop arriving at another one
+	// is relayed to it.
+	Owner string `json:"owner,omitempty"`
 
 	// cancel stops a sub-agent run. Nil for a container, which is stopped
 	// through the executor instead.
@@ -72,36 +79,120 @@ type ExecutionLease struct {
 	// written, so the outgoing run could release the incoming run's lease in
 	// between.
 	token uuid.UUID
+	// refusal is why acquireExecutionLease refused without a holder to name.
+	refusal error
+}
+
+// leaseCallTimeout bounds one read or write of the lease. The lease functions
+// take no context -- a release runs in a deferred call after the work's own
+// context is long gone -- so each gets a deadline of its own.
+const leaseCallTimeout = 10 * time.Second
+
+func leaseContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), leaseCallTimeout)
+}
+
+// SetExecutionLeaseStore moves the lease into store, so every process sharing
+// it sees the one execution. Without it the lease lives in this process's
+// memory, which is what the service tests use.
+func (s *ChatService) SetExecutionLeaseStore(store repository.ExecutionLeaseRepository) {
+	s.leases = store
+}
+
+func (s *ChatService) leaseStore() repository.ExecutionLeaseRepository {
+	if s.leases != nil {
+		return s.leases
+	}
+	return &s.memLeases
+}
+
+// leaseExpiry is when a lease stops counting as held unless something extends
+// it. A container's is the action deadline, which is longer than the
+// container's own timeout: nothing in this process will release it if the
+// webhook never comes. A sub-agent's is a heartbeat window when this process
+// heartbeats, so a process that dies frees the slot; otherwise it never
+// expires, since the goroutine holding it releases it on every path.
+func (s *ChatService) leaseExpiry(l ExecutionLease) time.Time {
+	if l.Kind == ExecutionKindContainer {
+		return time.Unix(l.StartedAt, 0).Add(s.actionExec.timeout())
+	}
+	if s.leaseTTL > 0 {
+		return time.Now().Add(s.leaseTTL)
+	}
+	return time.Time{}
+}
+
+// decodeLease turns a stored record back into a lease, with the cancel func
+// this process holds for it, if any.
+func (s *ChatService) decodeLease(rec repository.LeaseRecord) ExecutionLease {
+	var l ExecutionLease
+	if err := json.Unmarshal(rec.Holder, &l); err != nil {
+		slog.Warn("execution lease: undecodable holder", "error", err)
+	}
+	l.token = rec.Token
+	l.Owner = rec.Owner
+	if c, ok := s.leaseCancels.Load(rec.Token); ok {
+		l.cancel = c.(context.CancelFunc)
+	}
+	return l
 }
 
 // acquireExecutionLease takes the lease for l.
 //
 // On success it returns the granted lease, whose token the caller keeps and
 // hands to stampExecutionLease and releaseExecutionLease. On failure it returns
-// the holder and false, so the caller can name it in the refusal.
+// the holder and false, so the caller can name it in the refusal; a refusal
+// with no holder to name carries its reason for leaseRefusedError instead.
 func (s *ChatService) acquireExecutionLease(l ExecutionLease) (ExecutionLease, bool) {
 	s.execLeaseMu.Lock()
 	defer s.execLeaseMu.Unlock()
 
-	s.expireStaleContainerLeaseLocked()
-
 	// Checked under the lease's own lock: a drain reads the lease under it too,
 	// so it either sees this grant and waits for it, or this sees the drain.
 	if s.work.isDraining() {
-		return ExecutionLease{}, false
+		return ExecutionLease{refusal: ErrShuttingDown}, false
 	}
-	if s.execLease != nil {
-		metrics.RecordLeaseRejected(string(l.Kind))
-		return *s.execLease, false
-	}
+
 	l.token = uuid.New()
-	s.execLease = &l
-	metrics.RecordLeaseAcquired(string(l.Kind))
-	return l, true
+	l.Owner = s.replicaID
+	holder, err := json.Marshal(l)
+	if err != nil {
+		return ExecutionLease{refusal: fmt.Errorf("encode execution lease: %w", err)}, false
+	}
+	rec := repository.LeaseRecord{Token: l.token, Owner: l.Owner, Holder: holder, ExpiresAt: s.leaseExpiry(l)}
+
+	ctx, cancel := leaseContext()
+	defer cancel()
+	store := s.leaseStore()
+
+	// A few attempts, not one: an expired holder is dropped and the slot tried
+	// again, and a holder released between the insert and the read leaves
+	// nothing to name.
+	for attempt := 0; attempt < 3; attempt++ {
+		granted, held, err := store.TryAcquireLease(ctx, rec)
+		if err != nil {
+			slog.Error("execution lease: acquire", "error", err)
+			return ExecutionLease{refusal: fmt.Errorf("take the execution lease: %w", err)}, false
+		}
+		if granted {
+			if l.cancel != nil {
+				s.leaseCancels.Store(l.token, l.cancel)
+			}
+			metrics.RecordLeaseAcquired(string(l.Kind))
+			return l, true
+		}
+		if held.Token == uuid.Nil || s.expireLease(ctx, held) {
+			continue
+		}
+		metrics.RecordLeaseRejected(string(l.Kind))
+		return s.decodeLease(held), false
+	}
+	metrics.RecordLeaseRejected(string(l.Kind))
+	return ExecutionLease{refusal: ErrExecutionBusy}, false
 }
 
 // recordLeaseReleasedLocked reports a lease being dropped. Called from every
-// path that clears s.execLease, so the held gauge cannot get stuck at 1.
+// path that drops a lease, so the held gauge cannot get stuck at 1.
 func recordLeaseReleasedLocked(l *ExecutionLease) {
 	if l == nil {
 		return
@@ -113,31 +204,46 @@ func recordLeaseReleasedLocked(l *ExecutionLease) {
 	metrics.RecordLeaseReleased(string(l.Kind), held)
 }
 
-// expireStaleContainerLeaseLocked drops a container lease nothing will ever
-// release.
+// expireLease drops rec when it has expired, reporting whether the slot may now
+// be free.
 //
 // A container reports back through the agent-runner webhook, so when it never
 // does -- a crashed image, a failed pull, a node that went away -- there is no
-// goroutine left to notice. Past the action deadline (which is longer than the
-// container's own TIMEOUT_SECONDS) the lease is treated as expired, because a
-// lease nothing can release is a permanent block on every action in every plan.
-func (s *ChatService) expireStaleContainerLeaseLocked() {
-	if s.execLease == nil || s.execLease.Kind != ExecutionKindContainer {
-		return
+// goroutine left to notice. Past the action deadline the lease is treated as
+// expired and its row closed as failed, because a lease nothing can release is
+// a permanent block on every action in every plan.
+//
+// A sub-agent's lease expires only when the process running it stopped
+// heartbeating, which means that process is gone; its run record is closed by
+// the sweep of dead processes, not here.
+func (s *ChatService) expireLease(ctx context.Context, rec repository.LeaseRecord) bool {
+	if !rec.Expired(time.Now()) {
+		return false
 	}
-	if time.Since(time.Unix(s.execLease.StartedAt, 0)) <= s.actionExec.timeout() {
-		return
+	deleted, err := s.leaseStore().DeleteLease(ctx, rec.Token)
+	if err != nil {
+		slog.Warn("execution lease: drop expired", "error", err)
+		return false
+	}
+	if !deleted {
+		// Somebody else dropped it first, and handles its aftermath.
+		return true
 	}
 
-	expired := *s.execLease
-	s.execLease = nil
+	expired := s.decodeLease(rec)
+	s.leaseCancels.Delete(rec.Token)
 	recordLeaseReleasedLocked(&expired)
 	metrics.RecordLeaseExpired()
 	slog.Warn("execution lease expired without a result",
-		"plan_id", expired.PlanID, "key", expired.Key, "job", expired.JobName)
+		"plan_id", expired.PlanID, "key", expired.Key, "kind", expired.Kind,
+		"job", expired.JobName, "owner", expired.Owner)
 
-	// Off the lock: closing the record takes a mutex of its own, and the caller
-	// of this is on its way to starting a run of its own.
+	if expired.Kind != ExecutionKindContainer {
+		return true
+	}
+
+	// Off the caller's lock: closing the record takes a mutex of its own, and
+	// the caller of this is on its way to starting a run of its own.
 	go func() {
 		const reason = "the coding agent never reported back"
 		if expired.Fix {
@@ -158,33 +264,102 @@ func (s *ChatService) expireStaleContainerLeaseLocked() {
 		})
 		s.advanceStageRun(expired.PlanID, expired.Key)
 	}()
+	return true
+}
+
+// currentLease returns the live lease, dropping an expired one on the way.
+func (s *ChatService) currentLease() (ExecutionLease, bool) {
+	ctx, cancel := leaseContext()
+	defer cancel()
+
+	for attempt := 0; attempt < 2; attempt++ {
+		rec, err := s.leaseStore().GetLease(ctx)
+		if errors.Is(err, repository.ErrNotFound) {
+			return ExecutionLease{}, false
+		}
+		if err != nil {
+			slog.Warn("execution lease: read", "error", err)
+			return ExecutionLease{}, false
+		}
+		if s.expireLease(ctx, rec) {
+			continue
+		}
+		return s.decodeLease(rec), true
+	}
+	return ExecutionLease{}, false
 }
 
 // stampExecutionLease fills in what is only known after the lease was taken --
 // the dialog, the container identity -- and does nothing when the lease has
 // since moved on.
 func (s *ChatService) stampExecutionLease(token uuid.UUID, mutate func(*ExecutionLease)) {
+	// The read and the write are one step; two stamps of one grant must not
+	// each write back a copy missing the other's field.
 	s.execLeaseMu.Lock()
 	defer s.execLeaseMu.Unlock()
 
-	if s.execLease == nil || s.execLease.token != token {
+	ctx, cancel := leaseContext()
+	defer cancel()
+
+	store := s.leaseStore()
+	rec, err := store.GetLease(ctx)
+	if err != nil || rec.Token != token {
 		return
 	}
-	mutate(s.execLease)
+	l := s.decodeLease(rec)
+	mutate(&l)
+	holder, err := json.Marshal(l)
+	if err != nil {
+		slog.Warn("execution lease: encode stamp", "error", err)
+		return
+	}
+	if _, err := store.UpdateLeaseHolder(ctx, token, holder); err != nil {
+		slog.Warn("execution lease: stamp", "error", err)
+	}
 }
 
 // releaseExecutionLease drops the lease granted under token, and does nothing
 // otherwise. A run that a restart or a force stop already took over must not
 // release the lease its successor now holds.
 func (s *ChatService) releaseExecutionLease(token uuid.UUID) {
-	s.execLeaseMu.Lock()
-	defer s.execLeaseMu.Unlock()
+	// The cancel func goes whether or not the lease is still this grant's: a
+	// lease another process took already belongs to nobody here, and a stale
+	// entry would be heartbeat-extended and cancelled at shutdown forever.
+	s.leaseCancels.Delete(token)
+	s.dropLeaseIf(func(l ExecutionLease) bool { return l.token == token })
+}
 
-	if s.execLease == nil || s.execLease.token != token {
-		return
+// dropLeaseIf deletes the lease when match accepts its holder, and returns what
+// it dropped. The delete is a compare-and-set on the token read, so a holder
+// that changed in between is never dropped by mistake.
+func (s *ChatService) dropLeaseIf(match func(ExecutionLease) bool) (ExecutionLease, bool) {
+	ctx, cancel := leaseContext()
+	defer cancel()
+
+	store := s.leaseStore()
+	rec, err := store.GetLease(ctx)
+	if errors.Is(err, repository.ErrNotFound) {
+		return ExecutionLease{}, false
 	}
-	recordLeaseReleasedLocked(s.execLease)
-	s.execLease = nil
+	if err != nil {
+		slog.Warn("execution lease: read", "error", err)
+		return ExecutionLease{}, false
+	}
+	held := s.decodeLease(rec)
+	if match != nil && !match(held) {
+		return ExecutionLease{}, false
+	}
+	deleted, err := store.DeleteLease(ctx, rec.Token)
+	if err != nil {
+		slog.Warn("execution lease: release", "error", err)
+		return ExecutionLease{}, false
+	}
+	if !deleted {
+		return ExecutionLease{}, false
+	}
+	s.leaseCancels.Delete(rec.Token)
+	recordLeaseReleasedLocked(&held)
+	return held, true
 }
 
 // releaseExecutionLeaseForContainer drops a container lease identified by the
@@ -196,21 +371,15 @@ func (s *ChatService) releaseExecutionLease(token uuid.UUID) {
 // the operator force-stopped the run and started it again, would release the
 // lease belonging to the new attempt.
 func (s *ChatService) releaseExecutionLeaseForContainer(planID uuid.UUID, key, jobName string) {
-	s.execLeaseMu.Lock()
-	defer s.execLeaseMu.Unlock()
-
-	held := s.execLease
-	if held == nil || held.Kind != ExecutionKindContainer || held.Fix {
-		return
-	}
-	if held.PlanID != planID || held.Key != key {
-		return
-	}
-	if jobName != "" && held.JobName != "" && held.JobName != jobName {
-		return
-	}
-	recordLeaseReleasedLocked(held)
-	s.execLease = nil
+	s.dropLeaseIf(func(held ExecutionLease) bool {
+		if held.Kind != ExecutionKindContainer || held.Fix {
+			return false
+		}
+		if held.PlanID != planID || held.Key != key {
+			return false
+		}
+		return jobName == "" || held.JobName == "" || held.JobName == jobName
+	})
 }
 
 // releaseExecutionLeaseForFix drops the lease of an ad-hoc code fix, identified
@@ -220,21 +389,12 @@ func (s *ChatService) releaseExecutionLeaseForContainer(planID uuid.UUID, key, j
 // because a fix has no plan row to be identified by: the dialog is what the
 // container was given as CHAT_ID and what comes back on the webhook.
 func (s *ChatService) releaseExecutionLeaseForFix(rootID, dialogID uuid.UUID, jobName string) {
-	s.execLeaseMu.Lock()
-	defer s.execLeaseMu.Unlock()
-
-	held := s.execLease
-	if held == nil || !held.Fix {
-		return
-	}
-	if held.PlanID != rootID || held.DialogID != dialogID {
-		return
-	}
-	if jobName != "" && held.JobName != "" && held.JobName != jobName {
-		return
-	}
-	recordLeaseReleasedLocked(held)
-	s.execLease = nil
+	s.dropLeaseIf(func(held ExecutionLease) bool {
+		if !held.Fix || held.PlanID != rootID || held.DialogID != dialogID {
+			return false
+		}
+		return jobName == "" || held.JobName == "" || held.JobName == jobName
+	})
 }
 
 // takeExecutionLease removes the lease and returns it, so a force stop cannot
@@ -247,29 +407,97 @@ func (s *ChatService) takeExecutionLease() (ExecutionLease, bool) {
 // caller stopping one particular item cannot take somebody else's in the gap
 // between looking and taking. A nil match accepts any holder.
 func (s *ChatService) takeExecutionLeaseIf(match func(ExecutionLease) bool) (ExecutionLease, bool) {
-	s.execLeaseMu.Lock()
-	defer s.execLeaseMu.Unlock()
-
-	if s.execLease == nil || (match != nil && !match(*s.execLease)) {
-		return ExecutionLease{}, false
-	}
-	held := *s.execLease
-	s.execLease = nil
-	recordLeaseReleasedLocked(&held)
-	return held, true
+	return s.dropLeaseIf(match)
 }
 
 // ExecutionInProgress reports the execution running right now, if any.
 func (s *ChatService) ExecutionInProgress() (ExecutionLease, bool) {
-	s.execLeaseMu.Lock()
-	defer s.execLeaseMu.Unlock()
+	return s.currentLease()
+}
 
-	s.expireStaleContainerLeaseLocked()
-
-	if s.execLease == nil {
-		return ExecutionLease{}, false
+// extendOwnLeases pushes back the expiry of every sub-agent lease this process
+// holds. Called from the heartbeat: a lease whose process stops calling it
+// expires, and the slot frees itself.
+func (s *ChatService) extendOwnLeases(ctx context.Context) {
+	if s.leaseTTL <= 0 {
+		return
 	}
-	return *s.execLease, true
+	until := time.Now().Add(s.leaseTTL)
+	s.leaseCancels.Range(func(k, _ any) bool {
+		token := k.(uuid.UUID)
+		ok, err := s.leaseStore().ExtendLease(ctx, token, until)
+		if err != nil {
+			slog.Warn("execution lease: extend", "error", err)
+			return true
+		}
+		if !ok {
+			// The lease is gone while its run still goes here: a force stop
+			// whose relayed cancel never arrived, or a peer that expired it
+			// during a stalled heartbeat. The slot is free, so the run must not
+			// carry on without it.
+			if v, loaded := s.leaseCancels.LoadAndDelete(token); loaded {
+				slog.Warn("execution lease lost while its sub-agent was running, stopping it", "token", token)
+				v.(context.CancelFunc)()
+			}
+		}
+		return true
+	})
+}
+
+// memoryLeaseStore is the lease of a process with no database behind it.
+type memoryLeaseStore struct {
+	mu  sync.Mutex
+	rec *repository.LeaseRecord
+}
+
+func (m *memoryLeaseStore) TryAcquireLease(_ context.Context, rec repository.LeaseRecord) (bool, repository.LeaseRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rec != nil {
+		return false, *m.rec, nil
+	}
+	stored := rec
+	m.rec = &stored
+	return true, rec, nil
+}
+
+func (m *memoryLeaseStore) GetLease(context.Context) (repository.LeaseRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rec == nil {
+		return repository.LeaseRecord{}, repository.ErrNotFound
+	}
+	return *m.rec, nil
+}
+
+func (m *memoryLeaseStore) UpdateLeaseHolder(_ context.Context, token uuid.UUID, holder []byte) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rec == nil || m.rec.Token != token {
+		return false, nil
+	}
+	m.rec.Holder = holder
+	return true, nil
+}
+
+func (m *memoryLeaseStore) ExtendLease(_ context.Context, token uuid.UUID, expiresAt time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rec == nil || m.rec.Token != token {
+		return false, nil
+	}
+	m.rec.ExpiresAt = expiresAt
+	return true, nil
+}
+
+func (m *memoryLeaseStore) DeleteLease(_ context.Context, token uuid.UUID) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rec == nil || m.rec.Token != token {
+		return false, nil
+	}
+	m.rec = nil
+	return true, nil
 }
 
 // ExecutionBusyError reports that the execution lease is held, and carries the
@@ -299,6 +527,9 @@ func (e *ExecutionBusyError) Unwrap() error { return ErrExecutionBusy }
 // leaseRefusedError is what a failed acquireExecutionLease returns: a drain
 // refuses with no holder to name, anything else is the holder.
 func leaseRefusedError(held ExecutionLease) error {
+	if held.refusal != nil {
+		return held.refusal
+	}
 	if held.token == uuid.Nil {
 		return ErrShuttingDown
 	}
@@ -437,6 +668,12 @@ func (s *ChatService) stopLeaseHolder(ctx context.Context, held ExecutionLease) 
 	case ExecutionKindSubagent:
 		if held.cancel != nil {
 			held.cancel()
+			return nil
+		}
+		// The sub-agent runs in another process, the only one holding its
+		// cancel func.
+		if held.Owner != "" && held.Owner != s.replicaID {
+			return s.relayLeaseCancel(ctx, held)
 		}
 		return nil
 	case ExecutionKindContainer:

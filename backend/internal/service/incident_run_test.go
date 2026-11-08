@@ -367,7 +367,7 @@ func TestReconcileStuckIncidentRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	closed, err := svc.reconcileStuckIncidentRuns()
+	closed, err := svc.reconcileStuckIncidentRuns(func(string) bool { return true })
 	if err != nil || closed != 1 {
 		t.Fatalf("reconcile = %d, %v; want 1", closed, err)
 	}

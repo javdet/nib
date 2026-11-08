@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/llm"
+	"github.com/javdet/nib/internal/repository"
 )
 
 const CreateActionPlanToolName = "create_action_plan"
@@ -266,14 +267,13 @@ func (s *ChatService) createActionPlanHandler(dialogID uuid.UUID) localToolHandl
 func (s *ChatService) clearActionPlanItemState(dialogID uuid.UUID) {
 	_ = os.Remove(actionPlanChecksPath(s.actionPlansDir, dialogID))
 	_ = os.Remove(actionPlanCommentsPath(s.actionPlansDir, dialogID))
-	_ = os.Remove(actionPlanRunsPath(s.actionPlansDir, dialogID))
-	_ = os.Remove(actionPlanExecPath(s.actionPlansDir, dialogID))
-	_ = os.Remove(actionPlanNotesPath(s.actionPlansDir, dialogID))
+	s.dropRunStateOrWarn(dialogID,
+		repository.RunStateActionRuns, repository.RunStateActionExec, repository.RunStateActionNotes)
 
 	// Stopped before the record goes, so the slot it held is released and the
 	// chat says why the run did not finish.
 	s.stopStageRunForPlanEdit(dialogID, nil)
-	_ = os.Remove(stageRunPath(s.actionPlansDir, dialogID))
+	s.dropRunStateOrWarn(dialogID, repository.RunStateStageRun)
 }
 
 func writeActionPlanFile(path string, content []byte) error {
@@ -421,18 +421,9 @@ func (s *ChatService) WriteActionPlanComments(dialogID uuid.UUID, comments map[s
 
 // ReadActionPlanRuns returns persisted execute-dialog ids keyed by action row key.
 func (s *ChatService) ReadActionPlanRuns(dialogID uuid.UUID) (map[string]string, error) {
-	path := actionPlanRunsPath(s.actionPlansDir, dialogID)
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]string{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	var runs map[string]string
-	if err := json.Unmarshal(b, &runs); err != nil {
-		return nil, fmt.Errorf("unmarshal action plan runs: %w", err)
+	if _, err := s.loadRunState(repository.RunStateActionRuns, dialogID, &runs); err != nil {
+		return nil, fmt.Errorf("read action plan runs: %w", err)
 	}
 	if runs == nil {
 		return map[string]string{}, nil
@@ -445,16 +436,8 @@ func (s *ChatService) WriteActionPlanRuns(dialogID uuid.UUID, runs map[string]st
 	if runs == nil {
 		runs = map[string]string{}
 	}
-
-	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
+	if err := s.saveRunState(repository.RunStateActionRuns, dialogID, runs); err != nil {
+		return fmt.Errorf("write action plan runs: %w", err)
 	}
-
-	data, err := json.Marshal(runs)
-	if err != nil {
-		return fmt.Errorf("marshal action plan runs: %w", err)
-	}
-
-	path := actionPlanRunsPath(s.actionPlansDir, dialogID)
-	return writeActionPlanFile(path, data)
+	return nil
 }

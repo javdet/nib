@@ -188,6 +188,22 @@ func RecordLeaseReleased(kind string, held time.Duration) {
 	}
 }
 
+// SetLeaseHeld reports whether any process holds the execution lease. With
+// several backend processes the lease is released by whichever one ends the
+// run, so each refreshes this from the shared record rather than trusting its
+// own acquire and release calls.
+func SetLeaseHeld(held bool) {
+	m := active()
+	if m == nil {
+		return
+	}
+	if held {
+		m.execution.leaseHeld.Set(1)
+	} else {
+		m.execution.leaseHeld.Set(0)
+	}
+}
+
 // RecordLeaseRejected records an execution refused because the lease was held.
 func RecordLeaseRejected(kind string) {
 	if m := active(); m != nil {

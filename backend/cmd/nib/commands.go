@@ -12,7 +12,7 @@ import (
 
 // newCommandJobs decides how agent commands run on this host and builds the
 // manager they run on.
-func newCommandJobs(cfg config.Config, rec cmdrun.Recorder) (*cmdrun.Manager, error) {
+func newCommandJobs(cfg config.Config, rec cmdrun.Recorder, replicaID string) (*cmdrun.Manager, error) {
 	mode, err := cmdrun.ParseIsolationMode(cfg.Commands.Isolation)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,8 @@ func newCommandJobs(cfg config.Config, rec cmdrun.Recorder) (*cmdrun.Manager, er
 	}
 
 	return cmdrun.NewManager(sb, cmdrun.ManagerConfig{
-		LogDir: filepath.Join(cfg.DataDir, "command_logs"),
+		LogDir:  filepath.Join(cfg.DataDir, "command_logs"),
+		Replica: replicaID,
 	}, rec), nil
 }
 

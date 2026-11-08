@@ -243,11 +243,13 @@ func staleLeaseService(t *testing.T, kind ExecutionKind) (*ChatService, uuid.UUI
 		t.Fatalf("startActionExecRun: %v", err)
 	}
 
-	svc.execLease = &ExecutionLease{
+	if _, ok := svc.acquireExecutionLease(ExecutionLease{
 		PlanID:    planID,
 		Key:       "s0.step0",
 		Kind:      kind,
 		StartedAt: time.Now().Add(-2 * time.Minute).Unix(),
+	}); !ok {
+		t.Fatal("acquire refused on an empty slot")
 	}
 	return svc, planID
 }

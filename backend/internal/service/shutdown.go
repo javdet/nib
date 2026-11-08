@@ -207,15 +207,12 @@ func (s *ChatService) Drain(ctx context.Context) bool {
 func (s *ChatService) StopInFlight(ctx context.Context) bool {
 	s.work.stop()
 
-	s.execLeaseMu.Lock()
-	var cancel context.CancelFunc
-	if s.execLease != nil && s.execLease.Kind == ExecutionKindSubagent {
-		cancel = s.execLease.cancel
-	}
-	s.execLeaseMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
+	// Every sub-agent lease this process granted, and only those: one held by
+	// another process is that process's to stop.
+	s.leaseCancels.Range(func(_, v any) bool {
+		v.(context.CancelFunc)()
+		return true
+	})
 
 	tick := time.NewTicker(drainPollInterval / 4)
 	defer tick.Stop()
@@ -239,18 +236,19 @@ func (s *ChatService) inFlight(ignore ...ExecutionKind) []string {
 	busy := s.work.running()
 
 	s.execLeaseMu.Lock()
-	s.expireStaleContainerLeaseLocked()
-	held := s.execLease
+	held, ok := s.currentLease()
+	s.execLeaseMu.Unlock()
+
+	// A lease another process took is that process's to wait for.
 	var lease string
-	if held != nil {
-		lease = leaseDescription(*held)
+	if ok && held.Owner == s.replicaID {
+		lease = leaseDescription(held)
 		for _, k := range ignore {
 			if held.Kind == k {
 				lease = ""
 			}
 		}
 	}
-	s.execLeaseMu.Unlock()
 
 	if lease != "" {
 		busy = append(busy, lease)

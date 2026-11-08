@@ -2,19 +2,16 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/domain"
+	"github.com/javdet/nib/internal/repository"
 )
 
 var (
@@ -142,6 +139,10 @@ type IncidentRun struct {
 	WindowEnd   string            `json:"windowEnd,omitempty"`
 	Steps       []IncidentStep    `json:"steps"`
 	Error       string            `json:"error,omitempty"`
+	// Owner is the backend process that started it. A sweep closes a running
+	// record only once its owner is gone, so one process restarting never
+	// closes what another is still running.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Active reports whether the run is still going.
@@ -157,43 +158,29 @@ type InvestigationRequest struct {
 	ImpactOnly bool
 }
 
-func (s *ChatService) incidentRunPath(rootID uuid.UUID) string {
-	return filepath.Join(s.incidentRunsDir, rootID.String()+".json")
-}
-
 // ReadIncidentRun returns the incident's latest run, or false when it has had none.
 func (s *ChatService) ReadIncidentRun(rootID uuid.UUID) (IncidentRun, bool, error) {
-	b, err := os.ReadFile(s.incidentRunPath(rootID))
-	if errors.Is(err, os.ErrNotExist) {
-		return IncidentRun{}, false, nil
-	}
+	var run IncidentRun
+	found, err := s.loadRunState(repository.RunStateIncidentRun, rootID, &run)
 	if err != nil {
 		return IncidentRun{}, false, fmt.Errorf("read incident run: %w", err)
 	}
-	var run IncidentRun
-	if err := json.Unmarshal(b, &run); err != nil {
-		return IncidentRun{}, false, fmt.Errorf("decode incident run: %w", err)
-	}
-	return run, true, nil
+	return run, found, nil
 }
 
 func (s *ChatService) writeIncidentRun(rootID uuid.UUID, run IncidentRun) error {
-	b, err := json.MarshalIndent(run, "", "  ")
-	if err != nil {
-		return err
+	if err := s.saveRunState(repository.RunStateIncidentRun, rootID, run); err != nil {
+		return fmt.Errorf("write incident run: %w", err)
 	}
-	if err := os.MkdirAll(s.incidentRunsDir, 0o755); err != nil {
-		return fmt.Errorf("create incident runs directory: %w", err)
-	}
-	return atomicfile.Write(s.incidentRunPath(rootID), b)
+	return nil
 }
 
 // updateIncidentRun is the read-modify-write of the run record. The steps of a
 // wave finish concurrently and each records its own outcome.
 func (s *ChatService) updateIncidentRun(rootID uuid.UUID, mutate func(*IncidentRun)) (IncidentRun, error) {
-	mu, _ := s.incidentRunWriteMu.LoadOrStore(rootID, &sync.Mutex{})
-	mu.(*sync.Mutex).Lock()
-	defer mu.(*sync.Mutex).Unlock()
+	mu := s.lockFor("incident-run:" + rootID.String())
+	mu.Lock()
+	defer mu.Unlock()
 
 	run, _, err := s.ReadIncidentRun(rootID)
 	if err != nil {
@@ -335,10 +322,13 @@ func (s *ChatService) launchIncidentRun(ctx context.Context, rootID uuid.UUID, r
 		cancel()
 		return ErrInvestigationInProgress
 	}
-	if err := s.writeIncidentRun(rootID, run); err != nil {
+	// The in-memory claim covers this process; the record, read again under
+	// the run's lock, covers a run another process started since the guard.
+	run.Owner = s.replicaID
+	if err := s.claimIncidentRun(rootID, run); err != nil {
 		s.incidentRuns.CompareAndDelete(rootID, st)
 		cancel()
-		return fmt.Errorf("start incident run: %w", err)
+		return err
 	}
 	s.activity.Publish(rootID, domain.AgentActivity{Kind: domain.ActivityInvestigationUpdated})
 
@@ -353,15 +343,38 @@ func (s *ChatService) launchIncidentRun(ctx context.Context, rootID uuid.UUID, r
 	return nil
 }
 
+// claimIncidentRun writes a fresh run unless one is already going.
+func (s *ChatService) claimIncidentRun(rootID uuid.UUID, run IncidentRun) error {
+	mu := s.lockFor("incident-run:" + rootID.String())
+	mu.Lock()
+	defer mu.Unlock()
+
+	previous, _, err := s.ReadIncidentRun(rootID)
+	if err != nil {
+		return fmt.Errorf("start incident run: %w", err)
+	}
+	if previous.Active() {
+		return ErrInvestigationInProgress
+	}
+	if err := s.writeIncidentRun(rootID, run); err != nil {
+		return fmt.Errorf("start incident run: %w", err)
+	}
+	return nil
+}
+
 // CancelInvestigation stops a running investigation or closure. Whatever the
-// agents already wrote into the post-mortem stays.
+// agents already wrote into the post-mortem stays. A run another process owns
+// is stopped by relaying the cancel to it.
 func (s *ChatService) CancelInvestigation(rootID uuid.UUID) bool {
-	v, ok := s.incidentRuns.Load(rootID)
-	if !ok {
+	if v, ok := s.incidentRuns.Load(rootID); ok {
+		v.(*incidentRunState).cancel()
+		return true
+	}
+	run, found, err := s.ReadIncidentRun(rootID)
+	if err != nil || !found || !run.Active() || run.Owner == "" || run.Owner == s.replicaID {
 		return false
 	}
-	v.(*incidentRunState).cancel()
-	return true
+	return s.relayControl(controlMessage{Op: controlCancelIncident, To: run.Owner, ID: rootID}) == nil
 }
 
 // StopInvestigation is CancelInvestigation for the HTTP API.

@@ -29,6 +29,31 @@ Back up `pgdata` and `nibdata` together first. Restoring one against a
 mismatched copy of the other leaves plan artifacts pointing at dialogs that no
 longer exist.
 
+## Upgrading from v0.8.2: run state moves into Postgres
+
+Plan status, the per-row run, exec and notes records, stage runs, fan-out
+records, sub-agent pauses, code fixes and incident runs move from files under
+`DATA_DIR` into the `run_state` table. The execution lease becomes a row, locks
+become Postgres advisory locks, and the SSE stream travels over
+`LISTEN/NOTIFY`. Nothing needs doing by hand, but:
+
+1. **Stop the old backend before the new one starts.** The first boot imports
+   every `plan_state/`, `plan_fanout/`, `subagents/`, `code_fixes/`,
+   `incident_runs/` and `action_plans/{id}.{runs,exec,notes,stagerun}.json` file
+   and renames it `*.migrated`. An old process still running would keep writing
+   files nothing reads any more. Compose and the chart's `Recreate` strategy
+   already work this way.
+2. **Let running actions finish first**, as for any upgrade: anything still
+   `running` when the old process stops is closed by the new one's first sweep.
+3. **Budget connections.** Each backend process opens a second pool of up to
+   24 connections for locks and the event listener (`NIB_COORDINATION_POOL_SIZE`
+   changes it). The default `max_connections` of 100 leaves plenty for one.
+4. **Back up `pgdata` before the first start**: from now on it holds the run
+   state too. The `*.migrated` files stay on the volume as a record and can be
+   deleted once you are satisfied.
+5. **A downgrade loses run state** recorded after the upgrade: an older release
+   reads only the files.
+
 ## Upgrading from v0.8.2: `execute_command` becomes the command tools
 
 `execute_command` is gone. Five tools replace it: `run_command`, `wait_job`,
@@ -71,8 +96,8 @@ not after.
    render fails.
 2. **Let running actions finish.** The agent-runner webhook now takes a token
    signed for each run, not `AGENT_WEBHOOK_TOKEN` itself, so a container
-   launched by v0.8.0 cannot report back to the new backend. `ReconcileStuckRuns`
-   closes its record at boot, but the result is lost. `AGENT_WEBHOOK_TOKEN` is
+   launched by v0.8.0 cannot report back to the new backend. The boot sweep
+   closes its record, but the result is lost. `AGENT_WEBHOOK_TOKEN` is
    now an optional signing key: leave it as it is, or empty to have the backend
    generate `{DATA_DIR}/.webhook-key` — and keep that file with the volume.
    An empty `AGENT_WEBHOOK_TOKEN` no longer opens the webhook.

@@ -1,15 +1,13 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/textutil"
 )
 
@@ -34,18 +32,9 @@ func actionPlanNotesPath(dir string, dialogID uuid.UUID) string {
 // package -- so "the web interface never receives this" is a property the
 // compiler holds rather than a convention someone drops later.
 func (s *ChatService) readActionPlanNotes(dialogID uuid.UUID) (map[string]string, error) {
-	path := actionPlanNotesPath(s.actionPlansDir, dialogID)
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]string{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	var notes map[string]string
-	if err := json.Unmarshal(b, &notes); err != nil {
-		return nil, fmt.Errorf("unmarshal action plan notes: %w", err)
+	if _, err := s.loadRunState(repository.RunStateActionNotes, dialogID, &notes); err != nil {
+		return nil, fmt.Errorf("read action plan notes: %w", err)
 	}
 	if notes == nil {
 		return map[string]string{}, nil
@@ -58,17 +47,10 @@ func (s *ChatService) writeActionPlanNotes(dialogID uuid.UUID, notes map[string]
 	if notes == nil {
 		notes = map[string]string{}
 	}
-
-	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
+	if err := s.saveRunState(repository.RunStateActionNotes, dialogID, notes); err != nil {
+		return fmt.Errorf("write action plan notes: %w", err)
 	}
-
-	data, err := json.Marshal(notes)
-	if err != nil {
-		return fmt.Errorf("marshal action plan notes: %w", err)
-	}
-
-	return writeActionPlanFile(actionPlanNotesPath(s.actionPlansDir, dialogID), data)
+	return nil
 }
 
 // recordActionNote stores what a run of one action reported, for the sub-agents

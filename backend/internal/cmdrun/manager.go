@@ -66,6 +66,8 @@ type ManagerConfig struct {
 	MaxOutputBytes int64
 	MaxPerOwner    int
 	MaxTotal       int
+	// Replica names the backend process on every run it records.
+	Replica string
 }
 
 // Manager owns every running job.
@@ -206,6 +208,7 @@ func (m *Manager) Start(ctx context.Context, spec StartSpec) (*Job, error) {
 			UID:       uid,
 			Status:    domain.CommandRunRunning,
 			StartedAt: time.Now().UTC(),
+			Owner:     m.cfg.Replica,
 		},
 	}
 

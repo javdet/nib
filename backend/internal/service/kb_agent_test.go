@@ -320,13 +320,13 @@ func TestKBCollectionLockSerialises(t *testing.T) {
 	t.Parallel()
 
 	svc := &ChatService{}
-	sem := svc.kbCollectionLock("shop")
-	sem <- struct{}{}
+	first := svc.kbCollectionLock("shop")
+	first.Lock()
 
 	acquired := make(chan struct{})
 	go func() {
 		second := svc.kbCollectionLock("shop")
-		second <- struct{}{}
+		second.Lock()
 		close(acquired)
 	}()
 
@@ -336,7 +336,7 @@ func TestKBCollectionLockSerialises(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	<-sem
+	first.Unlock()
 	select {
 	case <-acquired:
 	case <-time.After(time.Second):
@@ -346,9 +346,7 @@ func TestKBCollectionLockSerialises(t *testing.T) {
 	// A different collection is a different lock, so unrelated plans do not
 	// queue behind each other.
 	other := svc.kbCollectionLock("billing")
-	select {
-	case other <- struct{}{}:
-	default:
+	if !other.TryLock() {
 		t.Fatal("a different collection blocked on an unrelated one")
 	}
 }
@@ -358,7 +356,7 @@ func TestKBCollectionLockIsStablePerCollection(t *testing.T) {
 
 	svc := &ChatService{}
 	var wg sync.WaitGroup
-	locks := make([]chan struct{}, 8)
+	locks := make([]*namedLock, 8)
 	for i := range locks {
 		wg.Add(1)
 		go func(i int) {

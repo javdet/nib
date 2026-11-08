@@ -33,6 +33,12 @@ copies of this project, and their compose stacks use `amotool-*` container names
 dev stack is up (`make dev-up` → `nib-dev-backend`, which runs `go run ./cmd/nib` with `./backend`
 mounted at `/app`), `docker exec nib-dev-backend go test ./...` is the fast path.
 
+Database-backed tests skip unless a pgvector server is named, one database per package since each
+resets its schema: `NIB_POSTGRES_TEST_DSN` (`internal/repository/postgres`), `NIB_SERVICE_TEST_DSN`
+(the multi-process tests in `internal/service`) and `NIB_MIGRATIONS_TEST_DSN` (`cmd/nib`). CI runs
+them against a `pgvector/pgvector:pg18` service. Locally, start one on a user-defined network and run
+the test container on it, never on the host network.
+
 Frontend also has `bun run lint` (eslint) and `bun run build` (`tsc -b && vite build`); append a
 file path to `bun run test` for a single suite. CI (`.github/workflows/build.yml`) runs
 `go vet ./...`, `go test -race ./...`, `go build ./...`, then bun lint/test/build, and publishes
@@ -203,8 +209,9 @@ visible only to the dialog that started it. Each job keeps up to 10 MiB of outpu
 `{DATA_DIR}/command_logs/{plan}/{job}.log` (swept after `commands.logRetentionDays`, default 7). A
 result hands the model at most 32 KiB, its head and tail. Every run is audited in the `command_runs`
 table, and the plan page's **Commands** button on an action or check row lists them with their
-output and a Cancel. At most 4 jobs run per dialog and 16 in all; a restart marks running rows
-`lost`.
+output and a Cancel. At most 4 jobs run per dialog and 16 in all. A job lives in the process that
+started it: Cancel from another process is relayed to that one, and a row whose process is gone is
+marked `lost` by the next sweep.
 
 **What the backend image carries** for those commands (`backend/Dockerfile`): `bash`, `curl`, `jq`,
 `yq`, `openssl`, `dig`/`nslookup`, `nc`, `telnet`, `ping`, `mtr`, `ip`, `python3`, `ssh`, `gh`,
@@ -340,7 +347,7 @@ detected**, at **Executor**, and persisted under `DATA_DIR`.
   on by default, including for an `executor.json` written before it existed) makes **Cancel plan**
   stop the plan's running container through the execution lease (its row or fix closes as
   cancelled) and force-remove every container the plan launched, running or exited. Containers
-  are found by the `io.nib.plan` label stamped at launch, plus the ids the plan's `.exec.json` and
+  are found by the `io.nib.plan` label stamped at launch, plus the ids the plan's exec and
   `code_fixes` records hold for ones launched before the label existed. A failed removal leaves
   the plan cancelled and is reported beside the status; cancelling again retries it. Remote
   Kubernetes ignores the setting.
@@ -474,7 +481,8 @@ findings, impact report and closure summary.
 - **Close incident** runs the impact agent over the final window and then a closure writer; the
   incident is marked `closed` only when the closure summary is written, and agents cannot change a
   closed post-mortem. A failed closure leaves it open to retry.
-- The latest run is `{DATA_DIR}/incident_runs/{id}.json`; a run a restart stranded is closed as failed
+- The latest run is the incident's `incident_run` document in the `run_state` table; a run whose process
+  died is closed as failed
   at boot. Budgets: `agent.incidentConcurrency` (4), `incidentDiggerMaxIterations` (25),
   `incidentStepMaxIterations` (15), `incidentTimeoutMinutes` (30).
 
@@ -498,14 +506,43 @@ below it. Compose uses `stop_grace_period` (`NIB_STOP_GRACE_PERIOD`, 905 s).
 - **20 s before the end** (half the budget when it is under 40 s) whatever is left is cancelled. A
   sub-agent action records itself `cancelled` with "interrupted by a nib restart", which **Continue**
   resumes after the restart. A container is left running, since it outlives the process either way;
-  `ReconcileStuckRuns` closes its row at the next boot, as it does for anything a SIGKILL cut off.
-  Commands of cancelled turns are killed, and their rows are marked `lost` at the next boot.
+  the sweep of dead processes closes its row (see *Running more than one backend*), as it does for
+  anything a SIGKILL cut off. Commands of cancelled turns are killed, and their rows are marked
+  `lost` by the same sweep.
 - `/api/v1/health` keeps answering 200 while draining, so probes do not kill the pod early.
 
 The implementation is `workTracker` in `internal/service/shutdown.go` (`Drain`, `StopInFlight`) and
 the shutdown sequence at the end of `cmd/nib/main.go`. A new kind of background work has to either
 `begin` (refused when draining) or `adopt` (let through, continuing work already in flight) there,
 or a restart cuts it off without waiting.
+
+### Running more than one backend
+
+Run state, the execution lease, every lock and the SSE stream are shared through Postgres, so two
+backend processes on one database see one plan, one execution slot and one event stream:
+
+- **Run state** — plan status, the per-row exec, runs and notes records, the stage run, the
+  fan-out record, sub-agent pauses, code fixes and incident runs — is the `run_state` table, one
+  JSONB document per kind and dialog (migration `000042`). The first boot of this release imports
+  the old `{DATA_DIR}` files and renames each to `*.migrated`.
+- **The lease** is the single row of `execution_lease`. A sub-agent's expires 90 s after its process's
+  last heartbeat; a container's at the action deadline, as before.
+- **Locks** are Postgres advisory locks on a second pool (`NIB_COORDINATION_POOL_SIZE`, default 24),
+  so each process adds that many connections to the server's budget.
+- **Events and control** go over `LISTEN/NOTIFY` (`nib_activity`, `nib_control`). A force stop, a
+  fan-out or investigation stop, an answer to a planner's `report_blocker` or a command Cancel that
+  lands on another process is relayed to the one holding the run.
+- **Liveness**: each process registers in `nib_replicas` and heartbeats every 10 s. Every run
+  record names its owner. A boot and a sweep every 60 s close running records whose owner is gone:
+  missed heartbeats for 60 s, a clean exit, or replaced by a new process on the same hostname (a
+  restarted container). A live process's runs are never touched.
+
+Still per process, so `backend.replicaCount` stays 1 in the chart (with `Recreate`): the
+`{DATA_DIR}` volume (DAGs, action plans, reports, post-mortems, skills, rules, `mcp.json`, command
+logs) needs a shared `ReadWriteMany` volume, the header selection is held in memory, edits to the
+`config.yaml` project tree reach only the process that made them, and MCP discovery caches expire
+after 60 s rather than on another process's edit. An upgrade from a release before `run_state` cannot
+overlap old and new processes: the old one writes files the new one has already imported.
 
 ### What an upgrade does and does not touch
 
@@ -514,7 +551,7 @@ lists. It does **not** overwrite anything already on the data volume: prompt ove
 deleted skills and rules, `mcp.json`, allow lists, executor config, dialog artifacts. New built-in
 skills are seeded only on a volume that has never been seeded; new built-in *tool names* are merged
 into existing allow lists once each. Database state (dialogs, variables, secrets, MCP connections,
-knowledge base) is migrated in place by `backend/migrations` at startup.
+knowledge base, run state) is migrated in place by `backend/migrations` at startup.
 
 
 ## Architecture
@@ -600,8 +637,8 @@ generated from the registry in
 
 - **decompose** runs *blocking*, inside the orchestrator's turn
   ([subagent_decompose.go](backend/internal/service/subagent_decompose.go)). Decomposition is a
-  conversation, so when it calls `ask_question` it suspends: the pause is recorded in
-  `data/subagents/{root}.json`, the orchestrator relays the questions under an `ask_question` of its
+  conversation, so when it calls `ask_question` it suspends: the pause is recorded in the plan's
+  `subagents` run-state document, the orchestrator relays the questions under an `ask_question` of its
   own, and the answers are routed back to the sub-agent's dangling call by
   [subagent_resume.go](backend/internal/service/subagent_resume.go), hooked into `SubmitToolResult`
   beside the fan-out's answer delivery.
@@ -620,7 +657,7 @@ generated from the registry in
 A non-code action whose run ended `failed`, `cancelled` or `blocked` can be **continued** rather
 than rerun ([action_resume.go](backend/internal/service/action_resume.go)): `execute` /
 `execute_action` with `resume: true` (and an optional `note`, the operator's word for it) takes the
-lease, finds the run's dialog through `.runs.json`, appends a note saying why it stopped and that
+lease, finds the run's dialog through the plan's runs record, appends a note saying why it stopped and that
 the agent must re-check the state of what it already touched, and runs the loop again in that
 transcript with a fresh round budget and deadline. The row's **Continue** button sends "Continue
 plan item N…" through the chat, as Execute does. It is refused for a finished, running or never-run
@@ -638,7 +675,7 @@ decompose is let through.
 
 A DAG that changes under an existing action plan rebuilds that plan from scratch
 ([action_plan_rebuild.go](backend/internal/service/action_plan_rebuild.go)). `create_dag` only marks
-it (`rebuildActionPlan` in `data/subagents/{root}.json`) when the new diagram differs from the stored
+it (`rebuildActionPlan` in the `subagents` document) when the new diagram differs from the stored
 one in more than layout and an action plan exists; the rebuild runs when the decompose turn
 *finishes*, so a decompose still asking the operator never loses the plan under a DAG it has not
 settled. Any fan-out of every stage that finds the mark — that one, the plan page's button, or a
@@ -657,7 +694,7 @@ answer comes back as the tool's own result, in the same turn. Only that stage wa
 keep planning, and the wave ends when every stage in it has finished. Questions are serialised per
 plan by a one-slot desk, because `findPendingAskQuestion` renders only the newest unanswered ask and
 a second question posted beside the first would strand it. A waiting stage leaves the *run* running,
-so `ErrFanoutInProgress` still refuses a second fan-out and `ReconcileStuckRuns` still closes the run
+so `ErrFanoutInProgress` still refuses a second fan-out and the sweep of dead processes still closes the run
 after a restart — the waiter is a channel and dies with the process. The run's timeout is a budget of
 *working* time, charged by a watchdog that stops while any stage waits, and an unanswered wait
 returns the agent's own stated assumption so the plan never gains a gap.
@@ -667,16 +704,19 @@ that way: the tools are registered only when `toolBinding.planID == toolBinding.
 only on a root turn — and `stripSubagentTools` removes them from every sub-agent's allow set
 whatever an operator's edit to a mode list says.
 
-**One execution at a time**, across every plan, held by the lease in
-[execution_lease.go](backend/internal/service/execution_lease.go) and covering action sub-agents,
+**One execution at a time**, across every plan and every backend process, held by the lease in
+[execution_lease.go](backend/internal/service/execution_lease.go) (the `execution_lease` row) and covering action sub-agents,
 code-action containers and chat-requested code fixes. A fix's lease carries `Fix: true` and no row
 key, which is what keeps the force-stop and expiry paths from writing an outcome against a plan row
 that does not exist. A second request is refused with a sentence naming what holds
 it rather than queued, `agent.actionExecConcurrency` is clamped to 1, and `DELETE /api/v1/execution`
-force-stops the holder — cancelling a sub-agent's context, or stopping a container through
-`executor.StopAction`. That route takes no write deadline on purpose: it has to work while the agent
-loop holding the lease is wedged. `ReconcileStuckRuns` sweeps records a previous process left
-`running` at boot, without which a restart would block execution permanently.
+force-stops the holder — cancelling a sub-agent's context (relayed over `nib_control` to the process
+that owns it), or stopping a container through `executor.StopAction`. That route takes no write
+deadline on purpose: it has to work while the agent loop holding the lease is wedged.
+`SweepOrphanedRuns` ([exec_reconcile.go](backend/internal/service/exec_reconcile.go)), run at boot
+and every 60 s by the `ReplicaCoordinator` ([replicas.go](backend/internal/service/replicas.go)),
+closes records left `running` by a process that is gone, without which a restart would block
+execution permanently.
 
 **Execute all** on a stage header (or the rollback's) is a stage run
 ([stage_run.go](backend/internal/service/stage_run.go), `POST/GET/DELETE
@@ -753,30 +793,36 @@ there is no default-vs-override split for them.
 
 ### Dialog artifacts
 
-A `Dialog` UUID is the unit of work. Beyond the Postgres transcript, artifacts are files keyed by
-dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
-`data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json`,
-`data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`,
-`data/code_fixes/{id}.json`, `data/plan_origin/{id}.json`, and for an incident
-`data/postmortems/{id}.json` and `data/incident_runs/{id}.json`. Command output is the exception
-to atomic writes: `data/command_logs/{root}/{job}.log` is appended while the job runs and swept by
-age, and its index is the `command_runs` table, not a file.
+A `Dialog` UUID is the unit of work. Beyond the Postgres transcript, what a plan *is* lives in files
+keyed by dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
+`data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json` (with
+`.checks.json` and `.comments.json` beside it), `data/plan_origin/{id}.json`, and for an incident
+`data/postmortems/{id}.json`. Command output is the exception to atomic writes:
+`data/command_logs/{root}/{job}.log` is appended while the job runs and swept by age, and its index
+is the `command_runs` table, not a file.
 
-An action plan carries side files beside it, all keyed by the same dialog id and by the positional
-row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),
-`.comments.json` (their comments), `.runs.json` (the execute dialog per row), `.exec.json` (the last
-run's status) and `.notes.json` (what that run reported). Every one of them is positional, so all of
-them are remapped together whenever a stage is rewritten, reordered or replaced — `create` clears
-them, the HTTP `PUT` clears none. `.stagerun.json` (the latest "execute all") is the exception: it
-is never remapped, because a structural edit stops the run instead; `create` clears it and
-`ReconcileStuckRuns` stops one a restart stranded.
+What a plan is *doing* is run state, in the `run_state` table (`repository.RunStateRepository`,
+[run_state.go](backend/internal/service/run_state.go)), one JSONB document per kind and dialog:
+`plan_state`, `plan_fanout`, `subagents`, `code_fixes`, `incident_run`, and per action row
+`action_runs` (the execute dialog per row), `action_exec` (the last run's status), `action_notes`
+(what that run reported) and `stage_run`. A service without a store set — every unit test — keeps
+them in the files they used to be (`fileRunState`). Each read-modify-write runs under the record's
+named lock (`lockFor`, [locks.go](backend/internal/service/locks.go)), an advisory lock when a
+`DistributedLocker` is set.
+
+The per-row records are keyed by the positional row key of an action (`s0.step1`, `rollback.2`), as
+are the checks and comments. Every one of them is positional, so all of them are remapped together
+whenever a stage is rewritten, reordered or replaced — `create` clears them, the HTTP `PUT` clears
+none. The stage run (the latest "execute all") is the exception: it is never remapped, because a
+structural edit stops the run instead; `create` clears it and the sweep stops one whose process
+died.
 
 The `.nib` export ([plan_bundle.go](backend/internal/service/plan_bundle.go)) lists what a plan
 *is* by hand, so a new per-plan artifact has to be sorted there as plan or run. Leaving it out is
 the safe default for run state. Import writes the rows through `repository.DialogImporter` in one
 transaction, keeping each row's `created_at`, since `ListChildren` orders by it.
 
-`.notes.json` is the exception to "artifacts are for the operator": it is the executors' own memory.
+The notes record is the exception to "artifacts are for the operator": it is the executors' own memory.
 A finished action sub-agent's final message is recorded there and handed to the sub-agents that run
 the later actions through `get_action_list`, which is how a resource id one action creates reaches
 the action that needs it. It is deliberately unreachable from the HTTP API — its accessors are
@@ -784,11 +830,11 @@ unexported for exactly that reason — and a successful run's text is kept out o
 shows only that the action is done plus a link to the transcript. A failure, a question or a
 cancellation still says why in the chat.
 
-`code_fixes/{root}.json` maps a chat-requested code fix's own dialog id to its run. It exists
+The `code_fixes` document maps a chat-requested code fix's own dialog id to its run. It exists
 because such a fix has no action row to be recorded on, and the agent-runner webhook needs something
-durable to recognise it by: the container outlives the process that launched it, so `ReconcileStuckRuns`
-sweeps a fix a restart stranded exactly as it sweeps an action. A webhook delivery whose dialog matches
-neither `.runs.json` nor this file is a `run_executor` container and is left alone.
+durable to recognise it by: the container outlives the process that launched it, so the sweep closes
+a fix whose process died exactly as it closes an action. A webhook delivery whose dialog matches
+neither the runs record nor this one is a `run_executor` container and is left alone.
 
 They are keyed by the **root** dialog of a lineage, not by the dialog that wrote them: a sub-agent's
 transcript is its own while every plan artifact belongs to the plan. That split is `toolBinding`
@@ -850,8 +896,8 @@ Two things are load-bearing. The HTTP middleware sits after `middleware.Logger` 
 ([dialog_events.go](backend/internal/handler/dialog_events.go) answers a bare 500) and anything that
 hides `Unwrap()` breaks `writeDeadline`'s 30-minute budget; both fail silently, so
 `middleware_metrics_test.go` guards them. And the plans-by-status gauges are refreshed by a
-background goroutine, not at scrape time: plan status lives in `data/plan_state/{id}.json`, so
-counting is one query plus one file read per plan. Full metric list in [docs/metrics.md](docs/metrics.md).
+background goroutine, not at scrape time: counting is a query for the plans plus one for their
+`plan_state` documents. Full metric list in [docs/metrics.md](docs/metrics.md).
 
 ### Frontend
 
@@ -876,10 +922,12 @@ environment and covers pure `lib/` helpers only — there are no component tests
 ## Watch out
 
 - `data/` is live application state mounted into the running stack (mcp.json, prompts, rules,
-  skills, tool allow lists, dialog artifacts, `plan_fanout/`, `subagents/`). Editing a file there
+  skills, tool allow lists, dialog artifacts). Editing a file there
   changes the running app immediately, and generated artifacts routinely show up as untracked files
   in `git status`.
-- Every lock, the SSE broker and the execution lease are process-local, and the chart pins
-  `backend.replicaCount: 1`. Horizontal scaling would break all four at once.
+- Locks, the execution lease, run state and SSE are shared through Postgres, but a second backend
+  still needs a shared `DATA_DIR` and more (see *Running more than one backend*), so the chart keeps
+  `backend.replicaCount: 1`. A new in-memory map of running work needs a relay over `nib_control`,
+  and a new run record an `Owner` the sweep can judge.
 - Releases are driven by the root `VERSION` file merged to `main`; keep `.env.example`
   (`NIB_VERSION`, `NIB_KB_VERSION`) and `frontend/package.json` version in step.

@@ -38,6 +38,7 @@ OPENAI_API_KEY)` when neither key is set.
 | `SERVER_HOST` | `0.0.0.0` | API listener bind address. |
 | `SERVER_PORT` | `8080` | API listener port. |
 | `SHUTDOWN_TIMEOUT_SECONDS` | `900` | Budget from SIGTERM to exit. New work is refused at once; work in flight is waited for until 20 s before the end, then cancelled. `0` stops at once. Keep it below the deployment's kill timer (`terminationGracePeriodSeconds`, `stop_grace_period`); the chart sets it 5 s below. |
+| `NIB_COORDINATION_POOL_SIZE` | `24` | Connections the backend holds, on top of its ordinary pool, for Postgres advisory locks and the `LISTEN/NOTIFY` listener that carries events and control messages between backend processes. Each process adds this many to the server's `max_connections` budget. At least 2. |
 | `DB_HOST` | `localhost` | Postgres host. |
 | `DB_PORT` | `5432` | Postgres port. |
 | `DB_USER` | `nib` | Postgres user. |

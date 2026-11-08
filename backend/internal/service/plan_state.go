@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/javdet/nib/internal/atomicfile"
 	"github.com/javdet/nib/internal/metrics"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // PlanState holds lifecycle status and schedule for a plan (decompose dialog).
@@ -19,32 +17,27 @@ type PlanState struct {
 	ScheduledAt int64            `json:"scheduledAt"`
 }
 
-func planStatePath(dir string, dialogID uuid.UUID) string {
-	return filepath.Join(dir, dialogID.String()+".json")
-}
-
 // ReadPlanState returns persisted plan state for a dialog, defaulting to draft.
 func (s *ChatService) ReadPlanState(dialogID uuid.UUID) (PlanState, error) {
-	path := planStatePath(s.planStateDir, dialogID)
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	var state PlanState
+	found, err := s.loadRunState(repository.RunStatePlanState, dialogID, &state)
+	if err != nil {
+		return PlanState{}, fmt.Errorf("read plan state: %w", err)
+	}
+	if !found {
 		return PlanState{Status: ActionPlanStatusDraft, ScheduledAt: 0}, nil
 	}
-	if err != nil {
-		return PlanState{}, err
-	}
+	return normalizePlanState(state), nil
+}
 
-	var state PlanState
-	if err := json.Unmarshal(b, &state); err != nil {
-		return PlanState{}, fmt.Errorf("unmarshal plan state: %w", err)
-	}
+func normalizePlanState(state PlanState) PlanState {
 	if !isValidActionPlanStatus(state.Status) {
 		state.Status = ActionPlanStatusDraft
 	}
 	if state.ScheduledAt < 0 {
 		state.ScheduledAt = 0
 	}
-	return state, nil
+	return state
 }
 
 // WritePlanState persists plan state for a dialog.
@@ -59,27 +52,20 @@ func (s *ChatService) WritePlanState(dialogID uuid.UUID, state PlanState) error 
 	// The previous status is read back rather than passed in: both callers
 	// already hold it, but recording here means a third one cannot forget to.
 	// A status write is an operator action or a checkbox change, so the extra
-	// file read is not on any hot path.
+	// read is not on any hot path.
 	if previous, err := s.ReadPlanState(dialogID); err == nil {
 		metrics.RecordPlanStatusTransition(string(previous.Status), string(state.Status))
 		// The same transition, persisted. The Prometheus counter answers "how
 		// often" for alerting; this answers "when", which is the only thing the
 		// statistics page can build a status-over-time series from -- plan state
-		// on disk keeps just the current value.
+		// keeps just the current value.
 		s.recordPlanStatusTransition(dialogID, string(previous.Status), string(state.Status))
 	}
 
-	if err := os.MkdirAll(s.planStateDir, 0o755); err != nil {
-		return fmt.Errorf("create plan_state directory: %w", err)
+	if err := s.saveRunState(repository.RunStatePlanState, dialogID, state); err != nil {
+		return fmt.Errorf("write plan state: %w", err)
 	}
-
-	data, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("marshal plan state: %w", err)
-	}
-
-	path := planStatePath(s.planStateDir, dialogID)
-	return atomicfile.Write(path, data)
+	return nil
 }
 
 // ReadPlanStates returns plan state per dialog id, defaulting to draft when missing.
@@ -90,12 +76,24 @@ func (s *ChatService) ReadPlanStates(ids []uuid.UUID) map[uuid.UUID]PlanState {
 
 	result := make(map[uuid.UUID]PlanState, len(ids))
 	for _, id := range ids {
-		state, err := s.ReadPlanState(id)
-		if err != nil {
-			result[id] = PlanState{Status: ActionPlanStatusDraft, ScheduledAt: 0}
+		result[id] = PlanState{Status: ActionPlanStatusDraft, ScheduledAt: 0}
+	}
+
+	// One query for the whole list rather than one per plan: the plans page
+	// asks for every plan at once.
+	ctx, cancel := context.WithTimeout(context.Background(), runStateTimeout)
+	defer cancel()
+	docs, err := s.runStateStore().GetRunStates(ctx, repository.RunStatePlanState, ids)
+	if err != nil {
+		slog.Warn("read plan states", "error", err)
+		return result
+	}
+	for id, b := range docs {
+		var state PlanState
+		if err := json.Unmarshal(b, &state); err != nil {
 			continue
 		}
-		result[id] = state
+		result[id] = normalizePlanState(state)
 	}
 	return result
 }

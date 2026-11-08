@@ -34,6 +34,7 @@ import (
 	"github.com/javdet/nib/internal/metrics"
 	"github.com/javdet/nib/internal/mode"
 	"github.com/javdet/nib/internal/nibdocs"
+	"github.com/javdet/nib/internal/repository"
 	"github.com/javdet/nib/internal/repository/postgres"
 	"github.com/javdet/nib/internal/repository/static"
 	"github.com/javdet/nib/internal/rules"
@@ -41,6 +42,7 @@ import (
 	"github.com/javdet/nib/internal/skills"
 	"github.com/javdet/nib/internal/systemprompts"
 	"github.com/javdet/nib/internal/toolcatalog"
+	"github.com/javdet/nib/internal/version"
 	"github.com/javdet/nib/internal/webhookauth"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
@@ -144,6 +146,18 @@ func run() error {
 	if err := migratePlanOwnership(ctx, pool, cfg.DataDir); err != nil {
 		return fmt.Errorf("migrate plan ownership: %w", err)
 	}
+
+	// Locks and the message bus hold connections for as long as a lock is held
+	// or the process lives, some of them across an agent round. They get a pool
+	// of their own so they can never starve ordinary queries.
+	coordPool, err := newCoordinationPool(ctx, poolCfg)
+	if err != nil {
+		return err
+	}
+	defer coordPool.Close()
+
+	hostname, _ := os.Hostname()
+	replicaID := service.NewReplicaID(hostname)
 
 	projectRepo := static.NewProjectRepo(holder, cfgManager)
 	envRepo := static.NewEnvironmentRepo(holder, cfgManager)
@@ -391,7 +405,7 @@ func run() error {
 	statsRepo := postgres.NewStatsRepo(pool)
 	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
 	commandRunRepo := postgres.NewCommandRunRepo(pool)
-	commandJobs, err := newCommandJobs(cfg, commandRunRepo)
+	commandJobs, err := newCommandJobs(cfg, commandRunRepo, replicaID)
 	if err != nil {
 		return fmt.Errorf("agent commands: %w", err)
 	}
@@ -413,27 +427,57 @@ func run() error {
 			"configured", cfg.Agent.ActionExecConcurrency)
 	}
 
+	// Shared state, before anything is served: run state and the lease in
+	// Postgres, locks that hold across processes, and the bus every process
+	// hears the others on.
+	chatSvc.SetReplica(replicaID)
+	chatSvc.SetDistributedLocker(postgres.NewAdvisoryLocker(coordPool))
+	runStateRepo := postgres.NewRunStateRepo(pool)
+	if n, err := chatSvc.ImportRunStateFiles(ctx, runStateRepo); err != nil {
+		return fmt.Errorf("import run state files: %w", err)
+	} else if n > 0 {
+		slog.Info("moved run state files from the data volume into the database", "documents", n)
+	}
+	chatSvc.SetRunStateStore(runStateRepo)
+	chatSvc.SetExecutionLeaseStore(postgres.NewExecutionLeaseRepo(pool))
+
+	coordCtx, stopCoordination := context.WithCancel(context.Background())
+	defer stopCoordination()
+	bus := postgres.NewNotifyBus(pool, coordPool, service.BusChannelActivity, service.BusChannelControl)
+	go bus.Run(coordCtx, chatSvc.HandleBusMessage)
+	chatSvc.SetMessageBus(bus)
+	commandRunSvc.SetPeerRelay(replicaID, chatSvc.RelayJobCancel)
+
+	coordinator := service.NewReplicaCoordinator(postgres.NewReplicaRepo(pool), chatSvc, commandRunSvc,
+		repository.Replica{ID: replicaID, Hostname: hostname, Version: version.Version()})
+	if err := coordinator.Register(ctx); err != nil {
+		return fmt.Errorf("register backend process: %w", err)
+	}
+	// Deferred, so every way out of here -- a clean drain or a failed start --
+	// tells the other processes this one is gone.
+	defer func() {
+		deregCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		coordinator.Deregister(deregCtx)
+	}()
+
 	// A run interrupted by a restart has nothing left to close it: its goroutine
 	// died with the previous process and a container's webhook has nowhere to
 	// land. Sweeping them here is what keeps a restart from permanently
-	// blocking the one execution slot.
-	if rec, err := chatSvc.ReconcileStuckRuns(); err != nil {
+	// blocking the one execution slot. Runs of other processes still alive are
+	// theirs, and left alone.
+	if rec, err := coordinator.Sweep(ctx); err != nil {
 		slog.Warn("reconcile stuck runs", "error", err)
 	} else {
-		metrics.AddStuckRunsReconciled(rec.Actions, rec.Fanouts, rec.CodeFixes)
-		if rec.Actions > 0 || rec.Fanouts > 0 || rec.CodeFixes > 0 || rec.StageRuns > 0 || rec.Incidents > 0 {
-			slog.Info("closed runs left behind by a previous process",
-				"actions", rec.Actions, "fanouts", rec.Fanouts, "code_fixes", rec.CodeFixes,
-				"stage_runs", rec.StageRuns, "incidents", rec.Incidents)
+		metrics.AddStuckRunsReconciled(rec.Runs.Actions, rec.Runs.Fanouts, rec.Runs.CodeFixes)
+		if rec.Runs.Total() > 0 || rec.CommandRuns > 0 {
+			slog.Info("closed runs left behind by processes that are gone",
+				"actions", rec.Runs.Actions, "fanouts", rec.Runs.Fanouts, "code_fixes", rec.Runs.CodeFixes,
+				"stage_runs", rec.Runs.StageRuns, "incidents", rec.Runs.Incidents,
+				"command_runs", rec.CommandRuns)
 		}
 	}
-	// A command dies with the process that ran it, so a row still running at
-	// boot will never be finished by anything else.
-	if n, err := commandRunSvc.ReconcileLost(ctx); err != nil {
-		slog.Warn("reconcile command runs", "error", err)
-	} else if n > 0 {
-		slog.Info("closed command runs left behind by a previous process", "command_runs", n)
-	}
+	go coordinator.Run(coordCtx)
 
 	// Both mcp.json edits and secret rotations change what a resolved MCP server
 	// looks like, so either has to drop the cached routes and reindex.

@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -815,9 +814,8 @@ func (s *ChatService) ReadPostmortem(rootID uuid.UUID) (Postmortem, error) {
 	return doc, nil
 }
 
-func (s *ChatService) postmortemMutex(rootID uuid.UUID) *sync.Mutex {
-	mu, _ := s.postmortemWriteMu.LoadOrStore(rootID, &sync.Mutex{})
-	return mu.(*sync.Mutex)
+func (s *ChatService) postmortemMutex(rootID uuid.UUID) *namedLock {
+	return s.lockFor("postmortem:" + rootID.String())
 }
 
 // updatePostmortem is the one read-modify-write of the document. Agents running

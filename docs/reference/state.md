@@ -1,8 +1,9 @@
 # State: the data directory and the database
 
-nib keeps state in two places. Postgres holds transcripts, credentials and the
-tool catalog; a single directory on disk holds everything an operator can edit
-as a file, plus the artifacts of every plan.
+nib keeps state in two places. Postgres holds transcripts, credentials, the
+tool catalog and the run state of every plan and incident; a single directory
+on disk holds everything an operator can edit as a file, plus the artifacts of
+every plan.
 
 Both must survive a restart. In Docker Compose they are the `pgdata` and
 `nibdata` volumes; in the Helm chart, the PostgreSQL StatefulSet and the backend
@@ -77,16 +78,18 @@ wrote them. Each is written atomically.
 | `summaries/{id}.txt` | The plan summary. |
 | `reports/{id}.md` | The closing report written after **Finish**. |
 | `action_plans/{id}.json` | The action plan. |
-| `plan_state/{id}.json` | Current status and schedule. |
 | `plan_selection/{id}.json` | The project/environment/cloud/location the plan was started under, recorded on its first turn. |
 | `plan_contracts/{id}.json` | The cross-stage contract written by `create_plan_contract`. |
-| `plan_fanout/{id}.json` | Progress of a detailed-planning run. |
-| `subagents/{id}.json` | A suspended sub-agent waiting on an answer. |
-| `code_fixes/{id}.json` | Chat-requested code fixes: each fix's own dialog id mapped to its run. The agent-runner webhook recognises a fix by it, and a restart sweeps one left `running`. |
 | `postmortems/{id}.json` | An incident's post-mortem, keyed by the incident. |
-| `incident_runs/{id}.json` | An incident's latest investigation or closure run. A restart closes one left `running` as failed. |
 | `plan_origin/{id}.json` | The incident and actions a plan was created from. Not part of a `.nib` export. |
 | `kb_updates/{id}.json` | That the plan has been folded into its knowledge base collection, and whether anything changed. A failed run writes none, so **Finish** can retry it. |
+
+What a plan or incident is *doing* — its status, runs, notes and the progress of
+its planning and investigation — is not here but in the `run_state` table (see
+[Run state](#run-state)). Releases before it kept those as files under
+`plan_state/`, `plan_fanout/`, `subagents/`, `code_fixes/`, `incident_runs/` and
+`action_plans/{id}.{runs,exec,notes,stagerun}.json`; the first boot of this one
+imports them and renames each to `*.migrated`.
 
 ### The action plan
 
@@ -122,22 +125,12 @@ positional row key of an action — `s0.step1`, `rollback.2`.
 |---|---|
 | `{id}.checks.json` | The operator's checkboxes. |
 | `{id}.comments.json` | The operator's comments. |
-| `{id}.runs.json` | The execute dialog created for each row. |
-| `{id}.exec.json` | The last run's status per row. |
-| `{id}.notes.json` | What the last run reported. |
-| `{id}.stagerun.json` | The latest **Execute all** run: scope, stage, the row it is on, status and why it stopped. |
 
-Because the keys are positional, the first five are remapped together whenever
-a stage is rewritten, reordered or replaced. `create_action_plan` clears them; a
-`PUT` on the action plan clears none.
-
-`{id}.stagerun.json` is never remapped: a reorder or a change in the stage's
-shape stops the run instead. `create_action_plan` clears it, and a restart stops
-one left `running`.
-
-`{id}.notes.json` is the executors' own memory, not an operator surface: a
-finished action's final message is recorded there and handed to later actions
-through `get_action_list`. It is unreachable from the HTTP API.
+The per-row run records — `action_runs`, `action_exec`, `action_notes` — are
+keyed the same way but live in the `run_state` table. Because the keys are
+positional, all five are remapped together whenever a stage is rewritten,
+reordered or replaced. `create_action_plan` clears them; a `PUT` on the action
+plan clears none.
 
 ### Other
 
@@ -214,13 +207,45 @@ Knowledge search compares them as strings.
 These tables carry no foreign key to `chat_dialogs`, so their rows outlive the
 dialogs they came from and any join to `chat_dialogs` must be a `LEFT JOIN`.
 
+### Run state
+
+`run_state` holds one JSONB document per kind and dialog, keyed by the root
+dialog of a plan or incident, and goes when its dialog is deleted.
+
+| Kind | Holds |
+|---|---|
+| `plan_state` | Current status and schedule. |
+| `plan_fanout` | Progress of a detailed-planning run. |
+| `subagents` | A suspended sub-agent waiting on an answer. |
+| `code_fixes` | Chat-requested code fixes: each fix's own dialog id mapped to its run. The agent-runner webhook recognises a fix by it. |
+| `incident_run` | An incident's latest investigation or closure run. |
+| `action_runs` | The execute dialog created for each row. |
+| `action_exec` | The last run's status per row. |
+| `action_notes` | What the last run reported. The executors' own memory, handed to later actions through `get_action_list`; unreachable from the HTTP API. |
+| `stage_run` | The latest **Execute all** run: scope, stage, the row it is on, status and why it stopped. Never remapped: a reorder or a change in the stage's shape stops the run instead. |
+
+A running record names the backend process that owns it. One whose process is
+gone — it stopped heartbeating, exited, or was replaced by a restart on the same
+host — is closed as failed or stopped at the next boot or sweep, every 60
+seconds; one owned by a live process is left alone.
+
+### Coordination
+
+| Table | Holds |
+|---|---|
+| `execution_lease` | At most one row: the one execution running across every plan, which process took it, and when it expires — 90 s after its process's last heartbeat for a sub-agent, at the action deadline for a container. |
+| `nib_replicas` | One row per running backend process, with its last heartbeat. A clean exit deletes its own row. |
+
+Locks are Postgres advisory locks and events travel over `LISTEN/NOTIFY`; neither
+leaves anything in a table.
+
 ### Commands
 
 | Table | Holds |
 |---|---|
-| `command_runs` | One row per command an agent ran: plan, dialog, action row, mode, the script (up to 64 KiB), the sandbox uid, status, exit code, output size and timing. A row still `running` at boot is marked `lost`. No foreign key, for the same reason as the statistics. |
+| `command_runs` | One row per command an agent ran: plan, dialog, action row, mode, the script (up to 64 KiB), the sandbox uid, status, exit code, output size, timing and the process that ran it. A row still `running` whose process is gone is marked `lost`. No foreign key, for the same reason as the statistics. |
 
-Plan *status* itself lives in `plan_state/{id}.json` and keeps only the current
+Plan *status* itself lives in the `plan_state` run-state document and keeps only the current
 value; the history in `plan_status_transitions` starts accumulating from the
 release that added it.
 
@@ -234,6 +259,7 @@ release that added it.
 | Tool allow lists | Kept. A new mode's list is added, and a built-in tool new to the release is added to existing lists once; no name is ever removed. |
 | `mcp.json`, rules, variables, secrets | Kept. |
 | Plan artifacts | Kept. |
+| Run state from before the `run_state` table | Imported into it on the first boot; each file is renamed `*.migrated`. |
 
 See [Upgrade an install](../how-to/upgrade.md).
 

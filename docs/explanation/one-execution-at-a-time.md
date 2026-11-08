@@ -108,27 +108,27 @@ the lease is released without anyone saying how the run ended.
 This is the general shape of the trade: a global lock is simple to reason about
 and needs a recovery path for every way the holder can vanish.
 
-## Why it cannot simply be lifted
+## More than one backend
 
-The lease is process-local. So is the SSE broker, so is the stage-run slot,
-so is every other lock, and so
-is the background refresh that counts plans by status. The Helm chart pins the
-backend to one replica, and that pin is what makes all four correct.
+The lease is a row in Postgres, not a variable in one process. Acquiring it is
+an insert that conflicts on the table's single slot, so two backend processes
+racing for it cannot both win, and every release or stamp is a compare-and-set
+on the grant's token. A sub-agent's lease carries an expiry its process pushes
+back on every heartbeat, so a process that dies frees the slot within 90 seconds;
+a container's expires at the action deadline, exactly as before.
 
-Run two replicas and each gets its own lease. Two actions run at once, neither
-knowing about the other — the exact outcome the policy exists to prevent, now
-arrived at silently. The SSE broker splits the same way: a browser connected to
-pod A never sees events published on pod B.
+A force stop that lands on a process other than the one running the sub-agent
+takes the lease all the same, and relays the cancel over `LISTEN/NOTIFY` to the
+process holding the sub-agent's context. The stage-run slot, every other lock
+(advisory locks), run state and the SSE stream are shared the same way, and each
+process registers itself, so a booting or sweeping process closes only the runs
+of processes that are gone.
 
-This also makes three metrics ambiguous under replication.
-`nib_execution_lease_held`, `nib_sse_subscribers` and `nib_plans` are
-unambiguous today only because there is one process. With several they become
-per-pod values that must not be summed.
-
-Lifting the limit is therefore not a config change. It means moving the lease
-into Postgres — an advisory lock or a row with a heartbeat — and the broker onto
-something shared. Both are ordinary pieces of work; neither has been done,
-because one replica has been enough.
+That is what the policy needs to stay true with several replicas. The chart
+still pins one: the data directory is a `ReadWriteOnce` volume, the header
+selection lives in memory, and edits to the project tree in `config.yaml` reach
+only the process that made them. Those are what is left between nib and a
+second replica.
 
 ## Is one replica a problem?
 

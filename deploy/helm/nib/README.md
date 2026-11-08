@@ -160,7 +160,7 @@ Metric names and queries: [docs/metrics.md](../../../docs/metrics.md).
 
 Runtime state is stored at `/app/data` on a PVC:
 
-- Written at runtime: `dags/`, `summaries/`, `action_plans/`, `plan_state/`, `attachments/`, `logs/`, `mcp.json`, `executor.json`
+- Written at runtime: `dags/`, `summaries/`, `action_plans/`, `attachments/`, `logs/`, `mcp.json`, `executor.json` (run state — plan status, runs, fan-outs, incident runs — is in Postgres)
 - Prompts self-seed on first start; rules/skills are managed via the UI
 
 Optional: seed prompts, tools, rules, and skills from a ConfigMap:

@@ -212,7 +212,7 @@ func TestAwaitBlockerAnswer_returnsTheOperatorsAnswer(t *testing.T) {
 	waitForQuestion(t, "the question to be posted", func() bool { return messageCount(t, repo, planID) > 0 })
 	callID, _, _ := pendingAsk(t, repo, planID)
 
-	if _, handled := svc.deliverFanoutAnswer(callID, []string{"traefik"}); !handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"traefik"}); !handled {
 		t.Fatal("the answer was not handled")
 	}
 
@@ -327,7 +327,7 @@ func TestAwaitBlockerAnswer_putsOneQuestionAtATime(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("append tool row: %v", err)
 	}
-	if _, handled := svc.deliverFanoutAnswer(callID, []string{"traefik"}); !handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"traefik"}); !handled {
 		t.Fatal("the first answer was not handled")
 	}
 	<-firstDone
@@ -338,7 +338,7 @@ func TestAwaitBlockerAnswer_putsOneQuestionAtATime(t *testing.T) {
 	})
 
 	nextID, _, _ := pendingAsk(t, repo, planID)
-	if _, handled := svc.deliverFanoutAnswer(nextID, []string{"tcp"}); !handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, nextID, []string{"tcp"}); !handled {
 		t.Fatal("the second answer was not handled")
 	}
 	if got := <-secondDone; !strings.Contains(got, "tcp") {
@@ -353,7 +353,7 @@ func TestDeliverFanoutAnswer_absorbsAQuestionNothingIsWaitingOn(t *testing.T) {
 	t.Parallel()
 	svc := &ChatService{}
 
-	resp, handled := svc.deliverFanoutAnswer(fanoutAskIDPrefix+uuid.NewString(), []string{"yes"})
+	resp, handled := svc.deliverFanoutAnswer(uuid.Nil, fanoutAskIDPrefix+uuid.NewString(), []string{"yes"})
 	if !handled {
 		t.Fatal("an orphaned fan-out question was left to the ordinary resume path")
 	}
@@ -361,7 +361,7 @@ func TestDeliverFanoutAnswer_absorbsAQuestionNothingIsWaitingOn(t *testing.T) {
 		t.Errorf("response = %q", resp.Response)
 	}
 
-	if _, handled := svc.deliverFanoutAnswer("call_other", []string{"yes"}); handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, "call_other", []string{"yes"}); handled {
 		t.Error("a call that is not a fan-out question was claimed")
 	}
 }
@@ -378,12 +378,12 @@ func TestDeliverFanoutAnswer_deliversOnce(t *testing.T) {
 	waitForQuestion(t, "the question to be posted", func() bool { return messageCount(t, repo, planID) > 0 })
 	callID, _, _ := pendingAsk(t, repo, planID)
 
-	if _, handled := svc.deliverFanoutAnswer(callID, []string{"traefik"}); !handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"traefik"}); !handled {
 		t.Fatal("the first answer was not handled")
 	}
 	<-done
 
-	resp, handled := svc.deliverFanoutAnswer(callID, []string{"again"})
+	resp, handled := svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"again"})
 	if !handled || !strings.Contains(resp.Response, "Nothing is waiting") {
 		t.Errorf("second delivery = %#v, handled=%v", resp, handled)
 	}
@@ -534,7 +534,7 @@ func TestReportBlockerHandler_waitsAndReturnsTheAnswer(t *testing.T) {
 		t.Errorf("options = %v, want both carried through", q.Options)
 	}
 
-	if _, handled := svc.deliverFanoutAnswer(callID, []string{"traefik"}); !handled {
+	if _, handled := svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"traefik"}); !handled {
 		t.Fatal("the answer was not handled")
 	}
 	if got := <-done; !strings.Contains(got, "traefik") {
@@ -571,7 +571,7 @@ func TestReportBlockerHandler_stopsAskingPastTheCap(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("append tool row: %v", err)
 		}
-		svc.deliverFanoutAnswer(callID, []string{"an answer"})
+		svc.deliverFanoutAnswer(uuid.Nil, callID, []string{"an answer"})
 		<-done
 	}
 

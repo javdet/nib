@@ -205,7 +205,7 @@ Validated when an action is launched, not when the config is saved.
 |---|---|---|
 | `run_executor` | the LLM tool of the same name | Available in `execute` mode when the executor is configured. Passes no chat id, so its result lands nowhere; it is withdrawn from action sub-agents for that reason. |
 | **Execute action** | the operator, on a `code` step | Fixed tool surface and timeout constants. The pull request is attached to the action. |
-| `run_subagent` with `name: "code"` | the orchestrator, from the chat | An ad-hoc change with no plan row behind it. Recorded in `data/code_fixes/{root}.json` and reported into the chat that asked for it. |
+| `run_subagent` with `name: "code"` | the orchestrator, from the chat | An ad-hoc change with no plan row behind it. Recorded in the chat's `code_fixes` run-state document and reported into the chat that asked for it. |
 
 `run_executor` aside, all of them take the single execution slot. See [One execution at a
 time](../explanation/one-execution-at-a-time.md).

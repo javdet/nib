@@ -1,16 +1,14 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/metrics"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // ActionExecStatus is where a per-action sub-agent run ended up.
@@ -37,7 +35,7 @@ const (
 //
 // It deliberately carries neither the row's number nor its dialog id. The number
 // is derived from position and goes stale the moment a stage is reordered, and
-// the dialog id lives in {plan}.runs.json, which the agent-runner webhook
+// the dialog id lives in the plan's runs record, which the agent-runner webhook
 // reverse-looks-up to attach a pull request. Two maps of the same fact would
 // drift.
 type ActionExecRun struct {
@@ -57,6 +55,10 @@ type ActionExecRun struct {
 	JobName     string `json:"jobName,omitempty"`
 	ContainerID string `json:"containerId,omitempty"`
 	Namespace   string `json:"namespace,omitempty"`
+	// Owner is the backend process that started it. A sweep closes a running
+	// record only once its owner is gone, so one process restarting never
+	// closes what another is still running.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Active reports whether a run still holds its row.
@@ -73,18 +75,9 @@ func actionPlanExecPath(dir string, dialogID uuid.UUID) string {
 
 // ReadActionPlanExecRuns returns the latest sub-agent run per action row key.
 func (s *ChatService) ReadActionPlanExecRuns(dialogID uuid.UUID) (ActionExecRuns, error) {
-	path := actionPlanExecPath(s.actionPlansDir, dialogID)
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return ActionExecRuns{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	var runs ActionExecRuns
-	if err := json.Unmarshal(b, &runs); err != nil {
-		return nil, fmt.Errorf("unmarshal action plan exec runs: %w", err)
+	if _, err := s.loadRunState(repository.RunStateActionExec, dialogID, &runs); err != nil {
+		return nil, fmt.Errorf("read action plan exec runs: %w", err)
 	}
 	if runs == nil {
 		return ActionExecRuns{}, nil
@@ -97,17 +90,10 @@ func (s *ChatService) WriteActionPlanExecRuns(dialogID uuid.UUID, runs ActionExe
 	if runs == nil {
 		runs = ActionExecRuns{}
 	}
-
-	if err := os.MkdirAll(s.actionPlansDir, 0o755); err != nil {
-		return fmt.Errorf("create action_plans directory: %w", err)
+	if err := s.saveRunState(repository.RunStateActionExec, dialogID, runs); err != nil {
+		return fmt.Errorf("write action plan exec runs: %w", err)
 	}
-
-	data, err := json.Marshal(runs)
-	if err != nil {
-		return fmt.Errorf("marshal action plan exec runs: %w", err)
-	}
-
-	return writeActionPlanFile(actionPlanExecPath(s.actionPlansDir, dialogID), data)
+	return nil
 }
 
 // updateActionPlanExecRun applies mutate to one row's record and stores the
@@ -147,6 +133,7 @@ func (s *ChatService) startActionExecRun(planID uuid.UUID, key string) (ActionEx
 			StartedAt: time.Now().Unix(),
 			Attempt:   attempt,
 			Kind:      ExecutionKindSubagent,
+			Owner:     s.replicaID,
 		}
 		metrics.RecordActionExecStarted(string(ExecutionKindSubagent))
 	})

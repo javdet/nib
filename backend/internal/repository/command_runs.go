@@ -15,7 +15,7 @@ type CommandRunRepository interface {
 	// action row's.
 	ListCommandRuns(ctx context.Context, planID uuid.UUID, actionKey string, limit int) ([]domain.CommandRun, error)
 	GetCommandRun(ctx context.Context, id uuid.UUID) (domain.CommandRun, error)
-	// MarkRunningCommandRunsLost closes every row still running, which at boot
-	// can only be a run the previous process took down with it.
-	MarkRunningCommandRunsLost(ctx context.Context, reason string) (int64, error)
+	// MarkRunningCommandRunsLost closes every row still running whose owner is
+	// not among liveOwners: a command dies with the process that ran it.
+	MarkRunningCommandRunsLost(ctx context.Context, reason string, liveOwners []string) (int64, error)
 }

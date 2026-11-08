@@ -210,6 +210,7 @@ func (s *ChatService) recordCodeActionRun(planID uuid.UUID, key string, run exec
 			JobName:     run.JobName,
 			ContainerID: run.ContainerID,
 			Namespace:   run.Namespace,
+			Owner:       s.replicaID,
 		}
 	}); err != nil {
 		// The container is already building; a missing status row is a cosmetic

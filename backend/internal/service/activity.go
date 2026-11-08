@@ -15,6 +15,18 @@ type ActivityBroker struct {
 	mu          sync.Mutex
 	nextID      uint64
 	subscribers map[uuid.UUID]map[uint64]chan domain.AgentActivity
+
+	// relay, when set, publishes an event to every backend process instead of
+	// delivering it here, and reports whether it will come back through
+	// Deliver. A subscriber may be connected to any process, so delivering
+	// locally as well would show it twice to the ones connected here.
+	relay func(uuid.UUID, domain.AgentActivity) bool
+}
+
+func (b *ActivityBroker) setRelay(relay func(uuid.UUID, domain.AgentActivity) bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.relay = relay
 }
 
 func NewActivityBroker() *ActivityBroker {
@@ -62,6 +74,17 @@ func (b *ActivityBroker) Subscribe(dialogID uuid.UUID) (<-chan domain.AgentActiv
 }
 
 func (b *ActivityBroker) Publish(dialogID uuid.UUID, ev domain.AgentActivity) {
+	b.mu.Lock()
+	relay := b.relay
+	b.mu.Unlock()
+	if relay != nil && relay(dialogID, ev) {
+		return
+	}
+	b.Deliver(dialogID, ev)
+}
+
+// Deliver hands an event to this process's own subscribers of dialogID.
+func (b *ActivityBroker) Deliver(dialogID uuid.UUID, ev domain.AgentActivity) {
 	b.mu.Lock()
 	subs := b.subscribers[dialogID]
 	channels := make([]chan domain.AgentActivity, 0, len(subs))

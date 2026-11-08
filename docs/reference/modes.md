@@ -65,8 +65,8 @@ update agent (`execute_kb` overlay, catalog `get_action_list`,
 `code` is the one launch that is not an agent of nib's own: the work happens in
 an agent-runner container, which reports through the webhook rather than by
 finishing a turn. It takes the single execution slot like a code action does, and
-because it has no plan row to be recorded on, its run is recorded in
-`data/code_fixes/{root}.json` instead. See [The
+because it has no plan row to be recorded on, its run is recorded in the chat's
+`code_fixes` run-state document instead. See [The
 executor](executor.md#three-entry-points).
 
 ### Orchestrator-only tools

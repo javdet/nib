@@ -161,9 +161,8 @@ func (s *ChatService) updateActionPlanHandler(planID uuid.UUID, stage string) lo
 // subagents write the same plan concurrently, so the read-modify-write below has
 // to be serialised: atomicfile makes each individual write atomic but does not
 // stop two readers from racing on the same starting document.
-func (s *ChatService) planMutex(dialogID uuid.UUID) *sync.Mutex {
-	mu, _ := s.planWriteMu.LoadOrStore(dialogID, &sync.Mutex{})
-	return mu.(*sync.Mutex)
+func (s *ChatService) planMutex(dialogID uuid.UUID) *namedLock {
+	return s.lockFor("plan:" + dialogID.String())
 }
 
 // writeActionPlanStage stores one stage in the plan file and returns the index

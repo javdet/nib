@@ -11,13 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/mode"
+	"github.com/javdet/nib/internal/repository"
 )
 
 // SendInDialog appends the user turn to a persisted dialog, replays the full
@@ -176,7 +176,7 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 	// the stage subagent blocked on it, not by resuming this dialog's own turn.
 	// That holds for a question nothing is waiting on any more too: running the
 	// loop would only set the orchestrator narrating a stale question back.
-	if resp, handled := s.deliverFanoutAnswer(toolCallID, answers); handled {
+	if resp, handled := s.deliverFanoutAnswer(dialogID, toolCallID, answers); handled {
 		slog.Info("plan fanout answer delivered", "dialog_id", dialogID, "tool_call_id", toolCallID)
 		return resp, nil
 	}
@@ -302,15 +302,21 @@ func (s *ChatService) resetDialogArtifacts(ctx context.Context, dialogID uuid.UU
 		filepath.Join(s.actionPlansDir, id+".json"),
 		actionPlanChecksPath(s.actionPlansDir, dialogID),
 		actionPlanCommentsPath(s.actionPlansDir, dialogID),
-		actionPlanRunsPath(s.actionPlansDir, dialogID),
-		actionPlanExecPath(s.actionPlansDir, dialogID),
-		actionPlanNotesPath(s.actionPlansDir, dialogID),
-		stageRunPath(s.actionPlansDir, dialogID),
 	}
 	s.stopStageRunForPlanEdit(dialogID, nil)
 	for _, path := range files {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	for _, kind := range []repository.RunStateKind{
+		repository.RunStateActionRuns,
+		repository.RunStateActionExec,
+		repository.RunStateActionNotes,
+		repository.RunStateStageRun,
+	} {
+		if err := s.dropRunState(kind, dialogID); err != nil {
+			return fmt.Errorf("remove %s: %w", kind, err)
 		}
 	}
 	return nil
@@ -351,9 +357,8 @@ func (c loopConfig) withDefaults(dialogID uuid.UUID, serviceMax int) loopConfig 
 // repairOrphanToolCalls then answers every call twice, which the completion API
 // rejects outright. Everything that writes to a dialog another agent may be
 // mid-round in takes this lock.
-func (s *ChatService) transcriptMutex(dialogID uuid.UUID) *sync.Mutex {
-	mu, _ := s.transcriptWriteMu.LoadOrStore(dialogID, &sync.Mutex{})
-	return mu.(*sync.Mutex)
+func (s *ChatService) transcriptMutex(dialogID uuid.UUID) *namedLock {
+	return s.lockFor("transcript:" + dialogID.String())
 }
 
 // appendMessageLocked appends one row under the transcript lock. It is for

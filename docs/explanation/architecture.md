@@ -144,14 +144,14 @@ artifacts pointing at dialogs that are gone. Full inventory:
 
 ## What this architecture cannot do
 
-**It cannot scale horizontally.** The execution lease, the SSE broker, every
-lock (the stage-run slot and the per-collection knowledge-base lock among
-them) and the plan-status refresh are all process-local, and the Helm chart pins
-one backend replica. Adding a second would break all four at once — silently,
-in the case of the lease. This is the price of the single-process design above,
-and it is a real limit rather than a missing feature: making it multi-replica
-means moving the lease into Postgres and the broker onto something shared. See
-[One execution at a time](one-execution-at-a-time.md).
+**It does not yet scale horizontally.** The execution lease, run state, every
+lock and the SSE stream are shared through Postgres, so two backend processes on
+one database already agree on what is running. What still ties nib to one
+process is the data directory (a `ReadWriteOnce` volume in the chart), the
+header selection held in memory, and edits to the `config.yaml` project tree,
+which only the process that made them sees. The Helm chart pins one backend
+replica until those move too. See
+[One execution at a time](one-execution-at-a-time.md#more-than-one-backend).
 
 **It has one credential, not users.** Every API route except health, version,
 login and the agent-runner webhook requires `NIB_API_TOKEN`, and the backend

@@ -155,6 +155,10 @@ type ChatService struct {
 	// the two above: nil refuses every command. Set through SetCommandJobs.
 	commandJobs *cmdrun.Manager
 
+	// runState is where run state lives: Postgres once SetRunStateStore has
+	// run, the per-dialog JSON files under DATA_DIR otherwise.
+	runState repository.RunStateRepository
+
 	// kbSettings is optional the same way: nil leaves the knowledge-base
 	// auto-update switched off rather than guessing a default. Set through
 	// SetKBSettings.
@@ -168,78 +172,61 @@ type ChatService struct {
 	toolCategoryNamesCache []string
 	toolCategoryNamesUntil time.Time
 
-	// planWriteMu serialises the read-modify-write of an action plan file,
-	// keyed by the dialog that owns it. Stage subagents write the same plan
-	// concurrently, and atomicfile only makes each individual write atomic.
-	planWriteMu sync.Map
-
-	// fanoutWriteMu guards the fan-out run record, which stage subagents append
-	// blockers to while the runner updates their status.
-	fanoutWriteMu sync.Map
-
 	// fanoutRuns holds the live state of each in-flight fan-out, keyed by the
 	// dialog it plans: the cancel func an operator stops it with, the desk that
 	// admits one question to the chat at a time, and the count of stages blocked
 	// on an answer. It is process-local on purpose -- a restart is swept by
-	// ReconcileStuckRuns rather than resumed.
+	// SweepOrphanedRuns rather than resumed -- and another process reaches it
+	// through a control message to the run's owner.
 	fanoutRuns sync.Map
 
 	// fanoutWaits holds the stage subagents suspended on a question, keyed by
 	// the synthetic ask_question call the operator answers it under.
 	fanoutWaits sync.Map
 
-	// transcriptWriteMu serialises appends to one dialog's transcript, keyed by
-	// that dialog. An agent round writes its assistant row and the tool results
-	// answering it as separate inserts, and anything appended between the two
-	// breaks the pairing every later replay depends on.
-	transcriptWriteMu sync.Map
-
-	// execLeaseMu guards execLease. The lease is the claim that keeps a second
-	// agent off live infrastructure, so it is taken before any work starts and
-	// released by whatever ends it -- the sub-agent goroutine, the agent-runner
-	// webhook, or a force stop.
+	// execLeaseMu orders a lease grant against a drain within this process.
+	// The lease itself is the claim that keeps a second agent off live
+	// infrastructure, so it is taken before any work starts and released by
+	// whatever ends it -- the sub-agent goroutine, the agent-runner webhook, or
+	// a force stop. It lives in leases (a database row shared by every
+	// process) or, without one, in memLeases.
 	execLeaseMu sync.Mutex
-	// execLease is the one execution allowed at a time, across every plan, or
-	// nil when nothing is running. See ExecutionLease for why it is one.
-	execLease *ExecutionLease
+	leases      repository.ExecutionLeaseRepository
+	memLeases   memoryLeaseStore
+	// leaseCancels holds the cancel func of every sub-agent lease this process
+	// granted, keyed by token. A cancel func cannot be stored with the lease,
+	// so a force stop that lands on another process is relayed here.
+	leaseCancels sync.Map
+	// leaseTTL is how long a sub-agent lease outlives the last heartbeat of
+	// the process holding it; zero means it never expires on its own.
+	leaseTTL time.Duration
+
+	// bus reaches the other backend processes: activity for their SSE streams,
+	// and control messages for state only one of them holds. Nil with a
+	// single process and in tests.
+	bus MessageBus
+
+	// replicaID names this process to every other one sharing the database:
+	// it owns leases, runs and command jobs. Empty in tests.
+	replicaID string
+
+	// namedLocks holds every lock lockFor hands out, keyed by name, and
+	// distLocker makes them hold across processes when it is set. See
+	// namedLock.
+	namedLocks sync.Map
+	distLocker DistributedLocker
 
 	// work is what a graceful shutdown waits for and, once draining, refuses.
 	work workTracker
 
-	// stageRunMu guards the "run all" record of every plan and stageRunActive.
-	// It is a leaf: nothing that launches work, appends a message or takes the
-	// execution lease runs while it is held.
-	stageRunMu sync.Mutex
-	// stageRunActive is the plan whose stage run is going, or uuid.Nil. One at a
-	// time across every plan, for the same reason as the lease.
-	stageRunActive uuid.UUID
 	// stageRunStart launches one item of a stage run. Nil means startPlanItem;
 	// tests replace it to drive the sequencer without an agent or a container.
 	stageRunStart func(ctx context.Context, planID uuid.UUID, key string) error
 
-	// subagentClaims holds a mutex per orchestrator subagent, keyed by root
-	// dialog and subagent name, so two concurrent turns on one plan cannot run
-	// the same subagent twice over the same transcript.
-	subagentClaims sync.Map
-
-	// postmortemWriteMu serialises the read-modify-write of an incident's
-	// post-mortem, keyed by the incident. Diggers, the synthesis and impact
-	// agents and the operator all write the one document concurrently.
-	postmortemWriteMu sync.Map
-
 	// incidentRuns holds the cancel func of each incident's live run, keyed by
 	// the incident. Process-local like fanoutRuns: a restart is swept by
-	// ReconcileStuckRuns, never resumed.
+	// SweepOrphanedRuns, never resumed.
 	incidentRuns sync.Map
-
-	// incidentRunWriteMu guards an incident's run record, which the steps of a
-	// wave update concurrently.
-	incidentRunWriteMu sync.Map
-
-	// kbCollectionLocks serialises knowledge-base updates per collection.
-	// update_kb is a read-merge-overwrite, so two plans finishing against one
-	// collection would otherwise lose whichever side wrote first.
-	kbCollectionLocks sync.Map
 }
 
 func NewChatService(

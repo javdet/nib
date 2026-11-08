@@ -560,12 +560,14 @@ func (s *ChatService) removeImportedArtifacts(rootID uuid.UUID) {
 		filepath.Join(s.planContractsDir, id+".json"),
 		filepath.Join(s.actionPlansDir, id+".json"),
 		actionPlanCommentsPath(s.actionPlansDir, rootID),
-		s.subagentStatePath(rootID),
 		planSelectionPath(s.planSelectionDir, rootID),
 	} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			slog.Warn("import plan: remove partial artifact", "path", path, "error", err)
 		}
+	}
+	if err := s.dropRunState(repository.RunStateSubagents, rootID); err != nil {
+		slog.Warn("import plan: remove partial subagent state", "plan_id", rootID, "error", err)
 	}
 }
 
