@@ -15,9 +15,10 @@ var _ repository.StatsRepository = (*StatsRepo)(nil)
 
 // StatsRepo implements StatsRepository using PostgreSQL.
 //
-// This is deliberately a thin scan layer: there is no database harness in the
-// test suite, so every decision that can be tested (range and bucket
-// validation, top-N folding, nil-cost handling) lives in the service instead.
+// This is deliberately a thin scan layer: its tests need a live Postgres
+// (NIB_POSTGRES_TEST_DSN) and skip without one, so every decision that can be
+// tested without it (range and bucket validation, top-N folding, nil-cost
+// handling) lives in the service instead.
 type StatsRepo struct {
 	pool *pgxpool.Pool
 }
