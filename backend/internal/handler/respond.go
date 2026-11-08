@@ -110,8 +110,11 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		// local-only, so the message has to survive rather than be flattened.
 		errors.Is(err, executor.ErrLogsUnsupported):
 		writeError(w, http.StatusNotImplemented, err.Error())
+	case errors.Is(err, service.ErrCommandLogGone):
+		writeError(w, http.StatusGone, err.Error())
 	case errors.Is(err, executor.ErrActionContainerGone),
-		errors.Is(err, service.ErrActionExecRunNotFound):
+		errors.Is(err, service.ErrActionExecRunNotFound),
+		errors.Is(err, service.ErrCommandRunNotFound):
 		// Passed through instead of the generic "resource not found": which of
 		// the run and its container is missing is the whole answer.
 		writeError(w, http.StatusNotFound, err.Error())
@@ -120,6 +123,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		// the message names the image and the reason, so pass it through.
 		writeError(w, http.StatusBadGateway, err.Error())
 	case errors.Is(err, service.ErrSettingsUnavailable),
+		errors.Is(err, service.ErrCommandAuditUnavailable),
 		errors.Is(err, executor.ErrWebhookKeyMissing):
 		// Nothing about the request is wrong: the data volume the switches live
 		// on, or the key a container reports back with, is not wired, which is
@@ -169,6 +173,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrNoExecutionRunning),
 		errors.Is(err, service.ErrFanoutInProgress),
 		errors.Is(err, service.ErrActionNotRunning),
+		errors.Is(err, service.ErrCommandRunNotRunning),
 		errors.Is(err, service.ErrStageRunActive),
 		errors.Is(err, service.ErrStageRunNothingToRun),
 		errors.Is(err, service.ErrNoStageRunActive),

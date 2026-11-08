@@ -93,9 +93,11 @@ func TestResolveSystemPromptCarriesTheEnvironmentBlock(t *testing.T) {
 	}
 }
 
-// The modes that write or run shell steps have to know execute_command is not a
-// shell, or they will plan pipes that silently cannot run.
-func TestPlanAndExecutePromptsSayThereIsNoShell(t *testing.T) {
+// The modes that write or run shell steps have to know what a command can do
+// and how to wait for one: a planner that thinks there is no shell plans
+// around pipes, and an executor that does not know wait_job polls a rollout
+// one round at a time.
+func TestPlanAndExecutePromptsDescribeTheCommandSandbox(t *testing.T) {
 	t.Parallel()
 
 	svc := promptTestService(t)
@@ -109,8 +111,13 @@ func TestPlanAndExecutePromptsSayThereIsNoShell(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveSystemPrompt(%s): %v", mode, err)
 			}
-			if !strings.Contains(prompt, "There is no shell") {
-				t.Fatalf("%s prompt does not say execute_command is not a shell", mode)
+			for _, want := range []string{"run_command", "wait_job", "sandbox"} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("%s prompt does not mention %q", mode, want)
+				}
+			}
+			if strings.Contains(prompt, "execute_command") {
+				t.Errorf("%s prompt still names execute_command", mode)
 			}
 		})
 	}

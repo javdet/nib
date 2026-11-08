@@ -59,12 +59,15 @@ if [ -d "${SEED_DIR}/tools" ]; then
 	done < <(find "${SEED_DIR}/tools" -type f -name '*.json')
 fi
 
-# nib never runs as root: api_call and execute_command run whatever the model asks for with the
-# backend's own uid. Root is held only this long, for two things the image cannot do ahead of
-# time: handing over a volume a root-running release left root-owned, and joining the group that
-# owns the Docker socket, whose gid is the host's. A container already started as someone else
-# (a Kubernetes securityContext) is left as it is.
+# nib never runs as root. Root is held only this long, for two things the image cannot do ahead
+# of time: handing over a volume a root-running release left root-owned, and joining the group
+# that owns the Docker socket, whose gid is the host's. A container already started as someone
+# else (a Kubernetes securityContext) is left as it is, and runs agent commands as nib's own user.
 NIB_USER=nib
+
+# Job homes a previous run of this container left behind, owned by sandbox uids nib cannot
+# remove as itself.
+rm -rf /tmp/nib-jobs 2>/dev/null || true
 
 if [ "$(id -u)" != "0" ]; then
 	log "DATA_DIR=${DATA_DIR} ready"
@@ -95,5 +98,12 @@ log "DATA_DIR=${DATA_DIR} ready, starting as ${NIB_USER}"
 
 HOME="$(getent passwd "${NIB_USER}" | cut -d: -f6)"
 export HOME
+# nib keeps exactly three capabilities, as ambient ones so they survive the exec: SETUID and
+# SETGID to start each agent command as a sandbox uid of its own (commands.uidStart..), with no
+# groups, so it reaches neither DATA_DIR nor the Docker socket; KILL to stop that command, which
+# then belongs to another user. The bounding set holds nothing else, so nothing more can be
+# regained, and every command drops all three before it runs (cmdrun's setpriv wrapper).
+caps=-all,+setuid,+setgid,+kill
 exec setpriv --reuid="${NIB_USER}" --regid="${NIB_USER}" --groups="${groups}" \
-	--inh-caps=-all --no-new-privs /usr/local/bin/nib "$@"
+	--inh-caps="${caps}" --ambient-caps="${caps}" --bounding-set="${caps}" \
+	--no-new-privs /usr/local/bin/nib "$@"

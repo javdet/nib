@@ -33,6 +33,7 @@ type Config struct {
 	MCP                   MCPConfig
 	Metrics               MetricsConfig
 	Executor              ExecutorConfig
+	Commands              CommandsConfig
 	Auth                  AuthConfig
 	SecretsEncryptionKey  []byte
 }
@@ -117,6 +118,27 @@ type AgentConfig struct {
 	// IncidentTimeoutMinutes bounds one investigation or closure run.
 	IncidentTimeoutMinutes int `yaml:"incidentTimeoutMinutes"`
 }
+
+// CommandsConfig controls how the commands agents run (run_command,
+// wait_until, api_call's curl) are sandboxed.
+type CommandsConfig struct {
+	// Isolation is auto (a uid per job when the backend can switch uids, its
+	// own uid otherwise), required (refuse commands when it cannot) or off.
+	Isolation string `yaml:"isolation"`
+	// UIDStart and UIDCount are the pool of uids jobs run as. They must not
+	// belong to anyone else in the container.
+	UIDStart int `yaml:"uidStart"`
+	UIDCount int `yaml:"uidCount"`
+	// LogRetentionDays is how long a command's output stays on the data
+	// volume. The audit row is kept regardless.
+	LogRetentionDays int `yaml:"logRetentionDays"`
+}
+
+const (
+	defaultCommandUIDStart         = 20000
+	defaultCommandUIDCount         = 1000
+	defaultCommandLogRetentionDays = 7
+)
 
 // LogConfig controls optional mirroring of stderr to a file.
 // When Enabled is false, File is ignored. Zero value means logging to stderr only.
@@ -329,6 +351,7 @@ type fileConfig struct {
 	MCP           MCPConfig           `yaml:"mcp"`
 	Metrics       fileMetricsConfig   `yaml:"metrics"`
 	Executor      ExecutorConfig      `yaml:"executor"`
+	Commands      CommandsConfig      `yaml:"commands"`
 	Project       ProjectConfig       `yaml:"project"`
 	Projects      []ProjectConfig     `yaml:"projects"`
 }
@@ -443,6 +466,26 @@ func validateAppConfig(cfg Config) error {
 	}
 	if err := validateAuthConfig(cfg.Auth); err != nil {
 		return err
+	}
+	if err := validateCommandsConfig(cfg.Commands); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCommandsConfig(c CommandsConfig) error {
+	switch c.Isolation {
+	case "auto", "required", "off":
+	default:
+		return fmt.Errorf("config: commands.isolation must be auto, required or off, got %q", c.Isolation)
+	}
+	// Below 1000 is where system accounts live; the pool must not hand a job
+	// the uid of a real user in the image.
+	if c.UIDStart < 1000 || c.UIDCount < 1 || c.UIDStart+c.UIDCount > 1<<31-1 {
+		return fmt.Errorf("config: commands.uidStart must be at least 1000 and commands.uidCount at least 1 (got %d, %d)", c.UIDStart, c.UIDCount)
+	}
+	if c.LogRetentionDays < 0 {
+		return fmt.Errorf("config: commands.logRetentionDays must not be negative, got %d", c.LogRetentionDays)
 	}
 	return nil
 }
@@ -674,6 +717,20 @@ func applyFileAppConfig(dst *Config, fc fileConfig) {
 	dst.IncludedTools = IncludedToolsConfig{Dir: strings.TrimSpace(fc.IncludedTools.Dir)}
 	dst.MCP = MCPConfig{File: strings.TrimSpace(fc.MCP.File)}
 	dst.Executor.File = strings.TrimSpace(fc.Executor.File)
+	dst.Commands = fc.Commands
+	dst.Commands.Isolation = strings.ToLower(strings.TrimSpace(fc.Commands.Isolation))
+	if dst.Commands.Isolation == "" {
+		dst.Commands.Isolation = "auto"
+	}
+	if dst.Commands.UIDStart == 0 {
+		dst.Commands.UIDStart = defaultCommandUIDStart
+	}
+	if dst.Commands.UIDCount == 0 {
+		dst.Commands.UIDCount = defaultCommandUIDCount
+	}
+	if dst.Commands.LogRetentionDays == 0 {
+		dst.Commands.LogRetentionDays = defaultCommandLogRetentionDays
+	}
 }
 
 // applyFileLLMConfig overlays toolchain YAML llm settings. APIKey stays from env.

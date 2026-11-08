@@ -54,7 +54,11 @@ Shipped with the image and seeded onto the data volume at first start.
 | `update_rollback_plan` | | | ● | | | |
 | `get_secrets` | | | | ● | | |
 | `api_call` | | | | ● | | ● |
-| `execute_command` | | | | ● | | |
+| `run_command` | | | | ● | | |
+| `wait_job` | | | | ● | | |
+| `read_output` | | | | ● | | |
+| `cancel_job` | | | | ● | | |
+| `wait_until` | | | | ● | | |
 | `run_executor` | | | | ● | | |
 | `get_kb_document` | | | | | ● | ● |
 | `update_kb` | | | | | ● | |
@@ -72,8 +76,15 @@ dialog. `report_blocker` is added in code to every fan-out stage planner's set.
 [Never in an allow list](#never-in-an-allow-list) and
 [`execute_action`](#execute_action).
 
+Incident Diggers and the impact agent get the five command tools and
+`api_call` in code, not from `incident.json`; see
+[`run_investigation`](#run_investigation) below.
+
 Seeding never removes a name from a list already on disk. A capability
-withdrawn from a mode in a later release is enforced in code as well.
+withdrawn from a mode in a later release is enforced in code as well. The one
+exception is a rename: a list that still names `execute_command` gets the five
+command tools in its place, and a list whose operator had removed
+`execute_command` does not get them.
 
 ## Reading and searching
 
@@ -178,15 +189,39 @@ decomposition, inherited by every sub-agent of the plan.
 
 ## Acting
 
-### `execute_command`
+### Command tools
 
-Runs a simple command locally on the backend host. Not a shell: one binary with
-its arguments, no pipes, redirects, `&&`, globs or `$VAR` expansion. 60-second
-timeout, 1 MiB of combined output. Returns `exit_code`, `output` and
-`command_not_found`.
+Local commands are jobs. Each job is a bash script running in a sandbox on the
+backend host: with `commands.isolation: auto` (the default), a uid of its own
+with no supplementary groups, so it reaches neither nib's data volume nor the
+backend's environment nor the Docker socket. It starts in an empty home
+directory that is deleted afterwards. Its environment is only `PATH`, `HOME`,
+`TMPDIR` and `LANG`: none of the backend's keys and tokens, and no
+`HTTP(S)_PROXY` or `KUBECONFIG`. Pipes, redirects, `&&`, globs and `$VAR`
+work.
 
-The process gets only `PATH`, `HOME` and `LANG` from the backend's environment:
-none of its keys and tokens, and no `HTTP(S)_PROXY` or `KUBECONFIG` either.
+A job is killed when the agent run that started it ends, whether that is a
+force stop, the action timing out, a cancelled investigation or the end of a
+chat turn. Only that run can see it. Each job keeps up to 10 MiB of output on
+disk. A tool result carries at most 32 KiB of it, as head and tail, with an
+`offset` for `read_output`. An agent may run 4 jobs at once, and 16 run in all.
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `run_command` | `script`, `wait_seconds` (0–900, default 30), `timeout_seconds` (1–3600, default 600) | Starts the script. Returns its status, exit code and output when it ends within `wait_seconds`, or its `job_id` and the output so far. |
+| `wait_job` | `job_id`, `wait_seconds` (1–900, default 300), `from_offset` | Waits for the job to end, in one round, and returns the output written since the last result. |
+| `read_output` | `job_id`, `offset`, `limit` (≤ 32768), `grep` | One page of the full output, or the lines matching an RE2 expression, numbered from `offset`. |
+| `cancel_job` | `job_id` | SIGTERM to everything the job started, SIGKILL after 10 seconds. |
+| `wait_until` | `script`, `until` (`exit0` or `match`), `pattern`, `interval_seconds` (2–300, default 10), `timeout_seconds` (1–900, default 300) | Reruns the script until it exits 0 or its output matches, without a round per attempt. Returns `met`, `timed_out` or `cancelled`, the attempt count and the last attempt's output. |
+
+`run_command`, `wait_job` and `cancel_job` return JSON with `job_id`,
+`status` (`running`, `succeeded`, `failed`, `timed_out`, `cancelled`),
+`exit_code`, `reason`, `output`, `offset`, `next_offset`, `total_bytes` and a
+`hint` while the job runs or when its output was cut.
+
+Every job is recorded in the `command_runs` table, and its output is kept under
+`{DATA_DIR}/command_logs` for `commands.logRetentionDays`. The plan page shows
+an action's jobs under its **Commands** button.
 
 ### `api_call`
 
@@ -198,8 +233,9 @@ Loopback, link-local and cloud metadata addresses are refused, including
 names that resolve to them; private (RFC 1918) addresses are allowed. curl is
 pinned to the vetted address, so a second DNS answer cannot redirect it.
 
-Same limits as `execute_command` otherwise: 60-second timeout, 1 MiB of output,
-and only `PATH`, `HOME` and `LANG` in its environment.
+60-second timeout and 1 MiB of output. curl runs in the same sandbox as the
+[command tools](#command-tools), so it gets a uid of its own and only `PATH`,
+`HOME`, `TMPDIR` and `LANG` in its environment.
 
 ### `run_executor`
 
@@ -314,6 +350,13 @@ sub-agent reads the incident's chat. `impact_only: true` reruns the impact
 assessment alone. Refused while a run is going or once the incident is closed.
 
 **Root-only.** Registered only on the root turn of an incident.
+
+Diggers and the impact agent read with a fixed set handed out in code, which an
+edit to `incident.json` cannot widen: the [command tools](#command-tools),
+`api_call`, `knowledge_search`, `get_kb_document`, `tool_search`, `get_skill`,
+`list_variables` and `create_table`, plus the MCP tools included for incident
+mode and their categories. They are told never to change anything; nothing
+enforces that but the prompt and the credentials their tools hold.
 
 ### `report_finding`
 

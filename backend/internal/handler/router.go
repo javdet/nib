@@ -35,6 +35,7 @@ type Deps struct {
 	ToolCategories *service.ToolCategoryService
 	Selection      *service.SelectionStore
 	Stats          *service.StatsService
+	CommandRuns    *service.CommandRunService
 
 	// File-backed configuration surfaces, edited directly through the API.
 	SystemPrompts *systemprompts.Service
@@ -71,6 +72,7 @@ func NewRouter(d Deps) chi.Router {
 	rulesHandler := NewRulesHandler(d.Rules)
 	mcpConfig := NewMCPConfigHandler(d.MCPConfig)
 	includedTools := NewIncludedToolsHandler(d.IncludedTools)
+	commandRuns := NewCommandRunHandler(d.CommandRuns)
 	executorHandler := NewExecutorHandler(d.Executor)
 	skills := NewSkillHandler(d.Skills)
 	variables := NewVariableHandler(d.Variables)
@@ -276,6 +278,9 @@ func NewRouter(d Deps) chi.Router {
 						r.Post("/action-plan/execute", dialogs.ExecuteActionPlanAction())
 						r.Get("/action-plan/exec", dialogs.ActionPlanExecRuns())
 						r.Get("/action-plan/logs", dialogs.ActionPlanActionLogs())
+						r.Get("/commands", commandRuns.List())
+						r.Get("/commands/{runID}/output", commandRuns.Output())
+						r.Delete("/commands/{runID}", commandRuns.Cancel())
 						// Starting a stage run launches its first item, which for a code
 						// action can mean pulling an image -- longer than the default
 						// write timeout. The items after it start in the background.

@@ -95,11 +95,13 @@ away from being broken.
 ## The same rule, applied to child processes
 
 `mcp.json` is not the only place the model can ask the backend for a value.
-`execute_command` and `api_call` run processes on the backend's host, and their
+The command tools and `api_call` run processes on the backend's host, and their
 output goes to the LLM provider and into the transcript. A child that inherited
 the backend's environment would answer `env` with every key above.
 
-So both run with `PATH`, `HOME` and `LANG` and nothing else. It is the same
+So they run with `PATH` and `LANG` and a `HOME` and `TMPDIR` of their own, and
+nothing else. They also run as a sandbox user of their own, so they cannot read
+the backend's environment back out of `/proc` either. It is the same
 decision from the other side: the environment bootstraps the process, and
 nothing the model can steer reads it back. The cost is also the same — a CLI
 that needs `KUBECONFIG`, a proxy variable or its own token does not get it from

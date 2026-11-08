@@ -28,3 +28,5 @@ searxng/
 /blob-report/
 /playwright/.cache/
 .mcp.json
+plan.node_modules
+plan.md

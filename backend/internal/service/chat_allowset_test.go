@@ -227,7 +227,7 @@ func TestResolveDialogAllowSet_ListToolsErrorIsNonFatal(t *testing.T) {
 func TestActionAgentAllowSet_UsesStepCategories(t *testing.T) {
 	allowDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(allowDir, "execute.json"),
-		[]byte(`{"allow_tools":["tool_search","execute_command"]}`), 0o644); err != nil {
+		[]byte(`{"allow_tools":["tool_search","run_command"]}`), 0o644); err != nil {
 		t.Fatalf("write execute allow list: %v", err)
 	}
 
@@ -248,13 +248,13 @@ func TestActionAgentAllowSet_UsesStepCategories(t *testing.T) {
 		{
 			name:       "only the action's own categories",
 			categories: []string{"kubernetes"},
-			want:       []string{"tool_search", "execute_command", "kubernetes_resources_get"},
+			want:       []string{"tool_search", "run_command", "kubernetes_resources_get"},
 			notWant:    []string{"jira_search"},
 		},
 		{
 			name:       "no categories means no category tools",
 			categories: nil,
-			want:       []string{"tool_search", "execute_command"},
+			want:       []string{"tool_search", "run_command"},
 			notWant:    []string{"kubernetes_resources_get", "jira_search"},
 		},
 	}

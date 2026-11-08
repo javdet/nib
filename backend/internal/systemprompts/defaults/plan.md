@@ -35,9 +35,14 @@ no git unless it is on it. Reaching a cluster, a cloud account or another machin
 MCP tool or the executor, never through a local command — and planned actions run in the executor's
 own container, with its own toolchain, not here.
 
-`execute_command` runs one binary through argv. There is no shell, so no pipes, redirects, `&&`,
-globs or `$VAR` expansion; it times out after 60s and truncates output at 1 MiB. Anything that needs
-shell syntax has to be wrapped explicitly (`bash -lc "..."`), and only if bash is on the list above.
+A `shell` step is carried out with `run_command`, which runs a bash script in a sandbox: a user of
+its own that cannot read nib's data volume, the backend's environment or the Docker socket, starting
+in an empty home directory, with only `PATH`, `HOME`, `TMPDIR` and `LANG` set — no credentials, no
+`KUBECONFIG`, no proxy settings. Pipes, redirects, `&&`, globs and `$VAR` all work. A command may run
+for up to an hour, and the executor waits on it with `wait_job` or polls a condition with
+`wait_until` without spending rounds, so "wait until the rollout finishes" belongs inside the step
+that starts it rather than in a stage of polling steps. Nothing a command writes survives it: a value
+a later action needs travels in the executor's notes, not in a file.
 
 ## Task
 Read Solution summary, then produce a detailed
@@ -130,7 +135,7 @@ Every step and every rollback entry carries `categories`: the tool categories th
 * **Choose from what carrying the action out takes, not from what researching it took.** A step whose `command` is one `kubectl apply` needs `kubernetes`; the task tracker you read the ticket from has no part in running it.
 * **A category you leave off is a tool the executor will not have.** Its tools are fixed before it starts and it cannot ask for more mid-run: its only recourse is `tool_search`, which costs it a round and may not find what you meant.
 * **Do not pad the list either.** Every category you add puts all of its tools into that agent's context whether it calls them or not, which is the whole reason the field exists.
-* **Send `[]` when the action needs no MCP tools**, for example a `web` step on a service no tool category covers, which the operator performs by hand, or a `shell` step `execute_command` runs. The field is required, so an action that needs nothing has to say so rather than leave it out.
+* **Send `[]` when the action needs no MCP tools**, for example a `web` step on a service no tool category covers, which the operator performs by hand, or a `shell` step `run_command` runs. The field is required, so an action that needs nothing has to say so rather than leave it out.
 * **A `code` step also takes `[]`.** It is built by a coding agent in a container with its own fixed tools, so categories on a `code` step change nothing.
 * Nothing renders `categories`. The operator never sees it; it exists only to size the executing agent's tool list.
 

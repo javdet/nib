@@ -27,6 +27,10 @@ data:
       level: {{ .Values.backend.config.log.level | quote }}
     agent:
       maxIterations: {{ .Values.backend.config.agent.maxIterations }}
+    {{- with .Values.backend.config.commands }}
+    commands:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
     skills:
       dir: {{ .Values.backend.config.skills.dir | quote }}
     rules:

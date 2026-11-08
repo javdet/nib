@@ -21,6 +21,7 @@ import {
 	Play,
 	ScrollText,
 	Square,
+	SquareTerminal,
 	type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -52,6 +53,7 @@ import type { ExecutorType } from '@/features/executor/api/executor'
 import { actionTypeIcon } from '../lib/action-type-icon'
 import { DONE_SURFACE, HeaderButton } from './plan-row-parts'
 import { canViewContainerLogs } from '../lib/container-logs'
+import { canViewCommands } from '../lib/command-runs'
 import {
 	impactedIndexes,
 	stepImpact,
@@ -141,6 +143,9 @@ interface ActionPlanViewProps {
 	// onViewLogs opens the container logs of one running code action. Its row
 	// key is passed back because the modal reads them per action.
 	onViewLogs?: (key: string) => void
+	// onViewCommands opens the commands an action's sub-agent ran, with their
+	// output. Like the logs, it is per row.
+	onViewCommands?: (key: string) => void
 	execRuns: ActionExecRuns
 	// executorType gates the logs button: only the local docker executor can be
 	// read from.
@@ -356,8 +361,8 @@ function CollapsibleBody({ id, children }: { id: string; children: ReactNode }) 
 	)
 }
 
-// The repository rides in the bar beside the type tile, so it is sized to that
-// bar rather than to the badge scale the impact labels use.
+// The repository heads the body on its own line, so it is sized to that line
+// rather than to the badge scale the impact labels use.
 function RepositoryBadge({ step }: { step: ActionStep }) {
 	const repository = step.repository?.trim()
 	if (!isCodeStep(step) || !repository) return null
@@ -426,11 +431,15 @@ function ImpactBadge({ step }: { step: ActionStep }) {
 	)
 }
 
-// ActionRowHeader fills the row's header strip. The strip itself carries no
-// gap, so the badges bring their own.
+// ActionRowHeader fills the row's header strip: the type tile on the left,
+// across from the row's buttons. The strip itself carries no gap, so the
+// badges bring their own.
 function ActionRowHeader({ step }: { step: ActionStep }) {
+	const type = step.type?.trim()
+
 	return (
 		<div className="flex min-w-0 items-center gap-2">
+			{type ? <ActionTypeTile type={type} /> : null}
 			<ImpactBadge step={step} />
 		</div>
 	)
@@ -474,8 +483,8 @@ function StageImpactBadge({
 	)
 }
 
-// The type icon sits in the body's top-left corner and is floated, so the
-// narrative runs beside its lower half and then wraps back under it.
+// The type tile is sized to fit inside the h-9 header strip with the buttons
+// across from it, so it reads as part of the same frame.
 function ActionTypeTile({ type }: { type: string }) {
 	const TypeIcon = actionTypeIcon(type)
 
@@ -486,11 +495,11 @@ function ActionTypeTile({ type }: { type: string }) {
 					tabIndex={0}
 					aria-label={type}
 					className={cn(
-						'float-left mr-3 flex size-10 shrink-0 items-center justify-center',
+						'flex size-7 shrink-0 items-center justify-center focus-ring',
 						'rounded-md border bg-background/60 text-muted-foreground',
 					)}
 				>
-					<TypeIcon className="size-5" aria-hidden />
+					<TypeIcon className="size-4" aria-hidden />
 				</span>
 			</TooltipTrigger>
 			<TooltipContent>{type}</TooltipContent>
@@ -502,34 +511,19 @@ function ActionTypeTile({ type }: { type: string }) {
 // commands themselves as a copyable block.
 function ActionBody({ step }: { step: ActionStep }) {
 	const command = step.command?.trim()
-	const type = step.type?.trim()
 	const prURL = step.pr_url?.trim()
 	const hasRepository = Boolean(isCodeStep(step) && step.repository?.trim())
 
 	return (
-		// The clearfix is what makes the body enclose the floated tile, so a
-		// one-line narrative still measures tall enough to hold it.
-		<div className="min-w-0 after:block after:clear-both after:content-['']">
-			{type ? <ActionTypeTile type={type} /> : null}
-			{/* A bar half the tile's height: it carries the repository when the
-			    step has one, and either way it is what drops the narrative down
-			    to the tile's lower half before the text wraps back under it. */}
-			{type || hasRepository ? (
-				<div className="flex h-5 min-w-0 items-center">
+		<div className="min-w-0">
+			{hasRepository ? (
+				<div className="mb-1 flex h-5 min-w-0 items-center">
 					<RepositoryBadge step={step} />
 				</div>
 			) : null}
-			{/* Only prose wraps around the tile. A list, a rule or a quote is a
-			    block, so it would slide underneath the tile and put its bullets
-			    and borders behind it -- those start below it instead. Code
-			    blocks and tables scroll, which already keeps them clear. */}
-			<div className="[&_ul]:clear-left [&_ol]:clear-left [&_blockquote]:clear-left [&_hr]:clear-left">
-				<MarkdownMessage content={step.action} />
-			</div>
-			{/* Clearing keeps a short narrative from leaving these beside the
-			    tile, where they would read as its caption. */}
+			<MarkdownMessage content={step.action} />
 			{isCodeStep(step) ? (
-				<div className="clear-left mt-2 text-xs">
+				<div className="mt-2 text-xs">
 					<span className="text-muted-foreground">Pull request: </span>
 					{prURL ? (
 						<a
@@ -546,7 +540,7 @@ function ActionBody({ step }: { step: ActionStep }) {
 				</div>
 			) : null}
 			{command ? (
-				<div className="clear-left mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
+				<div className="mt-2 flex items-start gap-1 rounded-md border bg-background/70 py-1 pl-2 pr-1">
 					<code className="min-w-0 flex-1 overflow-x-auto whitespace-pre py-1 font-mono text-xs leading-relaxed">
 						{command}
 					</code>
@@ -581,6 +575,7 @@ interface RunControlsProps {
 	execRun?: ActionExecRun
 	onStop: () => void
 	onViewLogs?: () => void
+	onViewCommands?: () => void
 	executorType?: ExecutorType | null
 }
 
@@ -592,6 +587,7 @@ function RunControls({
 	execRun,
 	onStop,
 	onViewLogs,
+	onViewCommands,
 	executorType = null,
 }: RunControlsProps) {
 	if (!execRun) return null
@@ -613,6 +609,15 @@ function RunControls({
 					onClick={onViewLogs}
 				>
 					<ScrollText className="h-4 w-4" />
+				</HeaderButton>
+			)}
+			{onViewCommands && canViewCommands(execRun) && (
+				<HeaderButton
+					label="View commands"
+					tooltip="Commands the agent ran, with their output"
+					onClick={onViewCommands}
+				>
+					<SquareTerminal className="h-4 w-4" />
 				</HeaderButton>
 			)}
 			{execRun.status === 'running' && (
@@ -656,6 +661,7 @@ interface CheckableRowProps {
 	onToggle: (key: string, nextChecked: boolean) => void
 	onExecute: () => void
 	onStop: () => void
+	onViewCommands?: () => void
 	execRun?: ActionExecRun
 	dragDisabled?: boolean
 	onGripPointerDown: () => void
@@ -674,6 +680,7 @@ function CheckableRow({
 	onToggle,
 	onExecute,
 	onStop,
+	onViewCommands,
 	execRun,
 	dragDisabled,
 	onGripPointerDown,
@@ -699,7 +706,11 @@ function CheckableRow({
 			<div className="flex min-w-0 flex-1 flex-col">
 				<div className="flex h-9 shrink-0 items-center pl-3">
 					<div className="min-w-0 flex-1" />
-					<RunControls execRun={execRun} onStop={onStop} />
+					<RunControls
+						execRun={execRun}
+						onStop={onStop}
+						onViewCommands={onViewCommands}
+					/>
 					<ExecuteButton onClick={onExecute} />
 				</div>
 				<RowBody id={id} checked={checked}>
@@ -722,6 +733,7 @@ interface ExecutableActionRowProps {
 	onExecute: () => void
 	onStop: () => void
 	onViewLogs?: () => void
+	onViewCommands?: () => void
 	execRun?: ActionExecRun
 	executorType?: ExecutorType | null
 	executeDisabled?: boolean
@@ -744,6 +756,7 @@ function ExecutableActionRow({
 	onExecute,
 	onStop,
 	onViewLogs,
+	onViewCommands,
 	execRun,
 	executorType = null,
 	executeDisabled = false,
@@ -778,6 +791,7 @@ function ExecutableActionRow({
 						execRun={execRun}
 						onStop={onStop}
 						onViewLogs={onViewLogs}
+						onViewCommands={onViewCommands}
 						executorType={executorType}
 					/>
 					<HeaderButton
@@ -881,6 +895,7 @@ export function ActionPlanView({
 	onExecute,
 	onStop,
 	onViewLogs,
+	onViewCommands,
 	execRuns,
 	executorType = null,
 	onReorder,
@@ -1207,6 +1222,11 @@ export function ActionPlanView({
 														onViewLogs={
 															onViewLogs ? () => onViewLogs(key) : undefined
 														}
+														onViewCommands={
+															onViewCommands
+																? () => onViewCommands(key)
+																: undefined
+														}
 														execRun={execRuns[key]}
 														executorType={executorType}
 														dragDisabled={dragDisabled}
@@ -1262,6 +1282,11 @@ export function ActionPlanView({
 															onToggle={onToggle}
 															onExecute={() => onExecute(key)}
 															onStop={onStop}
+															onViewCommands={
+																onViewCommands
+																	? () => onViewCommands(key)
+																	: undefined
+															}
 															execRun={execRuns[key]}
 															dragDisabled={dragDisabled}
 															onGripPointerDown={handleGripPointerDown}
@@ -1359,6 +1384,9 @@ export function ActionPlanView({
 										onStop={onStop}
 										onViewLogs={
 											onViewLogs ? () => onViewLogs(key) : undefined
+										}
+										onViewCommands={
+											onViewCommands ? () => onViewCommands(key) : undefined
 										}
 										execRun={execRuns[key]}
 										executorType={executorType}

@@ -8,7 +8,7 @@ You cannot ask anyone anything.
 
 ## Read-only — a hard rule
 
-You measure; you never change anything. No MCP call, `execute_command` or `api_call` that creates,
+You measure; you never change anything. No MCP call, `run_command`, `wait_until` or `api_call` that creates,
 updates, deletes, restarts or scales anything; no SQL beyond `SELECT`; no HTTP method beyond `GET` and
 `HEAD` except a documented read-only query API.
 

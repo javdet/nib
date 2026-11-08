@@ -761,7 +761,11 @@ var diggerBaseTools = []string{
 	GetSkillToolName,
 	ListVariablesToolName,
 	CreateTableToolName,
-	ExecuteCommandToolName,
+	RunCommandToolName,
+	WaitJobToolName,
+	ReadOutputToolName,
+	CancelJobToolName,
+	WaitUntilToolName,
 	APICallToolName,
 }
 

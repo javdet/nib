@@ -599,6 +599,80 @@ export function getActionContainerLogs(
 	)
 }
 
+export type CommandRunStatus =
+	| 'running'
+	| 'succeeded'
+	| 'failed'
+	| 'timed_out'
+	| 'cancelled'
+	| 'lost'
+
+/** One command an agent ran with run_command or wait_until. */
+export interface CommandRun {
+	id: string
+	plan_id: string
+	dialog_id: string
+	action_key?: string
+	mode: string
+	kind: 'run' | 'wait_until'
+	script: string
+	/** False when the command ran as the backend's own user. */
+	isolated: boolean
+	uid: number
+	status: CommandRunStatus
+	exit_code?: number
+	reason?: string
+	output_bytes: number
+	/** Output past the 10 MiB the backend keeps was dropped. */
+	output_capped: boolean
+	started_at: string
+	finished_at?: string
+	duration_ms: number
+}
+
+/** The commands agents ran for a plan, newest first; key narrows to one row. */
+export function listCommandRuns(
+	id: string,
+	key?: string,
+	signal?: AbortSignal,
+): Promise<{ runs: CommandRun[] }> {
+	const query = key ? `?key=${encodeURIComponent(key)}` : ''
+	return api.get<{ runs: CommandRun[] }>(
+		`/dialogs/${encodeURIComponent(id)}/commands${query}`,
+		signal,
+	)
+}
+
+/** One page of a command's output, read from offset. */
+export interface CommandRunOutput {
+	output: string
+	offset: number
+	next_offset: number
+	total_bytes: number
+	eof: boolean
+	status: CommandRunStatus
+	capped: boolean
+}
+
+export function getCommandRunOutput(
+	id: string,
+	runId: string,
+	offset: number,
+	signal?: AbortSignal,
+): Promise<CommandRunOutput> {
+	return api.get<CommandRunOutput>(
+		`/dialogs/${encodeURIComponent(id)}/commands/${encodeURIComponent(runId)}/output?offset=${offset}`,
+		signal,
+	)
+}
+
+/** Stops a running command; the agent that started it sees it cancelled. */
+export function cancelCommandRun(id: string, runId: string): Promise<void> {
+	return api.delete<void>(
+		`/dialogs/${encodeURIComponent(id)}/commands/${encodeURIComponent(runId)}`,
+	)
+}
+
 export type ActionPlanScope = 'steps' | 'checks'
 
 export function reorderActionPlanItems(

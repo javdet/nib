@@ -7,7 +7,11 @@
     "get_action_list",
     "get_secrets",
     "api_call",
-    "execute_command",
+    "run_command",
+    "wait_job",
+    "read_output",
+    "cancel_job",
+    "wait_until",
     "run_executor"
   ]
 }

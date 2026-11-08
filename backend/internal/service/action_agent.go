@@ -214,9 +214,10 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 	catalog, err := s.buildToolCatalog(ctx, allow, toolBinding{
-		dialogID: dialog.ID,
-		planID:   planID,
-		mode:     executeDialogMode,
+		dialogID:  dialog.ID,
+		planID:    planID,
+		mode:      executeDialogMode,
+		actionKey: key,
 	})
 	if err != nil {
 		fail(fmt.Errorf("build action catalog: %w", err))

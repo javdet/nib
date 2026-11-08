@@ -123,23 +123,23 @@ func TestIncidentStepAllowSet(t *testing.T) {
 	}{
 		{
 			IncidentStepDigger,
-			[]string{ExecuteCommandToolName, APICallToolName, "tool_search", ReportFindingToolName},
+			[]string{RunCommandToolName, WaitJobToolName, ReadOutputToolName, CancelJobToolName, WaitUntilToolName, APICallToolName, "tool_search", ReportFindingToolName},
 			[]string{UpdatePostmortemToolName, AskQuestionToolName, RunInvestigationToolName, RunExecutorToolName},
 		},
 		{
 			IncidentStepImpact,
-			[]string{APICallToolName, GetPostmortemToolName, UpdatePostmortemToolName},
+			[]string{RunCommandToolName, WaitUntilToolName, APICallToolName, GetPostmortemToolName, UpdatePostmortemToolName},
 			[]string{ReportFindingToolName, AskQuestionToolName},
 		},
 		{
 			IncidentStepSynthesis,
 			[]string{GetPostmortemToolName, UpdatePostmortemToolName, KnowledgeSearchToolName},
-			[]string{ExecuteCommandToolName, APICallToolName, ReportFindingToolName},
+			[]string{RunCommandToolName, WaitJobToolName, APICallToolName, ReportFindingToolName},
 		},
 		{
 			IncidentStepClosure,
 			[]string{GetPostmortemToolName, UpdatePostmortemToolName},
-			[]string{ExecuteCommandToolName, KnowledgeSearchToolName},
+			[]string{RunCommandToolName, WaitUntilToolName, KnowledgeSearchToolName},
 		},
 	}
 	for _, tt := range tests {

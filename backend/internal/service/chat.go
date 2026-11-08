@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javdet/nib/internal/cmdrun"
 	"github.com/javdet/nib/internal/domain"
 	"github.com/javdet/nib/internal/executor"
 	"github.com/javdet/nib/internal/includedtools"
@@ -149,6 +150,10 @@ type ChatService struct {
 	// dialogImporter is optional the same way: nil refuses ImportPlan. Set
 	// through SetDialogImporter.
 	dialogImporter repository.DialogImporter
+
+	// commandJobs runs the command tools and api_call's curl. Optional like
+	// the two above: nil refuses every command. Set through SetCommandJobs.
+	commandJobs *cmdrun.Manager
 
 	// kbSettings is optional the same way: nil leaves the knowledge-base
 	// auto-update switched off rather than guessing a default. Set through

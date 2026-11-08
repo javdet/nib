@@ -198,6 +198,22 @@ accepted, logged as `agent.actionExecConcurrency is clamped to 1; one execution
 runs at a time`, and then ignored — see [One execution at a
 time](../explanation/one-execution-at-a-time.md).
 
+## `commands`
+
+How agent commands (`run_command`, `wait_until`, and `api_call`'s curl) are
+sandboxed. See [Agent tools](agent-tools.md#command-tools).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `isolation` | string | `auto` | `auto` runs each command as a uid of its own when the backend can switch uids (it runs as root, or holds `CAP_SETUID`, `CAP_SETGID` and `CAP_KILL`, which the image's entrypoint keeps), and as the backend's own user otherwise, with a warning at boot. `required` refuses commands when isolation is unavailable. `off` always uses the backend's own user. |
+| `uidStart` | integer | `20000` | First uid of the pool commands run as. At least 1000. |
+| `uidCount` | integer | `1000` | Size of the pool: one uid per running command. No other user in the container may hold one of these uids. |
+| `logRetentionDays` | integer | `7` | Days a command's output stays in `{DATA_DIR}/command_logs`. The `command_runs` row is kept. |
+
+With isolation on, the backend makes `DATA_DIR` mode `0700` at startup so no
+command can enter it. Under `required`, a `DATA_DIR` it cannot close that way
+stops the backend from starting.
+
 ## `log`
 
 Mirrors everything written to stderr into a file, in append mode. stdout is

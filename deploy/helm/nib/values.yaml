@@ -126,6 +126,16 @@ backend:
       level: info
     agent:
       maxIterations: 30
+    ## Agent commands (run_command, wait_until, api_call's curl). With isolation
+    ## auto each command runs as a uid of its own from uidStart..uidStart+uidCount-1,
+    ## which needs the SETUID, SETGID and KILL capabilities the image's
+    ## entrypoint keeps -- see securityContext below. required refuses commands
+    ## without them; off always runs them as the backend's own user.
+    commands:
+      isolation: auto
+      uidStart: 20000
+      uidCount: 1000
+      logRetentionDays: 7
     skills:
       dir: /app/data/skills
     rules:
@@ -166,6 +176,12 @@ backend:
   podAnnotations: {}
   podLabels: {}
   podSecurityContext: {}
+  ## The entrypoint starts as root and drops to uid 10001 keeping only SETUID,
+  ## SETGID and KILL, which agent-command isolation needs (backend.config.commands).
+  ## A securityContext that drops ALL capabilities must add those three back:
+  ##   capabilities: { drop: [ALL], add: [SETUID, SETGID, KILL] }
+  ## Setting runAsUser/runAsNonRoot skips the entrypoint's switch, so commands run
+  ## as the backend's own user (or are refused under isolation: required).
   securityContext: {}
   resources: {}
   nodeSelector: {}

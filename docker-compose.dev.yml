@@ -68,6 +68,9 @@ services:
   backend:
     image: golang:1.26
     container_name: nib-dev-backend
+    # An init as PID 1 reaps what an agent command backgrounds, which `go run`
+    # as PID 1 never would.
+    init: true
     working_dir: /app
     restart: unless-stopped
     depends_on:

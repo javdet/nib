@@ -30,7 +30,8 @@ func TestKBAgentAllowSet(t *testing.T) {
 	// Naming the ones that would let a knowledge-base merge touch live
 	// infrastructure, so a later widening of this set is deliberate.
 	for _, name := range []string{
-		ExecuteCommandToolName,
+		RunCommandToolName,
+		WaitUntilToolName,
 		APICallToolName,
 		GetSecretsToolName,
 		RunExecutorToolName,

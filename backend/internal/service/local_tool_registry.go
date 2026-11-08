@@ -41,6 +41,10 @@ type toolBinding struct {
 	// system is the system a Digger investigates, which its finding is filed
 	// under. Empty for every other turn.
 	system string
+	// actionKey is the action-plan row an action executor carries out
+	// ("s0.step1"). Empty for every other turn; the commands it runs are
+	// recorded against it.
+	actionKey string
 }
 
 // newToolBinding returns a binding for an ordinary turn, where the dialog that
@@ -70,7 +74,7 @@ func init() {
 		registerGetRuleTool,
 		registerWriteRuleTool,
 		registerAPICallTool,
-		registerExecuteCommandTool,
+		registerCommandTools,
 		registerGetSecretsTool,
 		registerListVariablesTool,
 		registerRunExecutorTool,
@@ -166,16 +170,8 @@ func registerAPICallTool(s *ChatService, catalog *toolCatalog, _ toolBinding, al
 	if !localToolAllowed(allow, APICallToolName) {
 		return
 	}
-	catalog.localHandlers[APICallToolName] = ExecuteAPICall
+	catalog.localHandlers[APICallToolName] = s.apiCallHandler()
 	catalog.tools = append(catalog.tools, APICallToolDef())
-}
-
-func registerExecuteCommandTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {
-	if !localToolAllowed(allow, ExecuteCommandToolName) {
-		return
-	}
-	catalog.localHandlers[ExecuteCommandToolName] = ExecuteCommand
-	catalog.tools = append(catalog.tools, ExecuteCommandToolDef())
 }
 
 func registerGetSecretsTool(s *ChatService, catalog *toolCatalog, _ toolBinding, allow map[string]struct{}) {

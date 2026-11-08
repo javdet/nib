@@ -54,6 +54,7 @@ RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
 		openssl \
 		procps \
 		telnet \
+		tini \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& update-ca-certificates
 
@@ -99,5 +100,7 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=10 \
 	CMD curl -sf http://localhost:8080/api/v1/health || exit 1
 
 # The entrypoint creates the DATA_DIR layout as root, then execs nib with CMD as the nib user.
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# tini is PID 1 so nib is not: a command an agent backgrounds outlives its shell, is reparented to
+# PID 1 when the job is killed, and only an init reaps it.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["-config", "/app/config.yaml"]

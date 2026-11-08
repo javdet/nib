@@ -120,10 +120,11 @@ The git API token is **not** an environment variable. It is selected by name in
 Tools → Executor and read from the encrypted secret store — see
 [Executor settings](executor.md).
 
-## What `execute_command` and `api_call` inherit
+## What agent commands and `api_call` inherit
 
-The processes these two agent tools launch get exactly `PATH`, `HOME` and
-`LANG` from the backend's environment, and nothing else. So they never see
+The processes the command tools (`run_command`, `wait_until`) and `api_call`
+launch get `PATH` and `LANG` from the backend's environment, plus a `HOME` and
+`TMPDIR` of their own, and nothing else. So they never see
 `LLM_API_KEY`, `SECRETS_ENCRYPTION_KEY`, the database settings or
 `AGENT_WEBHOOK_TOKEN` — and they do not see `HTTP_PROXY`, `HTTPS_PROXY`,
 `KUBECONFIG` or any other CLI configuration either. A CLI that needs one of

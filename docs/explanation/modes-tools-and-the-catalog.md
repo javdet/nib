@@ -122,21 +122,46 @@ and reachable only through search.
 
 ## The backend's own hands
 
-Two built-in tools do not go through an MCP server at all: `execute_command`
-runs one binary on the backend's host, and `api_call` runs `curl`. They are
-what lets the agent check a version or hit an internal API without anyone
-writing a server for it, and they are also the two tools whose risk lands on
-nib itself rather than on the systems it manages. Their limits follow from that.
+Two kinds of built-in tool do not go through an MCP server at all: the command
+tools (`run_command` and its companions) run a bash script on the backend's
+host, and `api_call` runs `curl`. They are what lets the agent check a version,
+run a CLI or hit an internal API without anyone writing a server for it. They
+are also the tools whose risk lands on nib itself rather than on the systems it
+manages, and their limits follow from that.
 
-**Not a shell.** One binary through argv, no pipes, redirects, `&&`, globs or
-variable expansion. A shell would turn every argument into a program, and the
-arguments are the model's.
+**A sandbox, not a restricted language.** `execute_command`, which these
+replaced, refused shell syntax and ran one binary through argv. That protected
+nothing: `bash -c` was one argument away, and models worked noticeably worse
+without pipes. The protection that matters is *who* the script runs as. Each
+job gets a uid of its own from a pool, with no supplementary groups. So it
+cannot read nib's data volume (the webhook key, `mcp.json`, the rules, every
+plan), cannot read the backend's environment through `/proc`, cannot reach the
+Docker socket, which would make it root on the host, and cannot see a sibling
+job. The backend keeps only `CAP_SETUID`, `CAP_SETGID` and `CAP_KILL` to do this,
+and every child drops them before it runs. Where nib cannot switch uids (started
+as a non-root user, or with those capabilities dropped), `commands.isolation:
+auto` falls back to its own uid and says so at boot; `required` refuses
+commands instead.
 
-**No inherited environment.** Both run with `PATH`, `HOME` and `LANG` only. The
-backend's environment holds its own keys, and a child's output goes to the
-provider and the transcript, so an inherited environment would let `env` print
-them. The cost is that nothing else a CLI might read — proxy settings,
-`KUBECONFIG` — comes through either.
+**No inherited environment.** A job runs with `PATH`, `HOME`, `TMPDIR` and
+`LANG` only, and its `HOME` is a fresh directory removed with it. The backend's
+environment holds its own keys, and a job's output goes to the provider and the
+transcript, so an inherited environment would let `env` print them. The cost is
+that nothing else a CLI might read — proxy settings, `KUBECONFIG`, a login kept
+in a home directory — comes through either.
+
+**Waiting is the backend's job, not the model's.** An action executor has about
+twenty rounds. A model polling a rollout every thirty seconds spends one round
+per poll; one `wait_job` of ten minutes spends one round, and no completion is
+requested while it blocks. `wait_until` goes further and reruns the check itself.
+Results are cut to their head and tail at 32 KiB, because one
+`kubectl get -o json` returned whole would end the turn on the context window;
+the rest is a `read_output` away.
+
+**A job dies with its run.** A job is bound to the context of the tool call that
+started it. A force stop, an action timeout, a cancelled investigation and the
+end of a chat turn all kill it, whatever it started, including what it put in
+the background. Nothing outlives the agent that could be watching it.
 
 **`api_call` is an allow list, not a blocklist.** curl can read any file
 (`-d @file`, `-K`), write any file, talk to the Docker socket, and reroute its
@@ -153,13 +178,13 @@ be a coin toss. curl is then pinned to the address that was checked, so a
 second DNS answer cannot move it. Private ranges are allowed on purpose:
 reaching internal APIs is what the tool is for.
 
-None of this applies to `execute_command`, which can run `curl` itself. The
-guard on `api_call` is what lets it be offered freely; `execute_command` is the
-one to take out of a mode you do not trust. And because both run whatever the
-model asks with the backend's own identity, the backend does not run as root:
-the image holds root only long enough to hand over a root-owned volume and
-join the group that owns the Docker socket, then drops to an unprivileged user
-with no capabilities and no way to regain them.
+None of the `api_call` guard applies to `run_command`, which can run `curl`
+itself. The guard is what lets `api_call` be offered freely; the command tools
+are the ones to take out of a mode you do not trust. Both run in the same
+sandbox, and the backend itself does not run as root: the image holds root only
+long enough to hand over a root-owned volume and join the group that owns the
+Docker socket, then drops to an unprivileged user with the three capabilities
+above and no way to gain more.
 
 ## What this costs
 

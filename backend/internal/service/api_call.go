@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/google/shlex"
+	"github.com/javdet/nib/internal/cmdrun"
 	"github.com/javdet/nib/internal/llm"
 	"github.com/javdet/nib/internal/textutil"
 )
@@ -54,6 +54,24 @@ func APICallToolDef() llm.ToolDef {
 // ExecuteAPICall splits flags into argv, runs curl without a shell, and returns combined output.
 // Validation failures are returned as tool output text (not Go errors) so the agent loop can continue.
 func ExecuteAPICall(ctx context.Context, args map[string]any) (string, error) {
+	return executeAPICall(ctx, args, runCurl)
+}
+
+// apiCallHandler runs curl in the command sandbox, so it gets a uid of its own
+// and none of the capabilities the backend holds, exactly like a command does.
+func (s *ChatService) apiCallHandler() localToolHandler {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		if s.commandJobs == nil {
+			return ExecuteAPICall(ctx, args)
+		}
+		sb := s.commandJobs.Sandbox()
+		return executeAPICall(ctx, args, func(ctx context.Context, argv []string) (string, error) {
+			return runCurlIn(ctx, sb, argv)
+		})
+	}
+}
+
+func executeAPICall(ctx context.Context, args map[string]any, run func(context.Context, []string) (string, error)) (string, error) {
 	flags := strings.TrimSpace(stringArg(args, "flags"))
 	if flags == "" {
 		return "flags is empty", nil
@@ -74,7 +92,7 @@ func ExecuteAPICall(ctx context.Context, args map[string]any) (string, error) {
 		return fmt.Sprintf("rejected: %v", err), nil
 	}
 
-	return runCurl(ctx, argv)
+	return run(ctx, argv)
 }
 
 func parseCurlFlags(flags string) ([]string, error) {
@@ -88,25 +106,34 @@ func parseCurlFlags(flags string) ([]string, error) {
 	return argv, nil
 }
 
+// defaultRunCurl runs curl unisolated, as the backend's own user. It is only
+// reached before SetCommandJobs has wired a sandbox, which is tests.
 func defaultRunCurl(ctx context.Context, argv []string) (string, error) {
-	runCtx, cancel := context.WithTimeout(ctx, apiCallTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(runCtx, "curl", argv...)
-	cmd.Env = toolChildEnv()
-	out, err := cmd.CombinedOutput()
-	result := capAPICallOutput(string(out))
-
+	sb, err := cmdrun.NewSandbox(cmdrun.SandboxConfig{Isolation: cmdrun.IsolationOff})
 	if err != nil {
-		if runCtx.Err() == context.DeadlineExceeded {
-			return result + "\n[error: curl timed out]", nil
-		}
-		if len(result) > 0 {
-			return result + fmt.Sprintf("\n[exit error: %v]", err), nil
-		}
-		return fmt.Sprintf("[exit error: %v]", err), nil
+		return "", fmt.Errorf("api_call sandbox: %w", err)
 	}
+	return runCurlIn(ctx, sb, argv)
+}
 
+func runCurlIn(ctx context.Context, sb *cmdrun.Sandbox, argv []string) (string, error) {
+	res, err := sb.RunOnce(ctx, append([]string{"curl"}, argv...), apiCallTimeout, apiCallMaxOutputBytes)
+	if err != nil {
+		// A refused or failed spawn is the tool's answer, not a turn failure.
+		return fmt.Sprintf("[error: %v]", err), nil
+	}
+	result := string(res.Output)
+	if res.Truncated {
+		result = capAPICallOutput(result + apiCallTruncationSuffix)
+	}
+	switch {
+	case res.TimedOut:
+		return result + "\n[error: curl timed out]", nil
+	case res.ExitCode != 0 && result != "":
+		return result + fmt.Sprintf("\n[exit error: exit status %d]", res.ExitCode), nil
+	case res.ExitCode != 0:
+		return fmt.Sprintf("[exit error: exit status %d]", res.ExitCode), nil
+	}
 	return result, nil
 }
 

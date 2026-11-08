@@ -14,8 +14,9 @@ the categories named for its system, plus the MCP tools included for incident mo
 Included tools**). A knowledge-base document describing your services and their dependencies is what
 the agent uses to decide which systems to examine.
 
-Local commands (`execute_command`, `api_call`) run inside the nib backend, with no `KUBECONFIG` and no
-cloud credentials, so they are good for a reproduction against a public endpoint and little else.
+Local commands (`run_command`, `wait_until`, `api_call`) run inside the nib backend, as a sandbox user
+with no `KUBECONFIG` and no cloud credentials, so they are good for a reproduction against a public
+endpoint and little else.
 
 ## Start an incident
 

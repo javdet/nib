@@ -91,6 +91,7 @@ import {
 } from '@/features/executor/api/executor'
 import { ActionPlanView } from '../components/action-plan-view'
 import { ContainerLogsDialog } from '../components/container-logs-dialog'
+import { CommandRunsDialog } from '../components/command-runs-dialog'
 import { DagView } from '../components/dag-view'
 import { PlanMetaTable } from '../components/plan-meta-table'
 import { PlanProgressBar } from '../components/plan-progress-bar'
@@ -252,6 +253,7 @@ export function WorkplaceDetail() {
 	// The action row whose container logs are open. The log text itself lives in
 	// the dialog, which Radix unmounts on close, so nothing about it is kept here.
 	const [logsKey, setLogsKey] = useState<string | null>(null)
+	const [commandsKey, setCommandsKey] = useState<string | null>(null)
 	const [simplifiedView, setSimplifiedView] = useState(
 		() => localStorage.getItem('plan-simplified-view') !== 'false',
 	)
@@ -1645,6 +1647,7 @@ export function WorkplaceDetail() {
 							onExecute={handleExecuteAction}
 							onStop={() => void handleStopExecution()}
 							onViewLogs={setLogsKey}
+							onViewCommands={setCommandsKey}
 							execRuns={execRuns}
 							executorType={executorType}
 							onReorder={(scope, stage, from, to) =>
@@ -1680,6 +1683,13 @@ export function WorkplaceDetail() {
 				actionKey={logsKey}
 				number={logsKey ? actionPlanNumberForKey(logsKey) : undefined}
 				onClose={() => setLogsKey(null)}
+			/>
+
+			<CommandRunsDialog
+				dialogId={id}
+				actionKey={commandsKey}
+				number={commandsKey ? actionPlanNumberForKey(commandsKey) : undefined}
+				onClose={() => setCommandsKey(null)}
 			/>
 
 			<Dialog

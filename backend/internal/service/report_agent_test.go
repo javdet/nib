@@ -26,7 +26,8 @@ func TestReportAgentAllowSet(t *testing.T) {
 	// Naming the ones that would turn a report into a side effect, so a later
 	// widening of this set is a deliberate act rather than an accident.
 	for _, name := range []string{
-		ExecuteCommandToolName,
+		RunCommandToolName,
+		WaitUntilToolName,
 		APICallToolName,
 		GetSecretsToolName,
 		RunExecutorToolName,

@@ -147,6 +147,7 @@ through `get_action_list`. It is unreachable from the HTTP API.
 | `logs/` | The stderr mirror, when `log.enabled` is true. |
 | `.host-env.json` | Marker for the host-environment snapshot reconciled into prompt variables. |
 | `.webhook-key` | The key that signs each agent-runner container's webhook token, generated once (mode `0600`) when `AGENT_WEBHOOK_TOKEN` is unset. Changing it orphans runs in flight. |
+| `command_logs/{plan}/{run}.log` | The output of one agent command, up to 10 MiB, appended while it runs. Swept after `commands.logRetentionDays`. Its index is the `command_runs` table. |
 
 A background sweeper deletes attachment files whose database rows are gone, and
 expires uploads never sent after 24 hours.
@@ -212,6 +213,12 @@ Knowledge search compares them as strings.
 
 These tables carry no foreign key to `chat_dialogs`, so their rows outlive the
 dialogs they came from and any join to `chat_dialogs` must be a `LEFT JOIN`.
+
+### Commands
+
+| Table | Holds |
+|---|---|
+| `command_runs` | One row per command an agent ran: plan, dialog, action row, mode, the script (up to 64 KiB), the sandbox uid, status, exit code, output size and timing. A row still `running` at boot is marked `lost`. No foreign key, for the same reason as the statistics. |
 
 Plan *status* itself lives in `plan_state/{id}.json` and keeps only the current
 value; the history in `plan_status_transitions` starts accumulating from the

@@ -597,3 +597,68 @@ func TestValidateLLMConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_Commands(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		want    CommandsConfig
+		wantSub string
+	}{
+		{
+			name: "defaults when the block is absent",
+			body: minimalValidLLMYAML,
+			want: CommandsConfig{Isolation: "auto", UIDStart: 20000, UIDCount: 1000, LogRetentionDays: 7},
+		},
+		{
+			name: "explicit values",
+			body: minimalValidLLMYAML + `
+commands:
+  isolation: Required
+  uidStart: 30000
+  uidCount: 10
+  logRetentionDays: 2
+`,
+			want: CommandsConfig{Isolation: "required", UIDStart: 30000, UIDCount: 10, LogRetentionDays: 2},
+		},
+		{
+			name: "unknown isolation",
+			body: minimalValidLLMYAML + `
+commands:
+  isolation: maybe
+`,
+			wantSub: "commands.isolation must be auto, required or off",
+		},
+		{
+			name: "pool among system users",
+			body: minimalValidLLMYAML + `
+commands:
+  uidStart: 100
+`,
+			wantSub: "commands.uidStart must be at least 1000",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("LLM_API_KEY", "test-key")
+			t.Setenv("OPENAI_API_KEY", "")
+			cfg, err := Load(path)
+			if tc.wantSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			if cfg.Commands != tc.want {
+				t.Fatalf("Commands = %+v, want %+v", cfg.Commands, tc.want)
+			}
+		})
+	}
+}

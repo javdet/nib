@@ -182,11 +182,43 @@ removed. MCP tools are on by default per mode via `{DATA_DIR}/tools/mcp-included
 Categories come from the `toolCategories` variable and gate which MCP tools a planned action
 carries.
 
-`execute_command` is not a shell: one binary through argv, no pipes, redirects, `&&`, globs or
-`$VAR` expansion, 60s timeout, 1 MiB of captured output. `api_call` is the same shape fixed to
-`curl`. Both run with only `PATH`, `HOME` and `LANG` from the backend's environment, so neither
-sees the backend's keys and tokens. They also do not see `HTTP(S)_PROXY`, `KUBECONFIG` or other CLI
-configuration.
+Local commands are **jobs** (`internal/cmdrun`), driven by five tools that replaced
+`execute_command`. A `{mode}.json` that still lists `execute_command` gets the five in its place on
+the next boot. A list whose operator had removed it does not get them
+(`renamedTools` in `internal/mode/allowtools_seed.go`). Diggers get them from `diggerBaseTools`.
+
+- `run_command(script, wait_seconds, timeout_seconds)` runs a bash script. It returns when the script
+  ends or after `wait_seconds` (default 30, max 900), with a `job_id` if it is still running. The
+  script is killed after `timeout_seconds` (default 600, max 3600).
+- `wait_job(job_id, wait_seconds ≤ 900, from_offset)` blocks for one round instead of one round per
+  poll.
+- `read_output(job_id, offset, limit, grep)` pages through or greps the full log.
+- `cancel_job(job_id)` sends SIGTERM, then SIGKILL after 10 s.
+- `wait_until(script, until: exit0|match, pattern, interval_seconds, timeout_seconds ≤ 900)` reruns a
+  check without the model.
+
+A job never outlives the agent run that started it: it hangs off the tool call's context, so a force
+stop, an action timeout, a cancelled investigation or the end of a chat turn kills it. A job is
+visible only to the dialog that started it. Each job keeps up to 10 MiB of output in
+`{DATA_DIR}/command_logs/{plan}/{job}.log` (swept after `commands.logRetentionDays`, default 7). A
+result hands the model at most 32 KiB, its head and tail. Every run is audited in the `command_runs`
+table, and the plan page's **Commands** button on an action or check row lists them with their
+output and a Cancel. At most 4 jobs run per dialog and 16 in all; a restart marks running rows
+`lost`.
+
+**Isolation** is `commands.isolation` in `config.yaml`:
+
+- `auto` (default) runs each job as a uid of its own from `commands.uidStart`
+  (20000, `uidCount` 1000) with no supplementary groups, so it cannot reach `DATA_DIR` (made 0700 at
+  boot), the backend's `/proc` or the Docker socket. It falls back to the backend's own uid, with a
+  boot warning, when the backend can neither run as root nor hold `CAP_SETUID`, `CAP_SETGID` and
+  `CAP_KILL`.
+- `required` refuses commands instead of falling back.
+- `off` always uses the backend's uid.
+
+The job starts in an empty `HOME` under `/tmp/nib-jobs` that is deleted afterwards, with only `PATH`,
+`HOME`, `TMPDIR` and `LANG` set, so it sees none of the backend's keys and tokens, `HTTP(S)_PROXY`,
+`KUBECONFIG` or other CLI configuration. `api_call` is a fixed `curl` and runs in the same sandbox.
 
 `api_call` accepts only the curl options listed in its tool description
 (`internal/service/api_call_guard.go`) and exactly one `http://` or `https://` URL. It refuses:
@@ -200,15 +232,25 @@ configuration.
 The host is resolved before curl runs. A host with any loopback, link-local (`169.254.0.0/16`,
 cloud metadata) or other metadata address among its answers is refused, and curl is pinned to the
 vetted address with `--connect-to`, so a second DNS answer cannot redirect it. Private
-(RFC 1918) addresses are allowed, since reaching internal APIs is the point. `execute_command` has
-none of these limits: it can still run `curl` itself.
+(RFC 1918) addresses are allowed, since reaching internal APIs is the point. `run_command` has none
+of these limits: it can still run `curl` itself, only from its sandbox.
 
-The backend image runs as `nib` (uid/gid 10001), not root. `docker-entrypoint.sh` starts as root
-only long enough to seed `DATA_DIR`, `chown` whatever in it is not `nib:nib` (a volume from an older
-release is root-owned), and join the gid that owns the Docker socket. It then drops to `nib` with
-`setpriv --no-new-privs` and no capabilities. On Docker Desktop that gid is 0, so nib joins the
-root group, which the entrypoint logs as a warning. A container started as another user (a
-Kubernetes `securityContext`) skips all of this.
+The backend image runs as `nib` (uid/gid 10001), not root, under `tini` as PID 1, which reaps
+whatever a killed job backgrounded. `docker-entrypoint.sh` starts as root only long enough to:
+
+- seed `DATA_DIR`;
+- `chown` whatever in it is not `nib:nib` (a volume from an older release is root-owned);
+- clear stale job homes;
+- join the gid that owns the Docker socket.
+
+It then drops to `nib` with `setpriv --no-new-privs`. It keeps exactly `CAP_SETUID`, `CAP_SETGID` and
+`CAP_KILL` as ambient capabilities, with a bounding set of only those three, for the job sandbox.
+Every child process drops all three again before it execs (a `setpriv --inh-caps=-all
+--ambient-caps=-all` wrapper), since ambient capabilities survive a switch between two non-root
+uids. On Docker Desktop the socket's gid is 0, so nib joins the root group, which the entrypoint
+logs as a warning. A container started as another user (a Kubernetes `securityContext`) skips all of
+this and runs commands unisolated. So does one whose `securityContext` drops the three capabilities
+without adding them back.
 
 ### API authentication
 
@@ -396,10 +438,11 @@ findings, impact report and closure summary.
   root causes, merged timeline and actions while an **impact** agent writes the impacted list and the
   impact report. Each runs in a child `incident` dialog with its own literal catalog. The outcome is
   posted into the incident chat as a named message; it does not start a turn.
-- **Read-only is enforced by prompt only.** Diggers and the impact agent hold `execute_command`,
-  `api_call`, the MCP tools included for incident mode and those of their categories, and are told
-  not to mutate anything. They take no execution lease. Like every `execute_command`, theirs sees no
-  `KUBECONFIG` or cloud credentials, so clusters and clouds are reached through MCP.
+- **Read-only is enforced by prompt only.** Diggers and the impact agent hold the command tools
+  (`run_command`, `wait_job`, `read_output`, `cancel_job`, `wait_until`), `api_call`, the MCP tools
+  included for incident mode and those of their categories. They are told not to mutate anything and
+  take no execution lease. Like every command, theirs sees no `KUBECONFIG` or cloud credentials, so
+  clusters and clouds are reached through MCP.
 - **Operator edits win.** The page edits through `PUT /dialogs/{id}/postmortem` with a patch. A
   scalar field the operator edits is locked against agents until handed back (`locks`), and a list
   item the operator wrote, or an action already in a plan, survives an agent's rewrite of the list.
@@ -655,7 +698,9 @@ dialog id, written atomically via `internal/atomicfile`: `data/dags/{id}.md`,
 `data/summaries/{id}.txt`, `data/reports/{id}.md`, `data/action_plans/{id}.json`,
 `data/plan_state/{id}.json`, `data/plan_fanout/{id}.json`, `data/subagents/{id}.json`,
 `data/code_fixes/{id}.json`, `data/plan_origin/{id}.json`, and for an incident
-`data/postmortems/{id}.json` and `data/incident_runs/{id}.json`.
+`data/postmortems/{id}.json` and `data/incident_runs/{id}.json`. Command output is the exception
+to atomic writes: `data/command_logs/{root}/{job}.log` is appended while the job runs and swept by
+age, and its index is the `command_runs` table, not a file.
 
 An action plan carries side files beside it, all keyed by the same dialog id and by the positional
 row key of an action (`s0.step1`, `rollback.2`): `.checks.json` (the operator's checkboxes),

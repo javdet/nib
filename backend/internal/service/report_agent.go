@@ -164,7 +164,7 @@ func (s *ChatService) reportAgentSystemPrompt(ctx context.Context) (string, erro
 // mode list on purpose.
 //
 // This agent reads a finished plan and writes prose about it. Every other tool
-// the execute list carries -- execute_command, api_call, the MCP catalog, the
+// the execute list carries -- run_command, api_call, the MCP catalog, the
 // secrets -- is a way for a report to have side effects, and there is no reading
 // of "summarise what happened" that needs one. Keeping the set literal also means
 // an operator's edit to data/tools/execute.json cannot widen it.

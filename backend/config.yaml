@@ -121,6 +121,22 @@ agent:
   # starts it, so it needs a deadline of its own.
   actionExecTimeoutMinutes: 30
 
+# Agent commands (run_command, wait_until, and api_call's curl).
+commands:
+  # auto: each command runs as a sandbox uid of its own when the backend can
+  # switch uids (root, or the SETUID/SETGID/KILL capabilities the image's
+  # entrypoint keeps), and as the backend's own user otherwise, with a warning
+  # at boot. required: refuse commands when isolation is unavailable. off:
+  # always the backend's own user.
+  isolation: auto
+  # The uids commands run as, one per running command. Nothing else in the
+  # container may use them.
+  uidStart: 20000
+  uidCount: 1000
+  # Days a command's output stays in DATA_DIR/command_logs; the audit row in
+  # command_runs is kept.
+  logRetentionDays: 7
+
 knowledge_base:
   uri: postgres://nib:nib@localhost:5432/nib?sslmode=disable
 

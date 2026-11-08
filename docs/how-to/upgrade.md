@@ -29,6 +29,34 @@ Back up `pgdata` and `nibdata` together first. Restoring one against a
 mismatched copy of the other leaves plan artifacts pointing at dialogs that no
 longer exist.
 
+## Upgrading from v0.8.2: `execute_command` becomes the command tools
+
+`execute_command` is gone. Five tools replace it: `run_command`, `wait_job`,
+`read_output`, `cancel_job` and `wait_until` (see
+[Agent tools](../reference/agent-tools.md#command-tools)). Most installs need
+nothing from you, but check these:
+
+1. **Allow lists migrate themselves.** At the first start, a
+   `{DATA_DIR}/tools/{mode}.json` that lists `execute_command` gets the five
+   tools in its place. If you had removed `execute_command` from a mode, that
+   mode does not get them. Incident Diggers get them in code.
+2. **Commands now run as a sandbox user.** Each command runs as a uid of its
+   own from 20000 up, in an empty home directory that is deleted afterwards.
+   `DATA_DIR` is made `0700` at startup. A rule or skill that expected a command
+   to read files under `DATA_DIR`, `/home/nib`, or a CLI login kept there no
+   longer works.
+3. **Kubernetes `securityContext`.** Isolation needs the entrypoint to start as
+   root and keep `SETUID`, `SETGID` and `KILL`. If your values drop `ALL`
+   capabilities, add those three back. If they set `runAsUser`, commands run as
+   the backend's own user, as before, and the backend warns at boot. Set
+   `commands.isolation: required` to refuse commands instead.
+4. **Commands can be long.** `run_command` accepts `timeout_seconds` up to an
+   hour, and the agent waits with `wait_job`. Every command is recorded in the
+   new `command_runs` table (migration `000041`), and its output is kept in
+   `{DATA_DIR}/command_logs` for `commands.logRetentionDays` (default 7).
+5. **The image runs `tini` as PID 1.** A custom `ENTRYPOINT` override should
+   keep it, or add `init: true` in Compose.
+
 ## Upgrading from v0.8.0
 
 The release after v0.8.0 changes how nib authenticates and which user it runs
@@ -63,7 +91,9 @@ not after.
    readable by uid 10001. A pod started as another user through a
    `securityContext` skips the entrypoint's root step entirely: give the
    volume an `fsGroup` or `chown` it yourself, or the backend cannot write it.
-6. **Expect narrower agent tools.** `execute_command` and `api_call` now run as
+6. **Expect narrower agent tools.** `execute_command` (since replaced by the
+   [command tools](#upgrading-from-v082-execute_command-becomes-the-command-tools))
+   and `api_call` now run as
    `nib` and inherit only `PATH`, `HOME` and `LANG` — no proxies, no
    `KUBECONFIG`, none of the backend's keys. `api_call` also refuses loopback
    and link-local hosts (cloud metadata included), reading from or writing to

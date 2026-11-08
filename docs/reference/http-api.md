@@ -165,6 +165,17 @@ sub-agent dialogs parented to it.
 | `GET` | `/dialogs/{id}/action-plan/exec` | Per-row execution runs. |
 | `GET` | `/dialogs/{id}/action-plan/logs` | Container output so far of one running code action, `{"logs", "truncated"}`. Query `key` (required). A snapshot, polled by the UI. `409` once the run has finished, `400` for a row that is not a container run, `501` on a remote executor, `404` when the run or its container is gone. |
 
+### Commands
+
+The commands agents ran with `run_command` or `wait_until`, from the
+`command_runs` table. `{id}` is the plan's root dialog.
+
+| Method | Path | Meaning |
+|---|---|---|
+| `GET` | `/dialogs/{id}/commands` | `{"runs": [...]}`, newest first, at most 200. Query `key` narrows them to one action row. A running row reports the bytes written so far. |
+| `GET` | `/dialogs/{id}/commands/{runID}/output` | One page of a run's output, `{"output", "offset", "next_offset", "total_bytes", "eof", "status", "capped"}`. Query `offset` (default 0) and `limit` (default 64 KiB, at most 256 KiB). `404` for a run of another plan, `410` once retention has removed the output. |
+| `DELETE` | `/dialogs/{id}/commands/{runID}` | Cancel a running command: SIGTERM, then SIGKILL after 10 seconds. `204`; `409` when it has already ended. The agent sees it end "cancelled by the operator". |
+
 ### Stage run
 
 **Execute all** on a stage or on the rollback: the stage's unticked steps, then

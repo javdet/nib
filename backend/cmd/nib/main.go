@@ -46,6 +46,10 @@ import (
 )
 
 func main() {
+	// Before anything else, so no child process ever sees a dumpable backend.
+	if err := disableDumpable(); err != nil {
+		slog.Warn("process environment stays readable by same-uid children", "error", err)
+	}
 	if err := run(); err != nil {
 		slog.Error("application failed", "error", err)
 		os.Exit(1)
@@ -192,9 +196,9 @@ func run() error {
 	// backend that will not start.
 	if seeded, err := mode.SeedAllowLists(resolvedToolsDir); err != nil {
 		slog.Warn("seed tool allow lists", "dir", resolvedToolsDir, "error", err)
-	} else if len(seeded.Created) > 0 || len(seeded.Added) > 0 {
+	} else if len(seeded.Created) > 0 || len(seeded.Added) > 0 || len(seeded.Renamed) > 0 {
 		slog.Info("tool allow lists reconciled",
-			"dir", resolvedToolsDir, "created", seeded.Created, "added", seeded.Added)
+			"dir", resolvedToolsDir, "created", seeded.Created, "added", seeded.Added, "renamed", seeded.Renamed)
 	}
 	includedToolsSvc := includedtools.NewService(resolvedToolsDir)
 	// Every agent-runner container is handed a token derived from this key,
@@ -386,6 +390,14 @@ func run() error {
 	// recording calls are no-ops, which is what keeps the service tests working.
 	statsRepo := postgres.NewStatsRepo(pool)
 	chatSvc.SetStatsWriter(statsRepo, cfg.LLM.Model)
+	commandRunRepo := postgres.NewCommandRunRepo(pool)
+	commandJobs, err := newCommandJobs(cfg, commandRunRepo)
+	if err != nil {
+		return fmt.Errorf("agent commands: %w", err)
+	}
+	chatSvc.SetCommandJobs(commandJobs)
+	commandRunSvc := service.NewCommandRunService(commandRunRepo, commandJobs)
+	go commandJobs.RunLogSweeper(ctx, time.Duration(cfg.Commands.LogRetentionDays)*24*time.Hour)
 	chatSvc.SetKBSettings(kbSettingsStore)
 	chatSvc.SetDialogImporter(dialogRepo)
 	chatSvc.SetIncidentConfig(service.IncidentConfig{
@@ -414,6 +426,13 @@ func run() error {
 				"actions", rec.Actions, "fanouts", rec.Fanouts, "code_fixes", rec.CodeFixes,
 				"stage_runs", rec.StageRuns, "incidents", rec.Incidents)
 		}
+	}
+	// A command dies with the process that ran it, so a row still running at
+	// boot will never be finished by anything else.
+	if n, err := commandRunSvc.ReconcileLost(ctx); err != nil {
+		slog.Warn("reconcile command runs", "error", err)
+	} else if n > 0 {
+		slog.Info("closed command runs left behind by a previous process", "command_runs", n)
 	}
 
 	// Both mcp.json edits and secret rotations change what a resolved MCP server
@@ -499,6 +518,7 @@ func run() error {
 		ToolCategories: toolCategorySvc,
 		Selection:      selectionStore,
 		Stats:          statsSvc,
+		CommandRuns:    commandRunSvc,
 
 		SystemPrompts: systemPromptsSvc,
 		Rules:         rulesSvc,
@@ -564,6 +584,15 @@ func run() error {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
+
+	// Before the HTTP server: a turn waiting on a command then gets its
+	// "cancelled" result rather than a dropped connection. What does not die in
+	// time goes with the container, and the next boot marks its row lost.
+	jobsCtx, jobsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := commandJobs.Shutdown(jobsCtx); err != nil {
+		slog.Warn("agent commands shutdown", "error", err)
+	}
+	jobsCancel()
 
 	if metricsSrv != nil {
 		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
