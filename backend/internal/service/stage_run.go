@@ -437,7 +437,7 @@ func (s *ChatService) launchStageRunItem(ctx context.Context, planID uuid.UUID, 
 	if s.stageRunStart != nil {
 		return s.stageRunStart(ctx, planID, key)
 	}
-	_, err := s.startPlanItem(ctx, planID, key, false)
+	_, err := s.startPlanItem(ctx, planID, key, ActionLaunch{})
 	return err
 }
 

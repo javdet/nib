@@ -16,13 +16,13 @@ func (s *ChatService) launchExecuteSubagent(
 	ctx context.Context,
 	rootID uuid.UUID,
 	item string,
-	rerun bool,
+	launch ActionLaunch,
 ) (SubagentResult, error) {
 	if _, err := s.resolveOrchestratorRoot(ctx, rootID); err != nil {
 		return SubagentResult{}, err
 	}
 
-	text, started, err := s.executePlanItem(ctx, rootID, item, rerun)
+	text, started, err := s.executePlanItem(ctx, rootID, item, launch)
 	if err != nil {
 		return SubagentResult{}, err
 	}

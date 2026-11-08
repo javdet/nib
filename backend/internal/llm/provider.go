@@ -26,6 +26,11 @@ type ReasoningItem struct {
 	ID               string
 	EncryptedContent string
 	Summary          []string
+	// Model is the configured model that produced the item. A turn can change
+	// model halfway through once a fallback is configured, and one model's
+	// encrypted reasoning is not something another can be trusted to accept,
+	// so a provider replays only its own.
+	Model string
 }
 
 // ImageContent is a base64 data URL or remote image URL for multimodal user messages.

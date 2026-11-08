@@ -63,7 +63,7 @@ func (p *ResponsesProvider) Complete(ctx context.Context, systemPrompt, userProm
 }
 
 func (p *ResponsesProvider) CompleteWithTools(ctx context.Context, messages []Message, tools []ToolDef) (AssistantMessage, error) {
-	input, err := messagesToResponsesInput(messages)
+	input, err := messagesToResponsesInput(messages, p.model)
 	if err != nil {
 		return AssistantMessage{}, err
 	}
@@ -89,6 +89,9 @@ func (p *ResponsesProvider) CompleteWithTools(ctx context.Context, messages []Me
 	}
 
 	asst := assistantFromResponse(resp)
+	for i := range asst.Reasoning {
+		asst.Reasoning[i].Model = p.model
+	}
 	// A reply with neither text nor a tool call would travel up the agent loop
 	// as a successful empty answer. It means the model spent the whole response
 	// on reasoning, so report it instead of ending the turn silently.
@@ -124,7 +127,9 @@ func checkResponseStatus(op string, resp *responses.Response) error {
 	}
 }
 
-func messagesToResponsesInput(messages []Message) ([]responses.ResponseInputItemUnionParam, error) {
+// messagesToResponsesInput converts the history for a request to model.
+// Reasoning stamped with a different model is left out: see ReasoningItem.Model.
+func messagesToResponsesInput(messages []Message, model string) ([]responses.ResponseInputItemUnionParam, error) {
 	out := make([]responses.ResponseInputItemUnionParam, 0, len(messages))
 	for _, m := range messages {
 		switch m.Role {
@@ -136,6 +141,9 @@ func messagesToResponsesInput(messages []Message) ([]responses.ResponseInputItem
 			// Reasoning has to arrive before the function calls it produced,
 			// otherwise the API rejects the item ordering.
 			for _, r := range m.Reasoning {
+				if r.Model != "" && r.Model != model {
+					continue
+				}
 				out = append(out, reasoningInputItem(r))
 			}
 			if m.Content != "" {

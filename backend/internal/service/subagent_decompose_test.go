@@ -293,7 +293,7 @@ func TestLaunchesRefuseADialogThatIsNotAnOrchestratorRoot(t *testing.T) {
 		if _, err := svc.launchPlanSubagent(t.Context(), id, nil, nil); err == nil {
 			t.Errorf("%s: launchPlanSubagent succeeded, want ErrNotMainDialog", name)
 		}
-		if _, err := svc.launchExecuteSubagent(t.Context(), id, "1.1", false); err == nil {
+		if _, err := svc.launchExecuteSubagent(t.Context(), id, "1.1", ActionLaunch{}); err == nil {
 			t.Errorf("%s: launchExecuteSubagent succeeded, want ErrNotMainDialog", name)
 		}
 		codeReq := SubagentRequest{Name: SubagentCode, Task: "fix it", Repository: "infra"}

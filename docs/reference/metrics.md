@@ -86,6 +86,8 @@ pgx pool: `nib_db_pool_connections{state}`, `nib_db_pool_max_connections`,
 | `nib_llm_request_duration_seconds` | histogram | `operation`, `model` |
 | `nib_llm_tool_calls_returned_total` | counter | `model` |
 | `nib_llm_embedding_tokens_total` | counter | `model` |
+| `nib_llm_retries_total` | counter | `model`, `outcome` |
+| `nib_llm_fallbacks_total` | counter | `from_model`, `to_model` |
 | `nib_mcp_tool_discovery_duration_seconds` | histogram | — |
 | `nib_mcp_tool_discovery_errors_total` | counter | `server` |
 | `nib_mcp_tools_discovered` | gauge | `server` |
@@ -102,6 +104,11 @@ neither goes in a label.
 `nib_agent_tool_call_duration_seconds` is timed per call, so a `report_blocker`
 sits in its top bucket for as long as the operator takes to answer it. That is
 the tool working, not a slow one.
+
+`nib_llm_requests_total` counts a completion once however many attempts it
+took, under the configured `llm.model`. `nib_llm_retries_total` counts each
+attempt sent again, with the `outcome` of the attempt that failed, and
+`nib_llm_fallbacks_total` each switch to `llm.fallbackModel`.
 
 Prompt and completion tokens are not exported to Prometheus. They are recorded
 per call in the `llm_usage` table instead — see [Usage

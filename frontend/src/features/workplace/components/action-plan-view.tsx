@@ -22,6 +22,7 @@ import {
 	ScrollText,
 	Square,
 	SquareTerminal,
+	StepForward,
 	type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -54,6 +55,7 @@ import { actionTypeIcon } from '../lib/action-type-icon'
 import { DONE_SURFACE, HeaderButton } from './plan-row-parts'
 import { canViewContainerLogs } from '../lib/container-logs'
 import { canViewCommands } from '../lib/command-runs'
+import { canContinueRun } from '../lib/execute-action-message'
 import {
 	impactedIndexes,
 	stepImpact,
@@ -146,6 +148,10 @@ interface ActionPlanViewProps {
 	// onViewCommands opens the commands an action's sub-agent ran, with their
 	// output. Like the logs, it is per row.
 	onViewCommands?: (key: string) => void
+	// onContinue resumes a row's last sub-agent run in its own transcript
+	// instead of starting over. Offered only on a run that ended without
+	// finishing; see canContinueRun.
+	onContinue?: (key: string) => void
 	execRuns: ActionExecRuns
 	// executorType gates the logs button: only the local docker executor can be
 	// read from.
@@ -576,6 +582,7 @@ interface RunControlsProps {
 	onStop: () => void
 	onViewLogs?: () => void
 	onViewCommands?: () => void
+	onContinue?: () => void
 	executorType?: ExecutorType | null
 }
 
@@ -588,6 +595,7 @@ function RunControls({
 	onStop,
 	onViewLogs,
 	onViewCommands,
+	onContinue,
 	executorType = null,
 }: RunControlsProps) {
 	if (!execRun) return null
@@ -618,6 +626,15 @@ function RunControls({
 					onClick={onViewCommands}
 				>
 					<SquareTerminal className="h-4 w-4" />
+				</HeaderButton>
+			)}
+			{onContinue && canContinueRun(execRun) && (
+				<HeaderButton
+					label="Continue action"
+					tooltip="Continue from where the last run stopped, in the same transcript"
+					onClick={onContinue}
+				>
+					<StepForward className="h-4 w-4" />
 				</HeaderButton>
 			)}
 			{execRun.status === 'running' && (
@@ -662,6 +679,7 @@ interface CheckableRowProps {
 	onExecute: () => void
 	onStop: () => void
 	onViewCommands?: () => void
+	onContinue?: () => void
 	execRun?: ActionExecRun
 	dragDisabled?: boolean
 	onGripPointerDown: () => void
@@ -681,6 +699,7 @@ function CheckableRow({
 	onExecute,
 	onStop,
 	onViewCommands,
+	onContinue,
 	execRun,
 	dragDisabled,
 	onGripPointerDown,
@@ -710,6 +729,7 @@ function CheckableRow({
 						execRun={execRun}
 						onStop={onStop}
 						onViewCommands={onViewCommands}
+						onContinue={onContinue}
 					/>
 					<ExecuteButton onClick={onExecute} />
 				</div>
@@ -734,6 +754,7 @@ interface ExecutableActionRowProps {
 	onStop: () => void
 	onViewLogs?: () => void
 	onViewCommands?: () => void
+	onContinue?: () => void
 	execRun?: ActionExecRun
 	executorType?: ExecutorType | null
 	executeDisabled?: boolean
@@ -757,6 +778,7 @@ function ExecutableActionRow({
 	onStop,
 	onViewLogs,
 	onViewCommands,
+	onContinue,
 	execRun,
 	executorType = null,
 	executeDisabled = false,
@@ -792,6 +814,7 @@ function ExecutableActionRow({
 						onStop={onStop}
 						onViewLogs={onViewLogs}
 						onViewCommands={onViewCommands}
+						onContinue={onContinue}
 						executorType={executorType}
 					/>
 					<HeaderButton
@@ -896,6 +919,7 @@ export function ActionPlanView({
 	onStop,
 	onViewLogs,
 	onViewCommands,
+	onContinue,
 	execRuns,
 	executorType = null,
 	onReorder,
@@ -1227,6 +1251,7 @@ export function ActionPlanView({
 																? () => onViewCommands(key)
 																: undefined
 														}
+														onContinue={onContinue ? () => onContinue(key) : undefined}
 														execRun={execRuns[key]}
 														executorType={executorType}
 														dragDisabled={dragDisabled}
@@ -1287,6 +1312,7 @@ export function ActionPlanView({
 																	? () => onViewCommands(key)
 																	: undefined
 															}
+															onContinue={onContinue ? () => onContinue(key) : undefined}
 															execRun={execRuns[key]}
 															dragDisabled={dragDisabled}
 															onGripPointerDown={handleGripPointerDown}
@@ -1388,6 +1414,7 @@ export function ActionPlanView({
 										onViewCommands={
 											onViewCommands ? () => onViewCommands(key) : undefined
 										}
+										onContinue={onContinue ? () => onContinue(key) : undefined}
 										execRun={execRuns[key]}
 										executorType={executorType}
 										dragDisabled

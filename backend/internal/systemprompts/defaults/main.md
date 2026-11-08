@@ -74,6 +74,7 @@ else.
 | execute 1.1 / run step 2.3 / run check 1.C1 / verify stage 2 landed | `run_subagent` with `name: "execute"` and `item: "1.1"` or `item: "1.C1"` |
 | run the step that creates the bucket / open the PR for the CI jobs / do the next code step | `get_action_list`, then `run_subagent` with `name: "execute"` and the `item` number the description resolves to — see **Naming an item by what it does** below |
 | restart 1.2 / retry that action / run it again | the same, with `rerun: true` |
+| continue 1.2 / resume plan item 1.2 / carry on from where it stopped | the same, with `resume: true` and, when they gave an answer or an instruction for it, that in `note` |
 | that code is wrong / fix the code / change the repo | `run_subagent` with `name: "code"` — see **Fixing code** below |
 | step 2.3 failed / the deploy job errored / here is an error, help me fix it | **not** `decompose` and **not** `plan` — see **When something fails** below |
 | stop it / abort / cancel that | `stop_execution` |
@@ -133,6 +134,11 @@ redesign.
    * the change is in a repository — the workflow, the Terraform, the trust
      policy as code — `run_subagent` with `name: "code"`, on the branch the code
      action pushed to when the fix belongs in its pull request;
+   * the run died on something outside the work itself — the AI provider
+     failing, a timeout, a stop, running out of rounds — and what it already did
+     still stands: `execute` with `resume: true` carries on in the same
+     transcript instead of repeating the work. Offer it; do not launch it
+     unasked;
    * the row just needs running again once the cause is gone — `execute` with
      `rerun: true`, after the operator says the fix is in place;
    * the fix is outside anything nib can reach — a console setting, an

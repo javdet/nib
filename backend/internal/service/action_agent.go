@@ -52,9 +52,15 @@ func (c ActionExecConfig) timeout() time.Duration {
 //
 // The lease is the claim, and it is global: only one execution runs at a time,
 // so a second request is refused with a sentence naming what holds it rather
-// than queued behind work the operator cannot see. rerun is the one exception,
-// and only for the same row -- restarting an action stops the attempt on it.
-func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, key string, rerun bool) (ActionExecRun, error) {
+// than queued behind work the operator cannot see. launch.Rerun is the one
+// exception, and only for the same row -- restarting an action stops the
+// attempt on it. launch.Resume continues the row's last run in its own
+// transcript instead of starting a new one.
+func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, key string, launch ActionLaunch) (ActionExecRun, error) {
+	if launch.Rerun && launch.Resume {
+		return ActionExecRun{}, ErrActionLaunchConflict
+	}
+	rerun := launch.Rerun
 	if s.dialogRepo == nil {
 		return ActionExecRun{}, fmt.Errorf("start action agent: dialog repository is not configured")
 	}
@@ -96,6 +102,19 @@ func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, ke
 	}
 	token := held.token
 
+	// Checked under the lease: nothing can start a run on this row between the
+	// check and startActionExecRun below.
+	var resume *actionResume
+	if launch.Resume {
+		r, err := s.prepareActionResume(ctx, planID, key, launch.Note)
+		if err != nil {
+			cancel()
+			s.releaseExecutionLease(token)
+			return ActionExecRun{}, err
+		}
+		resume = &r
+	}
+
 	run, err := s.startActionExecRun(planID, key)
 	if err != nil {
 		cancel()
@@ -109,16 +128,17 @@ func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, ke
 		defer s.advanceStageRun(planID, key)
 		defer cancel()
 		defer s.releaseExecutionLease(token)
-		s.runActionAgent(runCtx, planID, key, token)
+		s.runActionAgent(runCtx, planID, key, token, resume)
 	}()
 
 	return run, nil
 }
 
-// runActionAgent executes one action in a dialog of its own. Every failure is
-// recorded against the run and reported into the plan chat rather than returned:
-// nobody is waiting on this call.
-func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key string, token uuid.UUID) {
+// runActionAgent executes one action in a dialog of its own, or, with resume,
+// carries on in the dialog of the run before. Every failure is recorded against
+// the run and reported into the plan chat rather than returned: nobody is
+// waiting on this call.
+func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key string, token uuid.UUID, resume *actionResume) {
 	number := actionPlanNumberForKey(key)
 
 	s.activity.Publish(planID, domain.AgentActivity{
@@ -165,47 +185,27 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 
-	dialog, err := s.dialogRepo.CreateDialog(ctx, executeDialogMode, buildExecuteDialogTitle(step), &planID)
-	if err != nil {
-		fail(fmt.Errorf("create action dialog: %w", err))
-		return
-	}
-	dialogID = dialog.ID
-	s.stampExecutionLease(token, func(l *ExecutionLease) {
-		l.DialogID = dialog.ID
-	})
-	// runs.json is the one key -> dialog map; the agent-runner webhook reverse
-	// looks up in it, so a subagent registers there too rather than in a map of
-	// its own.
-	if err := s.recordActionPlanRun(planID, key, dialog.ID); err != nil {
-		fail(err)
-		return
-	}
-
-	sysPrompt, err := s.actionAgentSystemPrompt(ctx)
-	if err != nil {
-		fail(err)
-		return
-	}
-	seed, err := s.buildActionSeed(planID, key, number, step)
-	if err != nil {
-		fail(err)
-		return
-	}
-
-	if _, err := s.dialogRepo.AppendMessage(ctx, dialog.ID, domain.DialogMessage{
-		Role:    "system",
-		Content: sysPrompt,
-	}); err != nil {
-		fail(fmt.Errorf("append system: %w", err))
-		return
-	}
-	if _, err := s.dialogRepo.AppendMessage(ctx, dialog.ID, domain.DialogMessage{
-		Role:    "user",
-		Content: seed,
-	}); err != nil {
-		fail(fmt.Errorf("append seed: %w", err))
-		return
+	if resume != nil {
+		dialogID = resume.dialogID
+		s.stampExecutionLease(token, func(l *ExecutionLease) {
+			l.DialogID = resume.dialogID
+		})
+		if err := s.appendActionResumeNote(ctx, resume); err != nil {
+			fail(err)
+			return
+		}
+	} else {
+		id, err := s.seedActionDialog(ctx, planID, key, number, step)
+		if id != uuid.Nil {
+			dialogID = id
+			s.stampExecutionLease(token, func(l *ExecutionLease) {
+				l.DialogID = id
+			})
+		}
+		if err != nil {
+			fail(err)
+			return
+		}
 	}
 
 	allow, err := s.actionAgentAllowSet(ctx, step.Categories)
@@ -214,7 +214,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 	catalog, err := s.buildToolCatalog(ctx, allow, toolBinding{
-		dialogID:  dialog.ID,
+		dialogID:  dialogID,
 		planID:    planID,
 		mode:      executeDialogMode,
 		actionKey: key,
@@ -224,7 +224,7 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		return
 	}
 
-	resp, err := s.runPersistingAgentLoop(ctx, dialog.ID, executeDialogMode, catalog, loopConfig{
+	resp, err := s.runPersistingAgentLoop(ctx, dialogID, executeDialogMode, catalog, loopConfig{
 		planID:        planID,
 		maxIterations: s.actionExec.MaxIterations,
 	})
@@ -238,12 +238,56 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 	// success and mark the action done.
 	if resp.Status == "awaiting_input" {
 		question := firstQuestionText(resp.Questions)
-		s.answerPendingAskForSubagent(ctx, dialog.ID, resp.ToolCallID, actionAgentCannotAskReason)
+		s.answerPendingAskForSubagent(ctx, dialogID, resp.ToolCallID, actionAgentCannotAskReason)
 		finish(ActionExecBlocked, question, question)
 		return
 	}
 
 	finish(ActionExecDone, "", resp.Response)
+}
+
+// seedActionDialog creates a fresh action's dialog and writes its system prompt
+// and seed. It returns the dialog id as soon as one exists, even alongside an
+// error, so the failure can still link to the transcript.
+func (s *ChatService) seedActionDialog(
+	ctx context.Context,
+	planID uuid.UUID,
+	key, number string,
+	step storedActionStep,
+) (uuid.UUID, error) {
+	dialog, err := s.dialogRepo.CreateDialog(ctx, executeDialogMode, buildExecuteDialogTitle(step), &planID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("create action dialog: %w", err)
+	}
+	// runs.json is the one key -> dialog map; the agent-runner webhook reverse
+	// looks up in it, so a subagent registers there too rather than in a map of
+	// its own. It is also how a later resume finds this transcript again.
+	if err := s.recordActionPlanRun(planID, key, dialog.ID); err != nil {
+		return dialog.ID, err
+	}
+
+	sysPrompt, err := s.actionAgentSystemPrompt(ctx)
+	if err != nil {
+		return dialog.ID, err
+	}
+	seed, err := s.buildActionSeed(planID, key, number, step)
+	if err != nil {
+		return dialog.ID, err
+	}
+
+	if _, err := s.dialogRepo.AppendMessage(ctx, dialog.ID, domain.DialogMessage{
+		Role:    "system",
+		Content: sysPrompt,
+	}); err != nil {
+		return dialog.ID, fmt.Errorf("append system: %w", err)
+	}
+	if _, err := s.dialogRepo.AppendMessage(ctx, dialog.ID, domain.DialogMessage{
+		Role:    "user",
+		Content: seed,
+	}); err != nil {
+		return dialog.ID, fmt.Errorf("append seed: %w", err)
+	}
+	return dialog.ID, nil
 }
 
 // answerPendingAskForSubagent closes the ask_question the loop left unanswered,

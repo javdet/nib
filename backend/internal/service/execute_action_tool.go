@@ -27,6 +27,14 @@ var executeActionParameters = json.RawMessage(`{
     "rerun": {
       "type": "boolean",
       "description": "Run the action again from scratch, replacing any attempt still in progress. Use it when the operator asks to restart, repeat or retry an action."
+    },
+    "resume": {
+      "type": "boolean",
+      "description": "Continue the item's last run from where it stopped, in its own transcript, instead of starting over. Use it when the operator asks to continue or resume an item whose run failed, was stopped or needed a decision. Not for a code action, and not together with rerun."
+    },
+    "note": {
+      "type": "string",
+      "description": "With resume only: what the operator said for the continued run, typically their answer to the question it stopped on. Quote it; omit it when they said nothing more."
     }
   },
   "required": ["number"]
@@ -47,7 +55,11 @@ func ExecuteActionToolDef() llm.ToolDef {
 // executeActionHandler runs an action of the plan the dialog is bound to.
 func (s *ChatService) executeActionHandler(b toolBinding) localToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		text, _, err := s.executePlanItem(ctx, b.planID, argString(args["number"]), argBool(args["rerun"]))
+		text, _, err := s.executePlanItem(ctx, b.planID, argString(args["number"]), ActionLaunch{
+			Rerun:  argBool(args["rerun"]),
+			Resume: argBool(args["resume"]),
+			Note:   strings.TrimSpace(argString(args["note"])),
+		})
 		return text, err
 	}
 }
@@ -65,7 +77,7 @@ func (s *ChatService) executePlanItem(
 	ctx context.Context,
 	planOwnerID uuid.UUID,
 	number string,
-	rerun bool,
+	launch ActionLaunch,
 ) (string, bool, error) {
 	raw := strings.TrimSpace(number)
 	if raw == "" {
@@ -87,7 +99,7 @@ func (s *ChatService) executePlanItem(
 		display = raw
 	}
 
-	started, err := s.startPlanItem(ctx, planID, key, rerun)
+	started, err := s.startPlanItem(ctx, planID, key, launch)
 	if err != nil {
 		text, ok := planItemRefusal(err, display)
 		if !ok {
@@ -101,6 +113,9 @@ func (s *ChatService) executePlanItem(
 			"handed %s to the coding agent (job %s, branch %s); the pull request will be attached to the action when it finishes, and its progress is in chat %s",
 			display, started.Run.JobName, started.Run.TargetBranch, started.Dialog.ID,
 		), true, nil
+	}
+	if launch.Resume {
+		return fmt.Sprintf("continuing %s from where its last run stopped; its result will be posted in the chat when it finishes", display), true, nil
 	}
 	return fmt.Sprintf("started a sub-agent for %s; its result will be posted in the chat when it finishes", display), true, nil
 }
@@ -116,7 +131,10 @@ type planItemStart struct {
 // startPlanItem launches one item of the root plan planID by its row key. It is
 // the typed half of executePlanItem, shared with the stage run, which has no
 // model to hand a sentence to.
-func (s *ChatService) startPlanItem(ctx context.Context, planID uuid.UUID, key string, rerun bool) (planItemStart, error) {
+func (s *ChatService) startPlanItem(ctx context.Context, planID uuid.UUID, key string, launch ActionLaunch) (planItemStart, error) {
+	if launch.Rerun && launch.Resume {
+		return planItemStart{}, ErrActionLaunchConflict
+	}
 	step, err := s.readActionPlanStep(planID, key)
 	if err != nil {
 		return planItemStart{}, err
@@ -126,6 +144,9 @@ func (s *ChatService) startPlanItem(ctx context.Context, planID uuid.UUID, key s
 	// which reports back through the agent-runner webhook rather than a
 	// sub-agent turn.
 	if strings.EqualFold(strings.TrimSpace(step.Type), actionTypeCode) {
+		if launch.Resume {
+			return planItemStart{}, ErrActionResumeCode
+		}
 		dialog, run, err := s.ExecuteCodeAction(ctx, planID, key)
 		if err != nil {
 			return planItemStart{}, err
@@ -134,7 +155,7 @@ func (s *ChatService) startPlanItem(ctx context.Context, planID uuid.UUID, key s
 		return planItemStart{Code: true, Dialog: dialog, Run: run}, nil
 	}
 
-	if _, err := s.StartActionAgent(ctx, planID, key, rerun); err != nil {
+	if _, err := s.StartActionAgent(ctx, planID, key, launch); err != nil {
 		return planItemStart{}, err
 	}
 	return planItemStart{}, nil
@@ -151,6 +172,14 @@ func planItemRefusal(err error, number string) (string, bool) {
 		return fmt.Sprintf("the plan has no item %s; read the action list to see the numbers it does have", number), true
 	case errors.Is(err, ErrActionAlreadyRunning):
 		return fmt.Sprintf("%s is already running; ask to restart it if you want a fresh attempt", number), true
+	case errors.Is(err, ErrActionLaunchConflict):
+		return fmt.Sprintf("%s can be run again from scratch (rerun) or continued (resume), not both; pick the one the operator asked for", number), true
+	case errors.Is(err, ErrActionNothingToResume):
+		return fmt.Sprintf("%s has no earlier sub-agent run to continue; execute it normally instead", number), true
+	case errors.Is(err, ErrActionResumeFinished):
+		return fmt.Sprintf("%s's last run finished, so there is nothing to continue; ask whether to run it again from scratch (rerun)", number), true
+	case errors.Is(err, ErrActionResumeCode):
+		return fmt.Sprintf("%s is a code action: its coding agent keeps no transcript to continue from; run it again (rerun) or fix its branch with the code sub-agent", number), true
 	case errors.Is(err, ErrExecutionBusy):
 		// The error already names what holds the slot.
 		return executionBusyMessage(err), true

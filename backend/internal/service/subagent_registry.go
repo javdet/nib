@@ -46,6 +46,10 @@ type SubagentRequest struct {
 	Item string
 	// Rerun replaces an attempt already running on Item.
 	Rerun bool
+	// Resume continues Item's last run in its own transcript; Note is what the
+	// operator said for it.
+	Resume bool
+	Note   string
 	// Repository is the repository a code change is made in.
 	Repository string
 	// Branch is the branch a code change commits to. Naming one that already
@@ -146,7 +150,7 @@ func init() {
 		},
 		{
 			Name:     SubagentExecute,
-			Params:   []string{"item", "rerun"},
+			Params:   []string{"item", "rerun", "resume", "note"},
 			Required: []string{"item"},
 			Description: "Carries out one item of the action plan -- an action, a verification check or a " +
 				"rollback entry -- named by the number the operator sees beside it. A code action goes to " +
@@ -155,9 +159,14 @@ func init() {
 				"rather than numbering it, find its number in get_action_list first. A code action of the plan is " +
 				"launched here, not through code: this hands the coding agent the row's own task, comments and " +
 				"repository and records the pull request on the row, as the Execute button does. Returns as soon " +
-				"as the work starts. Only one execution runs at a time.",
+				"as the work starts. Only one execution runs at a time. With resume, an item whose last run failed, " +
+				"was stopped or needed a decision carries on in that run's transcript instead of starting over.",
 			Launch: func(s *ChatService, ctx context.Context, rootID uuid.UUID, req SubagentRequest) (SubagentResult, error) {
-				return s.launchExecuteSubagent(ctx, rootID, req.Item, req.Rerun)
+				return s.launchExecuteSubagent(ctx, rootID, req.Item, ActionLaunch{
+					Rerun:  req.Rerun,
+					Resume: req.Resume,
+					Note:   req.Note,
+				})
 			},
 		},
 		{

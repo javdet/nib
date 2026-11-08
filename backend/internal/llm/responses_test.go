@@ -102,6 +102,9 @@ func TestResponsesCompleteWithToolsParsesReasoningAndToolCalls(t *testing.T) {
 	if asst.Reasoning[0].ID != "rs_1" || asst.Reasoning[0].EncryptedContent != "cipher-blob" {
 		t.Errorf("Reasoning[0] = %+v, want rs_1/cipher-blob", asst.Reasoning[0])
 	}
+	if asst.Reasoning[0].Model != "gpt-5.6" {
+		t.Errorf("Reasoning[0].Model = %q, want the configured model gpt-5.6", asst.Reasoning[0].Model)
+	}
 
 	// Reasoning traces are only returned when explicitly requested, and only
 	// replayable when the provider does not store the response itself.
@@ -329,5 +332,36 @@ func TestCompleteWithToolsCarriesUsageOnIncompleteResponse(t *testing.T) {
 	}
 	if msg.Usage.CostUSD != nil {
 		t.Errorf("Usage.CostUSD = %v, want nil: this provider reports no cost", *msg.Usage.CostUSD)
+	}
+}
+
+// A fallback model must not be handed the primary's encrypted reasoning: the
+// provider is not obliged to accept another model's ciphertext, and rejecting
+// it would fail exactly the request meant to rescue the turn.
+func TestResponsesReplaysOnlyItsOwnModelsReasoning(t *testing.T) {
+	t.Parallel()
+
+	history := []Message{
+		{Role: "user", Content: "go"},
+		{Role: "assistant", ToolCalls: []ToolCall{{ID: "c1", Name: "t", Arguments: "{}"}}, Reasoning: []ReasoningItem{
+			{ID: "rs_main", EncryptedContent: "a", Model: "main"},
+			{ID: "rs_spare", EncryptedContent: "b", Model: "spare"},
+			{ID: "rs_unstamped", EncryptedContent: "c"},
+		}},
+		{Role: "tool", ToolCallID: "c1", Content: "ok"},
+	}
+
+	items, err := messagesToResponsesInput(history, "spare")
+	if err != nil {
+		t.Fatalf("messagesToResponsesInput() error = %v", err)
+	}
+	var ids []string
+	for _, it := range items {
+		if it.OfReasoning != nil {
+			ids = append(ids, it.OfReasoning.ID)
+		}
+	}
+	if strings.Join(ids, ",") != "rs_spare,rs_unstamped" {
+		t.Errorf("replayed reasoning = %v, want [rs_spare rs_unstamped]", ids)
 	}
 }

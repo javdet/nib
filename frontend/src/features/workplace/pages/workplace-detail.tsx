@@ -103,7 +103,10 @@ import {
 	planMarkdownFileName,
 } from '../lib/plan-markdown'
 import { actionPlanNumberForKey } from '../lib/action-plan-number'
-import { executeActionMessage } from '../lib/execute-action-message'
+import {
+	continueActionMessage,
+	executeActionMessage,
+} from '../lib/execute-action-message'
 import {
 	planRollbackMessage,
 	planStageMessage,
@@ -856,6 +859,13 @@ export function WorkplaceDetail() {
 	const handleExecuteAction = useCallback(
 		(key: string) => {
 			sendActionCommand(key, executeActionMessage)
+		},
+		[sendActionCommand],
+	)
+
+	const handleContinueAction = useCallback(
+		(key: string) => {
+			sendActionCommand(key, continueActionMessage)
 		},
 		[sendActionCommand],
 	)
@@ -1648,6 +1658,7 @@ export function WorkplaceDetail() {
 							onStop={() => void handleStopExecution()}
 							onViewLogs={setLogsKey}
 							onViewCommands={setCommandsKey}
+							onContinue={handleContinueAction}
 							execRuns={execRuns}
 							executorType={executorType}
 							onReorder={(scope, stage, from, to) =>

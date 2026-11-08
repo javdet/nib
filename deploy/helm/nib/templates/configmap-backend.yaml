@@ -19,6 +19,16 @@ data:
       api: {{ .Values.backend.config.llm.api | default "chat" | quote }}
       reasoningEffort: {{ .Values.backend.config.llm.reasoningEffort | default "" | quote }}
       timeoutSeconds: {{ .Values.backend.config.llm.timeoutSeconds }}
+      {{- /* hasKey, not with: maxRetries: 0 is a real setting and with skips it */}}
+      {{- if hasKey .Values.backend.config.llm "maxRetries" }}
+      maxRetries: {{ .Values.backend.config.llm.maxRetries }}
+      {{- end }}
+      {{- with .Values.backend.config.llm.maxRetryDelaySeconds }}
+      maxRetryDelaySeconds: {{ . }}
+      {{- end }}
+      {{- with .Values.backend.config.llm.fallbackModel }}
+      fallbackModel: {{ . | quote }}
+      {{- end }}
       httpReferer: {{ .Values.backend.config.llm.httpReferer | quote }}
       appTitle: {{ .Values.backend.config.llm.appTitle | quote }}
     log:

@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 )
@@ -23,7 +26,13 @@ type APIError struct {
 	Endpoint        string
 	Model           string
 	ReasoningEffort string
-	err             error
+	// RetryAfter is the wait the provider asked for before the next attempt,
+	// from Retry-After-Ms or Retry-After; zero when it named none.
+	RetryAfter time.Duration
+	// ShouldRetry is the provider's explicit x-should-retry verdict: nil when
+	// the header is absent, which leaves the decision to the status code.
+	ShouldRetry *bool
+	err         error
 }
 
 // requestSettings is the part of a provider's configuration worth naming in
@@ -81,7 +90,16 @@ func wrapAPIError(op string, settings requestSettings, err error) error {
 		msg = redactBearer(msg, apiErr.Request.Header.Get("Authorization"))
 	}
 
+	var retryAfter time.Duration
+	var shouldRetry *bool
+	if apiErr.Response != nil {
+		retryAfter = parseRetryAfter(apiErr.Response.Header, time.Now())
+		shouldRetry = parseShouldRetry(apiErr.Response.Header)
+	}
+
 	return &APIError{
+		RetryAfter:      retryAfter,
+		ShouldRetry:     shouldRetry,
 		StatusCode:      apiErr.StatusCode,
 		Code:            apiErr.Code,
 		Message:         msg,
@@ -91,6 +109,46 @@ func wrapAPIError(op string, settings requestSettings, err error) error {
 		ReasoningEffort: settings.reasoningEffort,
 		err:             err,
 	}
+}
+
+// parseRetryAfter reads the wait a provider asked for. Retry-After-Ms is
+// preferred when both are present, as the SDK does: it is the more precise of
+// the two. Retry-After is either seconds or an HTTP date. A value that does not
+// parse, or a date already past, is no instruction at all.
+func parseRetryAfter(h http.Header, now time.Time) time.Duration {
+	if v := strings.TrimSpace(h.Get("Retry-After-Ms")); v != "" {
+		if ms, err := strconv.ParseFloat(v, 64); err == nil && ms > 0 {
+			return time.Duration(ms * float64(time.Millisecond))
+		}
+	}
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseFloat(v, 64); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs * float64(time.Second))
+	}
+	if at, err := http.ParseTime(v); err == nil {
+		if d := at.Sub(now); d > 0 {
+			return d
+		}
+	}
+	return 0
+}
+
+func parseShouldRetry(h http.Header) *bool {
+	switch strings.ToLower(strings.TrimSpace(h.Get("x-should-retry"))) {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
+	}
+	return nil
 }
 
 // safeEndpoint keeps scheme, host and path only: userinfo and a query string

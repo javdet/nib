@@ -18,6 +18,8 @@ type llmMetrics struct {
 	duration          *prometheus.HistogramVec
 	toolCallsReturned *prometheus.CounterVec
 	embeddingTokens   *prometheus.CounterVec
+	retries           *prometheus.CounterVec
+	fallbacks         *prometheus.CounterVec
 }
 
 func newLLMMetrics() llmMetrics {
@@ -47,11 +49,25 @@ func newLLMMetrics() llmMetrics {
 			Name:      "embedding_tokens_total",
 			Help:      "Tokens consumed by embedding requests, by model.",
 		}, []string{"model"}),
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: Namespace,
+			Subsystem: "llm",
+			Name:      "retries_total",
+			Help:      "Completion requests sent again after a failure, by model and the outcome that caused the retry.",
+		}, []string{"model", "outcome"}),
+		fallbacks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: Namespace,
+			Subsystem: "llm",
+			Name:      "fallbacks_total",
+			Help:      "Completions moved to another model after the first used up its retries.",
+		}, []string{"from_model", "to_model"}),
 	}
 }
 
 func (l llmMetrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{l.requests, l.duration, l.toolCallsReturned, l.embeddingTokens}
+	return []prometheus.Collector{
+		l.requests, l.duration, l.toolCallsReturned, l.embeddingTokens, l.retries, l.fallbacks,
+	}
 }
 
 // RecordLLMRequest records one provider call. outcome should come from
@@ -81,6 +97,25 @@ func AddLLMEmbeddingTokens(model string, tokens int) {
 		return
 	}
 	m.llm.embeddingTokens.WithLabelValues(model).Add(float64(tokens))
+}
+
+// RecordLLMRetry records one completion sent again. outcome is the failed
+// attempt's, from the same vocabulary as nib_llm_requests_total.
+func RecordLLMRetry(model, outcome string) {
+	m := active()
+	if m == nil {
+		return
+	}
+	m.llm.retries.WithLabelValues(model, outcome).Inc()
+}
+
+// RecordLLMFallback records a completion moved from one model to another.
+func RecordLLMFallback(fromModel, toModel string) {
+	m := active()
+	if m == nil {
+		return
+	}
+	m.llm.fallbacks.WithLabelValues(fromModel, toModel).Inc()
 }
 
 // LLMOutcomeForStatus buckets an HTTP status from the provider into a label.

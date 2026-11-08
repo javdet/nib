@@ -63,6 +63,16 @@ llm:
   # HTTP client timeout for the chat completion request (seconds).
   timeoutSeconds: 300
 
+  # Retries for a failed completion (HTTP 408/409/429/5xx, a dropped
+  # connection), backing off from 1s to 60s. A Retry-After longer than
+  # maxRetryDelaySeconds gives the model up instead. 0 never retries.
+  maxRetries: 8
+  maxRetryDelaySeconds: 120
+
+  # Optional second model on the same endpoint, tried once `model` has used up
+  # its retries.
+  # fallbackModel: gpt-5.6-terra
+
   # Optional OpenRouter attribution headers (omit or leave empty to skip).
   # Not used by the OpenAI platform.
   httpReferer: ""

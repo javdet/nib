@@ -75,6 +75,10 @@ func NewCompatProvider(opts ClientOptions) *OpenAIProvider {
 	clientOpts := []option.RequestOption{
 		option.WithAPIKey(opts.APIKey),
 		option.WithHTTPClient(newHTTPClient(opts.TimeoutSeconds, opts.HTTPReferer, opts.AppTitle)),
+		// Retrying is retryingProvider's job, which NewFromConfig wraps every
+		// provider in. Leaving the SDK's two on as well would multiply the two
+		// budgets and hide attempts from the logs.
+		option.WithMaxRetries(0),
 	}
 	if opts.BaseURL != "" {
 		clientOpts = append(clientOpts, option.WithBaseURL(opts.BaseURL))

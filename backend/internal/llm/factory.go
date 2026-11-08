@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/javdet/nib/internal/config"
 )
@@ -62,13 +63,34 @@ func NewFromConfig(cfg config.LLMConfig) (Client, error) {
 		AppTitle:       cfg.AppTitle,
 	})
 
-	var provider Provider
-	if strings.EqualFold(strings.TrimSpace(cfg.API), config.APIResponses) {
-		provider = NewResponsesProvider(opts)
-	} else {
-		provider = NewCompatProvider(opts)
+	primary := newCompletionProvider(cfg.API, opts)
+	var fallback Provider
+	fallbackModel := strings.TrimSpace(cfg.FallbackModel)
+	if fallbackModel != "" {
+		// Same endpoint, key, API and effort: a fallback is another model at
+		// the same provider, not a second provider. That keeps it one key, and
+		// keeps a gateway outage from looking like a model one.
+		fbOpts := opts
+		fbOpts.Model = fallbackModel
+		fallback = newCompletionProvider(cfg.API, fbOpts)
 	}
+
+	maxDelay := cfg.MaxRetryDelaySeconds
+	if maxDelay < 1 {
+		maxDelay = 120
+	}
+	provider := NewRetrying(primary, cfg.Model, fallback, fallbackModel, RetryPolicy{
+		MaxRetries: cfg.MaxRetries,
+		MaxDelay:   time.Duration(maxDelay) * time.Second,
+	})
 	return &client{Provider: provider, Embedder: embedder}, nil
+}
+
+func newCompletionProvider(api string, opts ClientOptions) Provider {
+	if strings.EqualFold(strings.TrimSpace(api), config.APIResponses) {
+		return NewResponsesProvider(opts)
+	}
+	return NewCompatProvider(opts)
 }
 
 func validateConfig(cfg config.LLMConfig) error {

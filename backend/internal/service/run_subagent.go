@@ -70,6 +70,18 @@ func RunSubagentToolDef() llm.ToolDef {
 				"description": "execute only. Run the item again from scratch, replacing an attempt still in " +
 					"progress. Use it when the operator asks to restart, repeat or retry.",
 			},
+			"resume": map[string]any{
+				"type": "boolean",
+				"description": "execute only. Continue the item's last run from where it stopped, in its own " +
+					"transcript, instead of starting over. Use it when the operator asks to continue or resume an " +
+					"item whose run failed, was stopped or needed a decision. Not for a code action, and not " +
+					"together with rerun.",
+			},
+			"note": map[string]any{
+				"type": "string",
+				"description": "execute with resume only. What the operator said for the continued run, typically " +
+					"their answer to the question it stopped on. Omit it when they said nothing more.",
+			},
 			"repository": map[string]any{
 				"type": "string",
 				"description": "code only. The repository to change, spelled as the action plan spells one: a " +
@@ -171,6 +183,12 @@ func parseSubagentRequest(spec SubagentSpec, args map[string]any) (SubagentReque
 	}
 	if _, ok := reads["rerun"]; ok {
 		req.Rerun = argBool(args["rerun"])
+	}
+	if _, ok := reads["resume"]; ok {
+		req.Resume = argBool(args["resume"])
+	}
+	if _, ok := reads["note"]; ok {
+		req.Note = strings.TrimSpace(argString(args["note"]))
 	}
 	if _, ok := reads["repository"]; ok {
 		req.Repository = strings.TrimSpace(argString(args["repository"]))

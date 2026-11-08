@@ -106,6 +106,14 @@ backend:
       ## narrower set (Gemini). An explicit "" overrides LLM_REASONING_EFFORT.
       reasoningEffort: medium
       timeoutSeconds: 300
+      ## Retries for a failed completion (HTTP 408/409/429/5xx, a dropped
+      ## connection), backing off from 1s to 60s. A Retry-After longer than
+      ## maxRetryDelaySeconds gives the model up instead. 0 never retries.
+      maxRetries: 8
+      maxRetryDelaySeconds: 120
+      ## Optional second model on the same endpoint, tried once `model` has
+      ## used up its retries. Empty disables it.
+      fallbackModel: ""
       ## Embeddings endpoint. Each field falls back to the llm.* value above,
       ## so omitting the block keeps one provider serving both. Set baseURL
       ## when the completion provider serves no /embeddings route (DeepSeek,

@@ -254,6 +254,9 @@ beside it.
 allow list: the orchestrator carries actions out through `run_subagent` with
 `name: "execute"`.
 
+Takes the same `rerun`, `resume` and `note` arguments as `run_subagent`'s
+`execute`, described below.
+
 ### `stop_execution`
 
 Force-stops the execution running right now.
@@ -272,6 +275,19 @@ instead ("run the step that adds the deploy workflow"); the orchestrator reads
 `get_action_list`, resolves the description to one number and launches that,
 asks with `ask_question` when several items fit, and launches nothing when none
 does. A code action found this way runs exactly as the Execute button runs it.
+
+`rerun: true` starts the item from scratch in a new transcript, replacing an
+attempt still in progress. `resume: true` instead continues the item's last
+run in that run's own transcript, with a fresh round budget and deadline. It
+appends a note saying why the run stopped and telling the agent to check the
+current state of anything it already changed, plus `note`, the operator's own
+word for the run, such as their answer to the question a blocked run ended on.
+It is for a run that ended `failed`, `cancelled` or `blocked`. It is refused
+for a finished run, a running one, a row that never ran or was replanned since,
+and a code action, whose coding agent keeps no transcript in nib. `rerun` and
+`resume` together are refused. The **Continue** button on a plan row sends
+"Continue plan item N from where its last run stopped", which the orchestrator
+turns into `resume: true`.
 
 `code` is the one specialist that is not a mode of nib's own: it hands `task`,
 `repository`, `branch` and `pr_title` to the coding agent in a container, which

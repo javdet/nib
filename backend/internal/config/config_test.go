@@ -662,3 +662,100 @@ commands:
 		})
 	}
 }
+
+func TestLoad_LLM_retrySettings(t *testing.T) {
+	tests := []struct {
+		name         string
+		yaml         string
+		env          map[string]string
+		wantRetries  int
+		wantDelay    int
+		wantFallback string
+		wantErr      string
+	}{
+		{
+			name:        "defaults",
+			wantRetries: defaultLLMMaxRetries,
+			wantDelay:   defaultLLMMaxRetryDelaySeconds,
+		},
+		{
+			name:         "from yaml",
+			yaml:         "  maxRetries: 3\n  maxRetryDelaySeconds: 30\n  fallbackModel: gpt-spare\n",
+			wantRetries:  3,
+			wantDelay:    30,
+			wantFallback: "gpt-spare",
+		},
+		{
+			name:        "explicit zero in yaml beats the default",
+			yaml:        "  maxRetries: 0\n",
+			wantRetries: 0,
+			wantDelay:   defaultLLMMaxRetryDelaySeconds,
+		},
+		{
+			name:         "from env",
+			env:          map[string]string{"LLM_MAX_RETRIES": "12", "LLM_FALLBACK_MODEL": "env-spare"},
+			wantRetries:  12,
+			wantDelay:    defaultLLMMaxRetryDelaySeconds,
+			wantFallback: "env-spare",
+		},
+		{
+			name:        "yaml beats env",
+			yaml:        "  maxRetries: 4\n",
+			env:         map[string]string{"LLM_MAX_RETRIES": "12"},
+			wantRetries: 4,
+			wantDelay:   defaultLLMMaxRetryDelaySeconds,
+		},
+		{
+			name:    "too many retries",
+			yaml:    "  maxRetries: 500\n",
+			wantErr: "llm.maxRetries must be between 0 and 50",
+		},
+		{
+			name:    "negative retries",
+			yaml:    "  maxRetries: -1\n",
+			wantErr: "llm.maxRetries must be between 0 and 50",
+		},
+		{
+			name:    "fallback equals model",
+			yaml:    "  fallbackModel: gpt-test\n",
+			wantErr: "is the same as llm.model",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			body := minimalValidLLMYAML + tc.yaml
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("LLM_API_KEY", "key")
+			t.Setenv("LLM_MAX_RETRIES", "")
+			t.Setenv("LLM_FALLBACK_MODEL", "")
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+
+			cfg, err := Load(path)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.LLM.MaxRetries != tc.wantRetries {
+				t.Errorf("LLM.MaxRetries = %d, want %d", cfg.LLM.MaxRetries, tc.wantRetries)
+			}
+			if cfg.LLM.MaxRetryDelaySeconds != tc.wantDelay {
+				t.Errorf("LLM.MaxRetryDelaySeconds = %d, want %d", cfg.LLM.MaxRetryDelaySeconds, tc.wantDelay)
+			}
+			if cfg.LLM.FallbackModel != tc.wantFallback {
+				t.Errorf("LLM.FallbackModel = %q, want %q", cfg.LLM.FallbackModel, tc.wantFallback)
+			}
+		})
+	}
+}

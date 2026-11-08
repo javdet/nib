@@ -18,6 +18,8 @@ the backend uses when both are set.
 | `OPENAI_MODEL` | — | YAML wins | Used when `LLM_MODEL` is empty. |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | YAML wins | Embedding model. |
 | `LLM_API` | `chat` | YAML wins | `chat` or `responses`. |
+| `LLM_MAX_RETRIES` | `8` | YAML wins | Retries for a failed completion, 0 to 50. An explicit `maxRetries: 0` in YAML wins over it. |
+| `LLM_FALLBACK_MODEL` | empty | YAML wins | Model tried on the same endpoint once `llm.model` has used up its retries. |
 | `LLM_REASONING_EFFORT` | empty | YAML wins | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. An explicit `reasoningEffort: ""` in YAML clears it; an absent key defers to it. |
 | `LLM_EMBEDDINGS_BASE_URL` | falls back to `LLM_BASE_URL` | YAML wins | Base URL of the `/embeddings` endpoint, when it is not the completion host. |
 | `LLM_EMBEDDINGS_API_KEY` | falls back to `LLM_API_KEY` | env only | API key for the embeddings endpoint. |

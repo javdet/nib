@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 )
@@ -161,5 +162,57 @@ func TestWrapAPIErrorReportsSafeSettings(t *testing.T) {
 	}
 	if want := "Incorrect API key provided: [redacted]"; apiErr.Message != want {
 		t.Errorf("Message = %q, want %q", apiErr.Message, want)
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		header map[string]string
+		want   time.Duration
+	}{
+		{name: "absent", want: 0},
+		{name: "seconds", header: map[string]string{"Retry-After": "20"}, want: 20 * time.Second},
+		{name: "fractional seconds", header: map[string]string{"Retry-After": "1.5"}, want: 1500 * time.Millisecond},
+		{name: "milliseconds win", header: map[string]string{"Retry-After": "20", "Retry-After-Ms": "250"}, want: 250 * time.Millisecond},
+		{name: "http date", header: map[string]string{"Retry-After": now.Add(90 * time.Second).Format(http.TimeFormat)}, want: 90 * time.Second},
+		{name: "date in the past", header: map[string]string{"Retry-After": now.Add(-time.Minute).Format(http.TimeFormat)}, want: 0},
+		{name: "negative", header: map[string]string{"Retry-After": "-5"}, want: 0},
+		{name: "garbage", header: map[string]string{"Retry-After": "soon"}, want: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := http.Header{}
+			for k, v := range tc.header {
+				h.Set(k, v)
+			}
+			if got := parseRetryAfter(h, now); got != tc.want {
+				t.Errorf("parseRetryAfter() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWrapAPIErrorCarriesRetryHints(t *testing.T) {
+	t.Parallel()
+
+	resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{}}
+	resp.Header.Set("Retry-After", "12")
+	resp.Header.Set("x-should-retry", "true")
+	providerErr := &openai.Error{StatusCode: http.StatusTooManyRequests, Response: resp}
+
+	var apiErr *APIError
+	if !errors.As(wrapAPIError("op", requestSettings{}, providerErr), &apiErr) {
+		t.Fatal("errors.As() = false, want *APIError")
+	}
+	if apiErr.RetryAfter != 12*time.Second {
+		t.Errorf("RetryAfter = %v, want 12s", apiErr.RetryAfter)
+	}
+	if apiErr.ShouldRetry == nil || !*apiErr.ShouldRetry {
+		t.Errorf("ShouldRetry = %v, want true", apiErr.ShouldRetry)
 	}
 }

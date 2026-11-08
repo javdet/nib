@@ -41,6 +41,14 @@ type Config struct {
 const (
 	defaultEmbeddingModel    = "text-embedding-3-small"
 	defaultLLMTimeoutSeconds = 120
+	// defaultLLMMaxRetries is sized for an action that runs for half an hour:
+	// with the backoff doubling from one second and capped at a minute, eight
+	// retries ride out roughly three minutes of provider trouble. The SDK's own
+	// default of two covers about a second and a half.
+	defaultLLMMaxRetries = 8
+	// maxLLMMaxRetries is a sanity bound against a typo, not a provider limit.
+	maxLLMMaxRetries               = 50
+	defaultLLMMaxRetryDelaySeconds = 120
 	// maxEmbeddingDimensions is a sanity bound, not a provider limit: it is
 	// here to catch a typo before it reaches the API.
 	maxEmbeddingDimensions = 4096
@@ -60,6 +68,18 @@ type LLMConfig struct {
 	// "responses" (/v1/responses). Only the latter supports tools together
 	// with reasoning on gpt-5.6.
 	API string
+	// MaxRetries is how many times a failed completion is sent again before
+	// the error reaches the agent loop. Only failures worth repeating count:
+	// HTTP 408, 409, 429, 5xx and dropped connections.
+	MaxRetries int
+	// MaxRetryDelaySeconds caps one wait between two attempts, including a
+	// wait the provider asked for with Retry-After. A provider asking for
+	// longer than this is taken at its word that it will not answer soon, and
+	// the model is given up on rather than waited for.
+	MaxRetryDelaySeconds int
+	// FallbackModel, when set, is tried on the same endpoint once Model has
+	// used up its retries on a failure worth repeating.
+	FallbackModel string
 	// Embeddings points the embeddings client somewhere of its own. Every
 	// field falls back to the matching llm.* value, so an absent block is
 	// exactly the single-endpoint behaviour that came before it.
@@ -367,9 +387,14 @@ type fileLLMConfig struct {
 	// able to clear a value that came from LLM_REASONING_EFFORT, because a
 	// model that rejects the parameter needs exactly that. Only an absent key
 	// should defer to the environment.
-	ReasoningEffort *string              `yaml:"reasoningEffort"`
-	API             string               `yaml:"api"`
-	Embeddings      fileEmbeddingsConfig `yaml:"embeddings"`
+	ReasoningEffort *string `yaml:"reasoningEffort"`
+	API             string  `yaml:"api"`
+	// A pointer for the same reason as ReasoningEffort: `maxRetries: 0` is a
+	// deliberate "never retry" and must not read as "use the default".
+	MaxRetries           *int                 `yaml:"maxRetries"`
+	MaxRetryDelaySeconds int                  `yaml:"maxRetryDelaySeconds"`
+	FallbackModel        string               `yaml:"fallbackModel"`
+	Embeddings           fileEmbeddingsConfig `yaml:"embeddings"`
 }
 
 // fileEmbeddingsConfig has no apiKey: keys never come from the file.
@@ -403,6 +428,8 @@ func Load(path string) (Config, error) {
 		EmbeddingModel:  envOrDefault("OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
 		ReasoningEffort: strings.TrimSpace(os.Getenv("LLM_REASONING_EFFORT")),
 		API:             envOrDefault("LLM_API", APIChat),
+		MaxRetries:      envOrDefaultInt("LLM_MAX_RETRIES", defaultLLMMaxRetries),
+		FallbackModel:   strings.TrimSpace(os.Getenv("LLM_FALLBACK_MODEL")),
 		Embeddings: EmbeddingsConfig{
 			BaseURL:    strings.TrimSpace(os.Getenv("LLM_EMBEDDINGS_BASE_URL")),
 			APIKey:     strings.TrimSpace(os.Getenv("LLM_EMBEDDINGS_API_KEY")),
@@ -603,6 +630,15 @@ func validateLLMConfig(llm LLMConfig) error {
 	if llm.TimeoutSeconds < 1 {
 		return fmt.Errorf("config: llm.timeoutSeconds must be at least 1")
 	}
+	if llm.MaxRetries < 0 || llm.MaxRetries > maxLLMMaxRetries {
+		return fmt.Errorf("config: llm.maxRetries must be between 0 and %d (got %d)", maxLLMMaxRetries, llm.MaxRetries)
+	}
+	if llm.MaxRetryDelaySeconds < 0 {
+		return fmt.Errorf("config: llm.maxRetryDelaySeconds must not be negative (got %d)", llm.MaxRetryDelaySeconds)
+	}
+	if fb := strings.TrimSpace(llm.FallbackModel); fb != "" && fb == strings.TrimSpace(llm.Model) {
+		return fmt.Errorf("config: llm.fallbackModel %q is the same as llm.model; leave it empty or name another model", fb)
+	}
 	if !KnownReasoningEffort(llm.ReasoningEffort) {
 		return fmt.Errorf("config: invalid llm.reasoningEffort %q (allowed: %s)",
 			strings.TrimSpace(llm.ReasoningEffort), strings.Join(reasoningEfforts, ", "))
@@ -653,6 +689,9 @@ func KnownReasoningEffort(effort string) bool {
 func applyLLMDefaults(llm *LLMConfig) {
 	if llm.TimeoutSeconds == 0 {
 		llm.TimeoutSeconds = defaultLLMTimeoutSeconds
+	}
+	if llm.MaxRetryDelaySeconds == 0 {
+		llm.MaxRetryDelaySeconds = defaultLLMMaxRetryDelaySeconds
 	}
 	ResolveEmbeddings(llm)
 }
@@ -760,6 +799,15 @@ func applyFileLLMConfig(dst *LLMConfig, src fileLLMConfig) {
 	}
 	if v := strings.TrimSpace(src.API); v != "" {
 		dst.API = v
+	}
+	if src.MaxRetries != nil {
+		dst.MaxRetries = *src.MaxRetries
+	}
+	if src.MaxRetryDelaySeconds > 0 {
+		dst.MaxRetryDelaySeconds = src.MaxRetryDelaySeconds
+	}
+	if v := strings.TrimSpace(src.FallbackModel); v != "" {
+		dst.FallbackModel = v
 	}
 	if v := strings.TrimSpace(src.Embeddings.BaseURL); v != "" {
 		dst.Embeddings.BaseURL = v

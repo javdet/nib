@@ -156,6 +156,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		errors.Is(err, service.ErrActionPlanIndexOutOfRange),
 		errors.Is(err, service.ErrActionNotFound),
 		errors.Is(err, service.ErrActionNotCode),
+		errors.Is(err, service.ErrActionLaunchConflict),
+		errors.Is(err, service.ErrActionResumeCode),
 		errors.Is(err, service.ErrActionRepositoryRequired),
 		errors.Is(err, service.ErrExecutorTokenSecretRequired),
 		errors.Is(err, service.ErrExecutorGitTokenSecretRequired),
@@ -170,6 +172,8 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, service.ErrExecutionBusy),
 		errors.Is(err, service.ErrActionAlreadyRunning),
+		errors.Is(err, service.ErrActionNothingToResume),
+		errors.Is(err, service.ErrActionResumeFinished),
 		errors.Is(err, service.ErrNoExecutionRunning),
 		errors.Is(err, service.ErrFanoutInProgress),
 		errors.Is(err, service.ErrActionNotRunning),

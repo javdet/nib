@@ -164,7 +164,70 @@ appended to the error naming this key.
 - **Limit:** at least `1`
 - **Error:** `config: llm.timeoutSeconds must be at least 1`
 
-HTTP client timeout for one completion request.
+HTTP client timeout for one completion request. A request that runs out of it
+is retried once, not up to `llm.maxRetries`: a model that is slower than the
+timeout will be slower again.
+
+### `llm.maxRetries`
+
+- **Type:** integer
+- **Default:** `8`
+- **Accepted:** 0 to 50; `0` sends every completion once
+- **Environment starting value:** `LLM_MAX_RETRIES`
+- **Error:** `config: llm.maxRetries must be between 0 and 50 (got <n>)`
+
+How many times a failed completion is sent again before the error reaches the
+agent. Only failures worth repeating count: HTTP 408, 409, 429 and 5xx, a
+connection that failed or dropped mid-reply, and anything the provider marks
+with `x-should-retry: true`. A request the provider rejected outright (400,
+401, 402, 404), a truncated reply and a refusal are final.
+
+The wait doubles from one second and is capped at a minute, less up to a
+quarter of jitter, so the default rides out roughly three minutes of provider
+trouble. The SDK's own retries are switched off, so this is the only budget.
+Each retry is logged at `WARN` (`llm: request failed, retrying`) and counted in
+`nib_llm_retries_total`. No retry starts after the caller's deadline, for
+example an action's `actionExecTimeoutMinutes`, and none after a force stop.
+
+`maxRetries: 0` in the file is honoured as "never retry". Omitting the key
+keeps the environment value or the default.
+
+Embeddings keep the SDK's default of two retries.
+
+### `llm.maxRetryDelaySeconds`
+
+- **Type:** integer
+- **Default:** `120`
+- **Error:** `config: llm.maxRetryDelaySeconds must not be negative (got <n>)`
+
+The longest single wait between two attempts. A `Retry-After` or
+`Retry-After-Ms` header within it is waited out exactly. A provider asking for
+longer is taken at its word that it will not answer soon: the model is given up
+on (moving to `llm.fallbackModel` if one is set) rather than slept on. The
+error then names this key.
+
+### `llm.fallbackModel`
+
+- **Type:** string
+- **Default:** empty — no fallback
+- **Environment starting value:** `LLM_FALLBACK_MODEL`
+- **Error:** `config: llm.fallbackModel "<value>" is the same as llm.model; leave it empty or name another model`
+
+A second model on the same endpoint, with the same key, `llm.api` and
+`llm.reasoningEffort`. It is tried once `llm.model` has used up its retries on a
+failure worth repeating, with a retry budget of its own. A final error from the
+primary, such as a 400 or a bad key, is never sent to the fallback, since
+answering it from another model would hide a configuration mistake.
+
+After a switch, calls go to the fallback first for five minutes, so an agent
+loop does not spend the primary's whole retry budget again on every round. The
+primary stays second in line during that time and goes back to first once it
+passes. Each switch is logged at `WARN` and counted in `nib_llm_fallbacks_total`.
+
+On `api: responses`, encrypted reasoning is replayed only to the model that
+produced it, so a turn that changes model halfway through drops the other
+model's reasoning instead of having the request rejected. Usage statistics
+record the model that actually answered.
 
 ### `llm.httpReferer`, `llm.appTitle`
 
@@ -320,6 +383,9 @@ llm:
   api: responses
   reasoningEffort: medium
   timeoutSeconds: 300
+  maxRetries: 8
+  maxRetryDelaySeconds: 120
+  fallbackModel: ""
   httpReferer: ""
   appTitle: ""
 

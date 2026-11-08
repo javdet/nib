@@ -60,8 +60,20 @@ llm:
   # overrides LLM_REASONING_EFFORT; deleting the key defers to it instead.
   reasoningEffort: high
 
-  # HTTP client timeout for the chat completion request (seconds).
+  # HTTP client timeout for the chat completion request (seconds). A request
+  # that runs out of it is retried once, not maxRetries times.
   timeoutSeconds: 300
+
+  # How many times a failed completion (HTTP 408/409/429/5xx, a dropped
+  # connection) is sent again. The wait doubles from 1s, capped at 60s; a
+  # Retry-After from the provider is honoured up to maxRetryDelaySeconds, and a
+  # longer one gives the model up. 0 never retries. Env: LLM_MAX_RETRIES.
+  maxRetries: 8
+  maxRetryDelaySeconds: 120
+
+  # Optional second model on the same endpoint, tried once `model` has used up
+  # its retries. Empty disables it. Env: LLM_FALLBACK_MODEL.
+  # fallbackModel: gpt-5.6-terra
 
   # Optional OpenRouter attribution headers (omit or leave empty to skip).
   # Not used by the OpenAI platform.

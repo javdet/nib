@@ -406,6 +406,18 @@ the key. A 401 against an endpoint that does not match the key (an OpenAI key se
 `openrouter.ai`) is the usual cause, and `llm.baseURL` in the mounted `config.yaml` is the only
 place the provider is chosen.
 
+**Retries and fallback.** A completion that fails with HTTP 408, 409, 429 or 5xx, or whose
+connection drops, is sent again up to `llm.maxRetries` times (default 8, `LLM_MAX_RETRIES`; `0`
+never retries). The wait doubles from 1 s to a 60 s cap. A `Retry-After`/`Retry-After-Ms` is
+honoured up to `llm.maxRetryDelaySeconds` (120), and a longer one gives the model up. A timeout
+(`llm.timeoutSeconds`) is retried once only. The SDK's own retries are off
+(`internal/llm/retry.go` owns them), and embeddings keep the SDK's two. `llm.fallbackModel`
+(`LLM_FALLBACK_MODEL`) is a second model on the same endpoint and key, tried once the primary has
+used up its retries on such a failure, never on a 400/401/404. After a switch it goes first for
+five minutes. Retries and switches log at `WARN` and count in `nib_llm_retries_total` /
+`nib_llm_fallbacks_total`. An action that still dies can be continued rather than rerun (see
+*Orchestration*).
+
 Round budgets are `agent.maxIterations` and the per-sub-agent `stageMaxIterations` /
 `actionExecMaxIterations` / `incidentDiggerMaxIterations` / `incidentStepMaxIterations`. Only one execution runs at a time, by policy, and
 `agent.actionExecConcurrency` is clamped to 1.
@@ -575,6 +587,15 @@ generated from the registry in
   existing remote branch out and reuses the pull request already open on it; omitting it starts
   `nib/fix-{dialog}`. `run_executor` cannot serve this — its request carries no chat id, so its
   result has nowhere to land, which is also why `actionAgentAllowSet` withdraws it.
+
+A non-code action whose run ended `failed`, `cancelled` or `blocked` can be **continued** rather
+than rerun ([action_resume.go](backend/internal/service/action_resume.go)): `execute` /
+`execute_action` with `resume: true` (and an optional `note`, the operator's word for it) takes the
+lease, finds the run's dialog through `.runs.json`, appends a note saying why it stopped and that
+the agent must re-check the state of what it already touched, and runs the loop again in that
+transcript with a fresh round budget and deadline. The row's **Continue** button sends "Continue
+plan item N…" through the chat, as Execute does. It is refused for a finished, running or never-run
+row and for a code action, whose container keeps no transcript in nib.
 
 Once a plan has a DAG, relaunching **decompose** is guarded, and once it has an action plan,
 relaunching **plan** is guarded too ([subagent_plan_guard.go](backend/internal/service/subagent_plan_guard.go)).
