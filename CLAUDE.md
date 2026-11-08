@@ -478,6 +478,35 @@ findings, impact report and closure summary.
   at boot. Budgets: `agent.incidentConcurrency` (4), `incidentDiggerMaxIterations` (25),
   `incidentStepMaxIterations` (15), `incidentTimeoutMinutes` (30).
 
+### Restarts and graceful shutdown
+
+On SIGTERM (or SIGINT) the backend **drains** before it exits, within `SHUTDOWN_TIMEOUT_SECONDS`
+(default 900, env only, since it has to fit inside the deployment's kill timer). The chart's
+`backend.terminationGracePeriodSeconds` (900) sets both: the pod's grace period, and the variable 5 s
+below it. Compose uses `stop_grace_period` (`NIB_STOP_GRACE_PERIOD`, 905 s).
+
+- **New work is refused** with a 503 and `ErrShuttingDown`: a chat message, a retry, Execute on any
+  row, a code fix, a fan-out, a stage run, the report on Finish, an investigation or closure. A
+  running stage run stops at its next item for that reason.
+- **Work in flight continues**: the running action, code action container or code fix (the
+  execution lease), fan-outs, investigations, the report and knowledge-base agents, and chat turns
+  already under way. An answer to a pending `ask_question` or `report_blocker` is still accepted,
+  since refusing it would strand that work. The HTTP server keeps serving throughout, so the UI
+  stays live and a container's webhook can still land.
+- An idle backend exits at once. Otherwise it logs what it is waiting for every 30 s. A second
+  signal cuts the wait short.
+- **20 s before the end** (half the budget when it is under 40 s) whatever is left is cancelled. A
+  sub-agent action records itself `cancelled` with "interrupted by a nib restart", which **Continue**
+  resumes after the restart. A container is left running, since it outlives the process either way;
+  `ReconcileStuckRuns` closes its row at the next boot, as it does for anything a SIGKILL cut off.
+  Commands of cancelled turns are killed, and their rows are marked `lost` at the next boot.
+- `/api/v1/health` keeps answering 200 while draining, so probes do not kill the pod early.
+
+The implementation is `workTracker` in `internal/service/shutdown.go` (`Drain`, `StopInFlight`) and
+the shutdown sequence at the end of `cmd/nib/main.go`. A new kind of background work has to either
+`begin` (refused when draining) or `adopt` (let through, continuing work already in flight) there,
+or a restart cuts it off without waiting.
+
 ### What an upgrade does and does not touch
 
 A new image replaces the binary, the embedded prompts, the built-in skills and the built-in allow

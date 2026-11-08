@@ -570,7 +570,8 @@ func run() error {
 		close(errCh)
 	}()
 
-	quit := make(chan os.Signal, 1)
+	// Two slots: the second signal is what cuts a drain short.
+	quit := make(chan os.Signal, 2)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
@@ -582,17 +583,56 @@ func run() error {
 		}
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
+	// The budget runs from the signal to exit and has to fit inside the
+	// deployment's own kill timer, so every phase is a deadline counted back
+	// from its end: most of it waits for work in flight, the reserve cancels
+	// what is left, lets it record how it ended, and closes the listeners.
+	budget := cfg.Server.ShutdownTimeout()
+	deadline := time.Now().Add(budget)
+	reserve := shutdownReserve(budget)
+
+	// The HTTP server keeps serving while it drains: the UI shows progress, an
+	// operator can answer a question a running fan-out is waiting on, and a
+	// coding container's webhook can still land.
+	drainCtx, drainCancel := context.WithDeadline(context.Background(), deadline.Add(-reserve))
+	go func() {
+		select {
+		case sig := <-quit:
+			slog.Warn("second shutdown signal, cutting the drain short", "signal", sig)
+			drainCancel()
+		case <-drainCtx.Done():
+		}
+	}()
+	slog.Info("shutdown: refusing new work and waiting for work in flight",
+		"timeout", time.Until(deadline.Add(-reserve)).Round(time.Second).String())
+	if chatSvc.Drain(drainCtx) {
+		slog.Info("shutdown: no work in flight")
+	}
+	drainCancel()
+
+	// Run after a clean drain too: work adopted in the instant the drain found
+	// the process idle is cancelled here rather than killed with the process.
+	stopCtx, stopCancel := context.WithDeadline(context.Background(), deadline.Add(-reserve/2))
+	chatSvc.StopInFlight(stopCtx)
+	stopCancel()
 
 	// Before the HTTP server: a turn waiting on a command then gets its
 	// "cancelled" result rather than a dropped connection. What does not die in
 	// time goes with the container, and the next boot marks its row lost.
-	jobsCtx, jobsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	jobsCtx, jobsCancel := context.WithDeadline(context.Background(), deadline.Add(-reserve/4))
 	if err := commandJobs.Shutdown(jobsCtx); err != nil {
 		slog.Warn("agent commands shutdown", "error", err)
 	}
 	jobsCancel()
+
+	// Capped, not the rest of the budget: an open SSE stream never goes idle,
+	// so after an early drain Shutdown would otherwise sit out the whole budget.
+	httpDeadline := time.Now().Add(10 * time.Second)
+	if deadline.Before(httpDeadline) {
+		httpDeadline = laterOf(deadline, time.Now().Add(time.Second))
+	}
+	shutdownCtx, shutdownCancel := context.WithDeadline(context.Background(), httpDeadline)
+	defer shutdownCancel()
 
 	if metricsSrv != nil {
 		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
@@ -607,6 +647,24 @@ func run() error {
 
 	slog.Info("server stopped gracefully")
 	return nil
+}
+
+// shutdownReserve is the tail of the shutdown budget kept back from the drain
+// for cancelling what is left, letting it record how it ended, and closing the
+// listeners. Half the budget at most, so a short one still drains.
+func shutdownReserve(budget time.Duration) time.Duration {
+	const reserve = 20 * time.Second
+	if budget < 2*reserve {
+		return budget / 2
+	}
+	return reserve
+}
+
+func laterOf(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // resolveConfigPath picks the config file: -config flag, then CONFIG_FILE env, then config.yaml.

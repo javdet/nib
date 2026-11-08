@@ -45,6 +45,16 @@ backend:
     type: ClusterIP
     port: 8080
 
+  ## How long a pod being replaced may take to stop. On SIGTERM the backend
+  ## refuses new work (chat messages, Execute, fan-outs, investigations) and
+  ## waits for what is already running -- an action, a fan-out, a code action's
+  ## container -- then cancels whatever is left 20 s before the end, so an
+  ## interrupted action is recorded as such and Continue resumes it. An idle
+  ## backend exits at once. With the Recreate strategy the new pod starts only
+  ## once the old one is gone, so a deploy can take up to this long. The backend
+  ## gets 5 s less as SHUTDOWN_TIMEOUT_SECONDS.
+  terminationGracePeriodSeconds: 900
+
   ## Prometheus metrics.
   ##
   ## Served on a port of its own rather than a route on the API: the ingress

@@ -26,6 +26,11 @@ func (s *ChatService) SendInDialog(ctx context.Context, dialogID uuid.UUID, mess
 	if s.dialogRepo == nil {
 		return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: dialog repository is not configured")
 	}
+	ctx, done, err := s.beginTurn(ctx)
+	if err != nil {
+		return domain.ChatResponse{}, fmt.Errorf("chat send in dialog: %w", err)
+	}
+	defer done()
 
 	d, err := s.dialogRepo.GetDialog(ctx, dialogID)
 	if err != nil {
@@ -124,6 +129,8 @@ func (s *ChatService) SubmitToolResult(ctx context.Context, dialogID uuid.UUID, 
 	if len(answers) == 0 {
 		return domain.ChatResponse{}, fmt.Errorf("submit tool result: answers must not be empty")
 	}
+	ctx, done := s.adoptTurn(ctx)
+	defer done()
 
 	d, err := s.dialogRepo.GetDialog(ctx, dialogID)
 	if err != nil {
@@ -212,6 +219,11 @@ func (s *ChatService) RetryLastResponse(ctx context.Context, dialogID uuid.UUID)
 	if s.dialogRepo == nil {
 		return domain.ChatResponse{}, fmt.Errorf("retry last response: dialog repository is not configured")
 	}
+	ctx, done, err := s.beginTurn(ctx)
+	if err != nil {
+		return domain.ChatResponse{}, fmt.Errorf("retry last response: %w", err)
+	}
+	defer done()
 
 	d, err := s.dialogRepo.GetDialog(ctx, dialogID)
 	if err != nil {

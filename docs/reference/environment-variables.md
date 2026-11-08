@@ -37,6 +37,7 @@ OPENAI_API_KEY)` when neither key is set.
 |---|---|---|
 | `SERVER_HOST` | `0.0.0.0` | API listener bind address. |
 | `SERVER_PORT` | `8080` | API listener port. |
+| `SHUTDOWN_TIMEOUT_SECONDS` | `900` | Budget from SIGTERM to exit. New work is refused at once; work in flight is waited for until 20 s before the end, then cancelled. `0` stops at once. Keep it below the deployment's kill timer (`terminationGracePeriodSeconds`, `stop_grace_period`); the chart sets it 5 s below. |
 | `DB_HOST` | `localhost` | Postgres host. |
 | `DB_PORT` | `5432` | Postgres port. |
 | `DB_USER` | `nib` | Postgres user. |

@@ -81,6 +81,9 @@ services:
     image: javdet/nib-backend:v0.8.2
     container_name: nib-backend
     restart: unless-stopped
+    # On SIGTERM the backend refuses new work and waits for what is running;
+    # Docker kills it after this. Keep it 5 s above SHUTDOWN_TIMEOUT_SECONDS.
+    stop_grace_period: ${NIB_STOP_GRACE_PERIOD:-905s}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +98,7 @@ services:
     environment:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
+      SHUTDOWN_TIMEOUT_SECONDS: ${SHUTDOWN_TIMEOUT_SECONDS:-900}
       METRICS_PORT: 9090
       DB_HOST: postgres
       DB_PORT: 5432

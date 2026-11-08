@@ -256,6 +256,9 @@ type incidentRunState struct {
 // first, one per system, then the synthesis and impact agents side by side over
 // what they found. It returns as soon as the run is recorded.
 func (s *ChatService) StartInvestigation(ctx context.Context, rootID uuid.UUID, req InvestigationRequest) (IncidentRun, error) {
+	if err := s.work.refuse(); err != nil {
+		return IncidentRun{}, err
+	}
 	if _, err := s.resolveIncidentRoot(ctx, rootID); err != nil {
 		return IncidentRun{}, err
 	}
@@ -339,7 +342,9 @@ func (s *ChatService) launchIncidentRun(ctx context.Context, rootID uuid.UUID, r
 	}
 	s.activity.Publish(rootID, domain.AgentActivity{Kind: domain.ActivityInvestigationUpdated})
 
+	tracked := s.work.adopt("incident run", cancel)
 	go func() {
+		defer tracked()
 		defer cancel()
 		defer s.incidentRuns.CompareAndDelete(rootID, st)
 		s.runIncident(runCtx, rootID, run)

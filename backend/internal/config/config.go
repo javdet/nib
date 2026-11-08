@@ -260,6 +260,22 @@ type KnowledgeBaseConfig struct {
 type ServerConfig struct {
 	Host string
 	Port int
+	// ShutdownTimeoutSeconds is the whole budget a SIGTERM gets, from the
+	// signal to exit: work in flight is waited for during most of it, then
+	// cancelled. It belongs beside the deployment's own kill timer
+	// (terminationGracePeriodSeconds, stop_grace_period), which is why it comes
+	// from the environment and not config.yaml. 0 stops at once.
+	ShutdownTimeoutSeconds int
+}
+
+// defaultShutdownTimeoutSeconds is the chart's terminationGracePeriodSeconds
+// and compose's stop_grace_period: long enough for most actions to finish,
+// short enough that a deploy does not stall for a whole action timeout.
+const defaultShutdownTimeoutSeconds = 900
+
+// ShutdownTimeout is ShutdownTimeoutSeconds as a duration.
+func (c ServerConfig) ShutdownTimeout() time.Duration {
+	return time.Duration(c.ShutdownTimeoutSeconds) * time.Second
 }
 
 // minAPITokenLength keeps the token long enough that guessing it through the
@@ -410,6 +426,8 @@ func Load(path string) (Config, error) {
 		Server: ServerConfig{
 			Host: envOrDefault("SERVER_HOST", "0.0.0.0"),
 			Port: envOrDefaultInt("SERVER_PORT", 8080),
+
+			ShutdownTimeoutSeconds: envOrDefaultInt("SHUTDOWN_TIMEOUT_SECONDS", defaultShutdownTimeoutSeconds),
 		},
 		Database: DatabaseConfig{
 			Host:     envOrDefault("DB_HOST", "localhost"),
@@ -496,6 +514,9 @@ func validateAppConfig(cfg Config) error {
 	}
 	if err := validateCommandsConfig(cfg.Commands); err != nil {
 		return err
+	}
+	if cfg.Server.ShutdownTimeoutSeconds < 0 {
+		return fmt.Errorf("config: SHUTDOWN_TIMEOUT_SECONDS must not be negative, got %d", cfg.Server.ShutdownTimeoutSeconds)
 	}
 	return nil
 }

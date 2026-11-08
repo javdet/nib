@@ -156,7 +156,11 @@ func (s *ChatService) StartKBUpdateAgent(ctx context.Context, planID uuid.UUID) 
 	// The run outlives whatever started it -- an HTTP request, or the report
 	// agent's own context, which is cancelled the moment that run returns.
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), kbAgentTimeout)
+	// Adopted: it is chained from a report that was already running, so a drain
+	// waits for it rather than losing the update.
+	tracked := s.work.adopt("knowledge-base update", cancel)
 	go func() {
+		defer tracked()
 		defer cancel()
 		defer claim.unlock()
 		s.runKBUpdateAgent(runCtx, rootID, collection)

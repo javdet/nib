@@ -132,7 +132,7 @@ func (s *ChatService) StartCodeFix(
 		StartedAt: time.Now().Unix(),
 	})
 	if !ok {
-		return domain.Dialog{}, executor.ActionRunResult{}, newExecutionBusyError(lease)
+		return domain.Dialog{}, executor.ActionRunResult{}, leaseRefusedError(lease)
 	}
 	// Anything that goes wrong from here hands the lease back: the container's
 	// webhook is what normally releases it, and a launch that never happened has

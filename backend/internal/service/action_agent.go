@@ -88,7 +88,7 @@ func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, ke
 			if !rerun && held.PlanID == planID && held.Key == key {
 				return ActionExecRun{}, ErrActionAlreadyRunning
 			}
-			return ActionExecRun{}, newExecutionBusyError(held)
+			return ActionExecRun{}, leaseRefusedError(held)
 		}
 		if err := s.stopLeaseHolder(ctx, held); err != nil {
 			cancel()
@@ -97,7 +97,7 @@ func (s *ChatService) StartActionAgent(ctx context.Context, planID uuid.UUID, ke
 		s.releaseExecutionLease(held.token)
 		if held, ok = s.acquireExecutionLease(lease); !ok {
 			cancel()
-			return ActionExecRun{}, newExecutionBusyError(held)
+			return ActionExecRun{}, leaseRefusedError(held)
 		}
 	}
 	token := held.token
@@ -166,6 +166,9 @@ func (s *ChatService) runActionAgent(ctx context.Context, planID uuid.UUID, key 
 		// failed hides the difference in the plan view. A run that ran out of
 		// time is a failure: nobody asked for it to stop.
 		switch {
+		case errors.Is(ctx.Err(), context.Canceled) && s.work.isStopped():
+			slog.Warn("action agent interrupted by shutdown", "plan_id", planID, "key", key)
+			finish(ActionExecCancelled, restartInterruptedReason, "")
 		case errors.Is(ctx.Err(), context.Canceled):
 			slog.Info("action agent stopped", "plan_id", planID, "key", key)
 			finish(ActionExecCancelled, "stopped before it finished", "")

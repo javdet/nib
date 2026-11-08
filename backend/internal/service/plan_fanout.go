@@ -221,6 +221,11 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	if s.dialogRepo == nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: dialog repository is not configured")
 	}
+	// Before anything else: a fan-out that finds a rebuild mark discards the
+	// action plan first, which must not happen for a run that is then refused.
+	if err := s.work.refuse(); err != nil {
+		return FanoutRun{}, err
+	}
 	if _, err := s.dialogRepo.GetDialog(ctx, rootID); err != nil {
 		return FanoutRun{}, fmt.Errorf("start plan fanout: %w", err)
 	}
@@ -297,8 +302,13 @@ func (s *ChatService) StartPlanFanout(ctx context.Context, rootID uuid.UUID, tar
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	st := newFanoutRunState(cancel)
 	s.fanoutRuns.Store(rootID, st)
+	// Adopted, not begun: the refusal above already ran, and the record is
+	// written, so a drain that started since is better served by a run that
+	// ends through its own cancellation than by one left "running".
+	tracked := s.work.adopt("plan fan-out", cancel)
 	go s.watchFanoutBudget(runCtx, st, s.fanout.timeout(), fanoutBudgetTick)
 	go func() {
+		defer tracked()
 		defer cancel()
 		// Compared, not just deleted: this run's record is written before the
 		// entry is cleaned up, so a replan started in that gap owns the entry by

@@ -203,6 +203,9 @@ type ChatService struct {
 	// nil when nothing is running. See ExecutionLease for why it is one.
 	execLease *ExecutionLease
 
+	// work is what a graceful shutdown waits for and, once draining, refuses.
+	work workTracker
+
 	// stageRunMu guards the "run all" record of every plan and stageRunActive.
 	// It is a leaf: nothing that launches work, appends a message or takes the
 	// execution lease runs while it is held.
@@ -314,6 +317,12 @@ func (s *ChatService) SubscribeActivity(dialogID uuid.UUID) (<-chan domain.Agent
 }
 
 func (s *ChatService) Send(ctx context.Context, message, modeName string) (domain.ChatResponse, error) {
+	ctx, done, err := s.beginTurn(ctx)
+	if err != nil {
+		return domain.ChatResponse{}, fmt.Errorf("chat send: %w", err)
+	}
+	defer done()
+
 	sysPrompt, err := s.resolveSystemPrompt(ctx, modeName)
 	if err != nil {
 		return domain.ChatResponse{}, fmt.Errorf("chat send: resolve system prompt: %w", err)

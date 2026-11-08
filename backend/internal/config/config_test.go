@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMergeProjects(t *testing.T) {
@@ -755,6 +756,44 @@ func TestLoad_LLM_retrySettings(t *testing.T) {
 			}
 			if cfg.LLM.FallbackModel != tc.wantFallback {
 				t.Errorf("LLM.FallbackModel = %q, want %q", cfg.LLM.FallbackModel, tc.wantFallback)
+			}
+		})
+	}
+}
+
+func TestLoad_ShutdownTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		want    time.Duration
+		wantSub string
+	}{
+		{name: "default", env: "", want: 900 * time.Second},
+		{name: "explicit", env: "120", want: 2 * time.Minute},
+		{name: "zero stops at once", env: "0", want: 0},
+		{name: "negative", env: "-5", wantSub: "SHUTDOWN_TIMEOUT_SECONDS must not be negative"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(minimalValidLLMYAML), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("LLM_API_KEY", "test-key")
+			t.Setenv("OPENAI_API_KEY", "")
+			t.Setenv("SHUTDOWN_TIMEOUT_SECONDS", tc.env)
+			cfg, err := Load(path)
+			if tc.wantSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tc.wantSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			if got := cfg.Server.ShutdownTimeout(); got != tc.want {
+				t.Fatalf("ShutdownTimeout() = %s, want %s", got, tc.want)
 			}
 		})
 	}

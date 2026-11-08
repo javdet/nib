@@ -122,6 +122,10 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		// The registry or the Docker daemon is what failed, not the request —
 		// the message names the image and the reason, so pass it through.
 		writeError(w, http.StatusBadGateway, err.Error())
+	case errors.Is(err, service.ErrShuttingDown):
+		// The process is draining before a restart; the same request succeeds
+		// against the one that replaces it.
+		writeError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, service.ErrSettingsUnavailable),
 		errors.Is(err, service.ErrCommandAuditUnavailable),
 		errors.Is(err, executor.ErrWebhookKeyMissing):

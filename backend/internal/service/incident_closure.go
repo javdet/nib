@@ -17,6 +17,9 @@ import (
 // resolvedAt, when given, is recorded as the resolution time; otherwise an
 // incident with none is taken to be resolved now.
 func (s *ChatService) StartIncidentClosure(ctx context.Context, rootID uuid.UUID, resolvedAt string) (IncidentRun, error) {
+	if err := s.work.refuse(); err != nil {
+		return IncidentRun{}, err
+	}
 	if _, err := s.resolveIncidentRoot(ctx, rootID); err != nil {
 		return IncidentRun{}, err
 	}

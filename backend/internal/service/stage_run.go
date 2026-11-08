@@ -232,6 +232,9 @@ func (s *ChatService) StartStageRun(ctx context.Context, planID uuid.UUID, scope
 	if scope != StageRunScopeStage && scope != StageRunScopeRollback {
 		return StageRun{}, ErrInvalidStageRunScope
 	}
+	if err := s.work.refuse(); err != nil {
+		return StageRun{}, err
+	}
 	if scope == StageRunScopeRollback {
 		stage = 0
 	}

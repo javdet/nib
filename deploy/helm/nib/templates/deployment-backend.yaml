@@ -32,6 +32,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nib.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
       {{- with .Values.backend.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -97,6 +98,9 @@ spec:
               value: "0.0.0.0"
             - name: SERVER_PORT
               value: {{ .Values.backend.service.port | quote }}
+            # Inside the kubelet's kill timer, with a margin for the exit itself.
+            - name: SHUTDOWN_TIMEOUT_SECONDS
+              value: {{ max 0 (sub (int .Values.backend.terminationGracePeriodSeconds) 5) | quote }}
             - name: DB_HOST
               value: {{ include "nib.postgresql.host" . | quote }}
             - name: DB_PORT

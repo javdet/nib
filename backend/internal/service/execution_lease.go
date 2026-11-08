@@ -85,6 +85,11 @@ func (s *ChatService) acquireExecutionLease(l ExecutionLease) (ExecutionLease, b
 
 	s.expireStaleContainerLeaseLocked()
 
+	// Checked under the lease's own lock: a drain reads the lease under it too,
+	// so it either sees this grant and waits for it, or this sees the drain.
+	if s.work.isDraining() {
+		return ExecutionLease{}, false
+	}
 	if s.execLease != nil {
 		metrics.RecordLeaseRejected(string(l.Kind))
 		return *s.execLease, false
@@ -291,6 +296,15 @@ func (e *ExecutionBusyError) Error() string {
 func (e *ExecutionBusyError) Unwrap() error { return ErrExecutionBusy }
 
 // newExecutionBusyError builds the refusal for a lease that is already held.
+// leaseRefusedError is what a failed acquireExecutionLease returns: a drain
+// refuses with no holder to name, anything else is the holder.
+func leaseRefusedError(held ExecutionLease) error {
+	if held.token == uuid.Nil {
+		return ErrShuttingDown
+	}
+	return newExecutionBusyError(held)
+}
+
 func newExecutionBusyError(held ExecutionLease) error {
 	return &ExecutionBusyError{Message: busyExecutionMessage(held), Lease: held}
 }

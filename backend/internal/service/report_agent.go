@@ -43,6 +43,9 @@ func (s *ChatService) StartReportAgent(ctx context.Context, planID uuid.UUID) er
 	if s.dialogRepo == nil {
 		return fmt.Errorf("start report agent: dialog repository is not configured")
 	}
+	if err := s.work.refuse(); err != nil {
+		return err
+	}
 
 	rootID, err := s.resolveRootDialogID(ctx, planID)
 	if err != nil {
@@ -74,7 +77,9 @@ func (s *ChatService) StartReportAgent(ctx context.Context, planID uuid.UUID) er
 	// The run outlives the request that started it, so it gets a deadline of its
 	// own rather than inheriting one that is about to be cancelled.
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reportAgentTimeout)
+	tracked := s.work.adopt("report agent", cancel)
 	go func() {
+		defer tracked()
 		defer cancel()
 		defer claim.unlock()
 		s.runReportAgent(runCtx, rootID)

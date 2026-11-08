@@ -115,7 +115,7 @@ func (s *ChatService) ExecuteCodeAction(ctx context.Context, planDialogID uuid.U
 		StartedAt: time.Now().Unix(),
 	})
 	if !ok {
-		return domain.Dialog{}, executor.ActionRunResult{}, newExecutionBusyError(lease)
+		return domain.Dialog{}, executor.ActionRunResult{}, leaseRefusedError(lease)
 	}
 	// Anything that goes wrong from here has to hand the lease back: the
 	// container's webhook is what normally releases it, and a launch that never
