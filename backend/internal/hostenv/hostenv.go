@@ -28,12 +28,14 @@ const (
 
 // probeBinaries is what PATH is checked for. It is a fixed list rather than a
 // config knob: the point is to answer "can I run this here?" for the handful of
-// tools an infrastructure agent reaches for, and the runtime image deliberately
-// ships almost none of them.
+// tools an infrastructure agent reaches for. The image ships some of them and
+// leaves others out to keep its size down (see backend/Dockerfile), and an
+// operator's own image may add the rest, so absent names are listed too.
 var probeBinaries = []string{
-	"ansible", "aws", "az", "bash", "curl", "dig", "docker", "gcloud", "git",
-	"helm", "jq", "kubectl", "nc", "openssl", "psql", "python3", "sh", "ssh",
-	"terraform",
+	"ansible", "ansible-playbook", "aws", "az", "bash", "curl", "dig", "docker",
+	"doctl", "gcloud", "gh", "git", "glab", "helm", "jq", "kubectl", "kustomize",
+	"mtr", "nc", "openssl", "ping", "psql", "python3", "sh", "ssh", "terraform",
+	"tofu", "yq",
 }
 
 // Info is a snapshot of the process environment. Every field degrades to its

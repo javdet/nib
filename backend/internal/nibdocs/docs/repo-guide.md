@@ -206,6 +206,16 @@ table, and the plan page's **Commands** button on an action or check row lists t
 output and a Cancel. At most 4 jobs run per dialog and 16 in all; a restart marks running rows
 `lost`.
 
+**What the backend image carries** for those commands (`backend/Dockerfile`): `bash`, `curl`, `jq`,
+`yq`, `openssl`, `dig`/`nslookup`, `nc`, `telnet`, `ping`, `mtr`, `ip`, `python3`, `ssh`, `gh`,
+`glab`, `kubectl`, `helm`, `kustomize` and `ansible-core` (`ansible`, `ansible-playbook`). It
+deliberately leaves out `git` (`gh api`/`glab api` read a repository; a working copy is the
+executor's job), the AWS CLI, `gcloud`, `doctl` and Terraform/OpenTofu, to keep the image small.
+None of them is configured: a job sees no kubeconfig, cloud profile, SSH key or `GH_TOKEN`/
+`GITLAB_TOKEN`, so a credential has to be passed explicitly (from `get_secrets`) or the system
+reached through MCP. `hostCommands` reports
+what is actually on PATH, including tools an operator's own image adds.
+
 **Isolation** is `commands.isolation` in `config.yaml`:
 
 - `auto` (default) runs each job as a uid of its own from `commands.uidStart`
