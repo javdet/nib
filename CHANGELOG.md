@@ -4,6 +4,32 @@ All notable changes to Nib are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses the version in the root `VERSION` file.
 
+## [v0.8.3] - 2026-11-09
+
+### Added
+- Local commands run as sandboxed jobs. `run_command`, `wait_job`, `read_output`, `cancel_job` and `wait_until` replace `execute_command`: a command can outlive one call, its output is paged or grepped from a log kept for `commands.logRetentionDays`, and the plan page lists each run with its output and a Cancel. With `commands.isolation: auto` (the default) each job runs as a uid of its own with an empty `HOME` and a minimal environment, so it cannot read `DATA_DIR` or the backend's keys. An existing allow list that still names `execute_command` gets the new tools on the next boot.
+- The backend image carries `kubectl`, `helm`, `kustomize`, `yq`, `gh` and `glab` for those commands. `git`, the AWS CLI, `gcloud` and Terraform stay out to keep the image small, and no credentials are configured, so a job gets them explicitly or reaches the system through MCP.
+- Graceful shutdown: on SIGTERM or SIGINT the backend refuses new work with a 503 and waits for work in flight, up to `SHUTDOWN_TIMEOUT_SECONDS` (default 900). Whatever is left is cancelled 20 seconds before the end and can be resumed with **Continue**. The compose stack sets `stop_grace_period` (`NIB_STOP_GRACE_PERIOD`) to match, and `/api/v1/health` keeps answering 200 while draining.
+- LLM retries and fallback: a completion that fails with HTTP 408, 409, 429 or 5xx, or whose connection drops, is retried up to `llm.maxRetries` times (default 8) with backoff, honouring `Retry-After` up to `llm.maxRetryDelaySeconds`. `llm.fallbackModel` names a second model tried once the primary has used up its retries. Retries and switches are logged and counted in `nib_llm_retries_total` and `nib_llm_fallbacks_total`.
+- `NIB_COORDINATION_POOL_SIZE` (default 24) sets how many Postgres connections each backend process holds for locks and event listeners.
+- A private registry can be used for the agent image: **Private registry** on the Executor page takes `registryUsername` and `registryPasswordSecretName`. On a local executor the login goes with the pull; on remote Kubernetes each Job gets its own `imagePullSecrets` Secret.
+- **Delete agent containers when a plan is cancelled** (`removeContainersOnPlanCancel`, on by default) makes **Cancel plan** stop the plan's running container and remove every container it launched on a local executor. A failed removal is reported beside the status, and cancelling again retries it.
+- A code change can be requested from the chat. `run_subagent` with `name: "code"` launches an agent-runner container that continues the branch a code action pushed to (or starts `nib/fix-{dialog}`), so a wrong result can be corrected without a plan row behind it.
+- Action results posted to the chat link to the plan row they belong to.
+- Leaving a page with unsaved edits now asks first on the company info, discuss prompt and Knowledge Base pages, and the workplace page has a scroll-to-top button.
+
+### Changed
+- **Breaking:** `execute_command` is replaced by the job tools described above. Prompts, rules and skills that call it by name need updating.
+- A DAG that changes under an existing action plan now rebuilds the plan from scratch when the decompose turn finishes, instead of leaving an action list that no longer matches the diagram. An item that is currently executing holds the discard off until the plan is idle.
+- Relaunching `decompose` on a plan that has a DAG, or `plan` on one that has an action plan, now requires `operator_request`, the operator's own words asking for the change. A launch whose quote is not in the operator's latest input is refused, so a failed action no longer makes the orchestrator replan and discard recorded checks, runs and notes. The plan page's buttons are not affected.
+- Adding or saving an MCP server entry now requires an HTTP `url`; a command-only (stdio) entry is refused instead of being saved and silently skipped.
+- Before the agent starts, the container checks with `git push --dry-run` that the git token can push to the target branch, so a token that cannot push fails the run at once rather than after the agent has spent its budget. The runner's reason (for example the remote refusing the token) is shown ahead of the agent's own summary.
+- The `claude-code` agent image translates a model id such as `anthropic/model-name` to `model-name` for Anthropic's API, and falls back to the subscription model when the id is not supported.
+
+### Fixed
+- A request rejected by the LLM provider now ends the turn with the provider's reason together with the endpoint, model and reasoning effort it was sent with (never the key), which makes a mismatched `llm.baseURL` and key easy to spot.
+- A progress bar in the web interface now matches the completion state it shows.
+
 ## [v0.8.2] - 2026-10-12
 
 ### Added
