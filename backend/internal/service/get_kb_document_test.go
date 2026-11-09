@@ -147,7 +147,7 @@ func TestExecuteGetKBDocument_fallsBackToSkeleton(t *testing.T) {
 func TestExecuteGetKBDocument_returnsUploadedDocument(t *testing.T) {
 	t.Parallel()
 	docs := kbdoc.NewService(t.TempDir(), "knowledgebase")
-	if err := docs.Save("shop", "# Knowledge Base\n\n## Project Overview\nGame platform.\n"); err != nil {
+	if err := docs.Save("shop", "# Knowledge Base\n\n## Project Overview\nOnline shop.\n"); err != nil {
 		t.Fatalf("Save() err = %v", err)
 	}
 	svc := &KnowledgeService{defaultCollection: "default", docs: docs}
@@ -171,7 +171,7 @@ func TestExecuteGetKBDocument_returnsUploadedDocument(t *testing.T) {
 	if got.UpdatedAt == "" {
 		t.Fatal("updated_at is empty for an uploaded document")
 	}
-	if got.Content != "# Knowledge Base\n\n## Project Overview\nGame platform.\n" {
+	if got.Content != "# Knowledge Base\n\n## Project Overview\nOnline shop.\n" {
 		t.Fatalf("content = %q", got.Content)
 	}
 }
